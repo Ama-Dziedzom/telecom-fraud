@@ -472,7 +472,7 @@ export default function NetworkPage() {
                   />
                   {data.insight && (
                     <div className="flex gap-2.5 rounded-[10px] border border-medium-border bg-medium-bg px-3.5 py-3">
-                      <Icon name="app/icon-alert-triangle-medium-16" size={18} className="mt-0.5 shrink-0" />
+                      <Icon name="app/icon-alert-triangle-medium-16" size={18} className="mt-0.5 shrink-0 self-start" />
                       <span className="flex flex-col gap-0.5">
                         <span className="text-label-m text-medium-fg">{data.insight.title}</span>
                         <span className="text-caption text-text-primary">{data.insight.detail}</span>

@@ -5,9 +5,20 @@ import { useAlertStream, type FeedState } from "@/lib/api/stream";
 import type { User } from "@/lib/auth/api";
 import { useOperatorName } from "@/lib/auth/session";
 import { cn } from "@/lib/cn";
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { CommandPalette } from "@/components/shell/CommandPalette";
-import { FeedbackModal, HelpDrawer, ShortcutsModal } from "@/components/shell/ShellDialogs";
+import {
+  FeedbackModal,
+  HelpDrawer,
+  ShortcutsModal,
+} from "@/components/shell/ShellDialogs";
 import { logout } from "@/lib/auth/api";
 import { signOut } from "@/lib/auth/session";
 import { useRouter } from "next/navigation";
@@ -37,8 +48,15 @@ const ShellContext = createContext<ShellState>({
   signOutNow: () => {},
 });
 
-const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
-const GO: Record<string, string> = { q: "/queue", a: "/alerts", c: "/cases", h: "/heatmap" };
+const typing = (t: EventTarget | null) =>
+  t instanceof HTMLElement &&
+  (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+const GO: Record<string, string> = {
+  q: "/queue",
+  a: "/alerts",
+  c: "/cases",
+  h: "/heatmap",
+};
 export const useShell = () => useContext(ShellContext);
 
 /** The live alert feed, shared by every screen (one connection for the app). */
@@ -87,7 +105,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         handOver();
         return;
       }
-      if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey || document.querySelector("dialog[open]")) return;
+      if (
+        typing(e.target) ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.altKey ||
+        document.querySelector("dialog[open]")
+      )
+        return;
       if (e.key === "?") {
         e.preventDefault();
         setOverlay("shortcuts");
@@ -132,10 +157,28 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
           <CriticalAlertToast feed={feed} />
-          {overlay === "palette" && <CommandPalette onClose={() => setOverlay(null)} onHandover={handOver} />}
-          {overlay === "shortcuts" && <ShortcutsModal onClose={() => setOverlay(null)} />}
-          {overlay === "help" && <HelpDrawer onClose={() => setOverlay(null)} onShortcuts={() => setOverlay("shortcuts")} onFeedback={() => setOverlay("feedback")} />}
-          {overlay === "feedback" && <FeedbackModal user={user ?? null} onClose={() => setOverlay(null)} />}
+          {overlay === "palette" && (
+            <CommandPalette
+              onClose={() => setOverlay(null)}
+              onHandover={handOver}
+            />
+          )}
+          {overlay === "shortcuts" && (
+            <ShortcutsModal onClose={() => setOverlay(null)} />
+          )}
+          {overlay === "help" && (
+            <HelpDrawer
+              onClose={() => setOverlay(null)}
+              onShortcuts={() => setOverlay("shortcuts")}
+              onFeedback={() => setOverlay("feedback")}
+            />
+          )}
+          {overlay === "feedback" && (
+            <FeedbackModal
+              user={user ?? null}
+              onClose={() => setOverlay(null)}
+            />
+          )}
         </StepUpProvider>
       </ToastProvider>
     </ShellContext>
@@ -158,22 +201,23 @@ export function PageBody({
         <div className={className ?? "flex flex-1 flex-col gap-6 px-8 py-7"}>
           {children}
         </div>
+        <footer className="flex shrink-0 items-center justify-center gap-2 border-t border-border-subtle px-8 py-3 text-caption">
+          <span
+            className={cn(
+              "size-1.5 rounded-full",
+              interrupted ? "bg-medium-fg" : "bg-success-fg",
+            )}
+          />
+          <span className="text-text-secondary">
+            {interrupted
+              ? "Live updates interrupted"
+              : "All systems operational"}
+          </span>
+          <span className="whitespace-pre text-text-tertiary">
+            · © 2026 FraudDetection · v2.0
+          </span>
+        </footer>
       </div>
-      {/* Pinned below the scroll area, so it stays visible on long pages. */}
-      <footer className="flex shrink-0 items-center justify-center gap-2 border-t border-border-subtle px-8 py-3 text-caption">
-        <span
-          className={cn(
-            "size-1.5 rounded-full",
-            interrupted ? "bg-medium-fg" : "bg-success-fg",
-          )}
-        />
-        <span className="text-text-secondary">
-          {interrupted ? "Live updates interrupted" : "All systems operational"}
-        </span>
-        <span className="whitespace-pre text-text-tertiary">
-          · © 2026 FraudDetection · v2.0
-        </span>
-      </footer>
     </>
   );
 }
