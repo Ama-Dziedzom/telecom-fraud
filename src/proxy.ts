@@ -8,6 +8,25 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Staff workspaces (/workspace/*) join once the API has staff sign-in.
-  matcher: ["/analyst/:path*"],
+  // The operator app. Staff workspaces (/workspace/*) join once the API has staff sign-in.
+  matcher: [
+    "/analyst/:path*",
+    "/queue/:path*",
+    "/alerts/:path*",
+    "/cases/:path*",
+    "/watchlist/:path*",
+    "/lookup/:path*",
+    "/subscribers/:path*",
+    "/monitoring/:path*",
+    "/prospect/:path*",
+    "/trace/:path*",
+    "/heatmap/:path*",
+    "/network/:path*",
+    "/overview/:path*",
+    "/reports/:path*",
+    "/notifications/:path*",
+    "/account/:path*",
+    "/help/:path*",
+    "/feedback/:path*",
+  ],
 };

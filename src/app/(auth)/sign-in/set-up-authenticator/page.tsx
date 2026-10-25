@@ -18,9 +18,9 @@ export default function SignInSetUpAuthenticatorPage() {
     <AuthenticatorSetup
       flowId={flowId}
       onConfirmed={(session) => {
-        completeSignIn(session.user.email);
+        completeSignIn(session.user.email, session.operator?.name);
         update({ user: session.user, recoveryCodes: session.recovery_codes ?? [] });
-        router.push(session.recovery_codes?.length ? "/sign-in/backup-codes" : "/analyst");
+        router.push(session.recovery_codes?.length ? "/sign-in/backup-codes" : "/queue");
       }}
     />
   );

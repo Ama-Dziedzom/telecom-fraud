@@ -90,9 +90,9 @@ const SECTIONS: Array<{ title: string; screens: Screen[] }> = [
     title: "E · Sessions & security policy",
     screens: [
       { code: "E1", name: "Password expired", href: "/password-expired", setup: "expired-password" },
-      { code: "E2", name: "Idle timeout warning", href: "/analyst?idle=75", setup: "signed-in", how: "Stay idle 15 s" },
+      { code: "E2", name: "Idle timeout warning", href: "/queue?idle=75", setup: "signed-in", how: "Stay idle 15 s" },
       { code: "E3", name: "Signed out after inactivity", href: "/signed-out/inactive?case=FD-3050&draft=1", setup: "remembered" },
-      { code: "E4", name: "Welcome back · last sign-in", href: "/analyst", setup: "signed-in" },
+      { code: "E4", name: "Welcome back · last sign-in", href: "/queue", setup: "signed-in" },
       { code: "E5", name: "New sign-in email", href: "/emails/new-sign-in" },
       { code: "E6", name: "Signed out", href: "/signed-out" },
     ],
@@ -134,7 +134,7 @@ export default function AuthScreensIndex() {
         const who = await identify(PASSWORD_EMAIL);
         const pw = await checkPassword(who.flow_id, "demo-password");
         const session = await verifyMfa(pw.flow_id, "123456");
-        completeSignIn(session.user.email);
+        completeSignIn(session.user.email, session.operator?.name);
         return;
       }
       case "deactivated":
@@ -164,7 +164,7 @@ export default function AuthScreensIndex() {
         if (setup === "invite-flow") return;
         await startEnrolment(accepted.flow_id);
         const session = await confirmEnrolment(accepted.flow_id, "123456");
-        completeSignIn(session.user.email);
+        completeSignIn(session.user.email, session.operator?.name);
         update({ user: session.user, operator: session.operator, recoveryCodes: session.recovery_codes ?? [] });
         return;
       }

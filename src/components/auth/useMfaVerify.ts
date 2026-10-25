@@ -29,8 +29,8 @@ export function useMfaVerify(invalidMessage: string) {
     setFailure(null);
     try {
       const session = await verifyMfa(flow.flowId, code);
-      completeSignIn(session.user.email);
-      router.push("/analyst");
+      completeSignIn(session.user.email, session.operator?.name);
+      router.push("/queue");
     } catch (err) {
       setSubmitting(false);
       if (!(err instanceof ApiError)) return setFailure(err);

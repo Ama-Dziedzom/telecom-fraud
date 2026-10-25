@@ -56,7 +56,7 @@ export default function InviteDonePage() {
         </section>
       )}
 
-      <ButtonLink href="/analyst" fullWidth iconRight={<Icon name="icon-arrow-right" size={20} />}>
+      <ButtonLink href="/queue" fullWidth iconRight={<Icon name="icon-arrow-right" size={20} />}>
         Go to my queue
       </ButtonLink>
 

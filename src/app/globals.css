@@ -64,6 +64,32 @@
   /* overlay (modals: #14112F @ 45%) */
   --color-overlay: rgb(20 17 47 / 0.45);
 
+  /* FD · Shell — Ink mode (sidebar and frame canvas only) */
+  --color-shell-canvas: #1b1842;
+  --color-shell-card-bg: rgb(255 255 255 / 0.06);
+  --color-shell-card-border: rgb(255 255 255 / 0.1);
+  --color-shell-text: #ffffff;
+  --color-shell-text-muted: #9893c4;
+  --color-shell-nav-text: #dcd9f5;
+  --color-shell-nav-icon: #9893c4;
+  --color-shell-nav-hover-bg: rgb(255 255 255 / 0.06);
+  --color-shell-nav-active-bg: #5347ce;
+  --color-shell-nav-active-text: #ffffff;
+  --color-shell-count-bg: rgb(255 255 255 / 0.1);
+  --color-shell-count-text: #ffffff;
+  --color-shell-count-active-bg: rgb(255 255 255 / 0.22);
+  --color-shell-count-critical-bg: #e5484d;
+  --color-shell-count-warning-bg: #c98a1b;
+
+  /* new live-alert row highlight (fades to white over 1200 ms) */
+  --animate-row-arrive: row-arrive 1200ms linear;
+
+  @keyframes row-arrive {
+    from {
+      background-color: var(--color-brand-primary-subtle);
+    }
+  }
+
   /* type scale (FD/*) */
   --text-display: 40px;
   --text-display--line-height: 48px;
@@ -126,6 +152,13 @@
     }
   }
 
+  @keyframes drawer-in {
+    from {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+  }
+
   @keyframes toast-in {
     from {
       opacity: 0;
@@ -175,5 +208,28 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Two-thumb range (amount filters): only the thumbs take the pointer. */
+@layer components {
+  .range-thumb::-webkit-slider-thumb {
+    pointer-events: auto;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: var(--color-surface-base);
+    border: 2px solid var(--color-brand-primary);
+    cursor: pointer;
+  }
+  .range-thumb::-moz-range-thumb {
+    pointer-events: auto;
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: var(--color-surface-base);
+    border: 2px solid var(--color-brand-primary);
+    cursor: pointer;
   }
 }

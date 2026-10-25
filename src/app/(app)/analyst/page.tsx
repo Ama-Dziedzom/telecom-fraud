@@ -1,5 +1,6 @@
-import { WorkspacePlaceholder } from "@/components/auth/WorkspacePlaceholder";
+import { redirect } from "next/navigation";
 
-export default function AnalystHome() {
-  return <WorkspacePlaceholder name="Fraud Analyst" />;
+/** Old signed-in landing; My queue is the Fraud Analyst home. */
+export default function AnalystRedirect() {
+  redirect("/queue");
 }

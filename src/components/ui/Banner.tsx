@@ -18,6 +18,11 @@ const tones = {
     title: "text-critical-fg",
     icon: "icon-alert-circle-critical-20",
   },
+  success: {
+    box: "bg-success-bg border-success-border",
+    title: "text-success-fg",
+    icon: "app/icon-check-circle-success-20",
+  },
 } as const;
 
 /** Banner — inline, persistent message for a page or modal. */
@@ -25,22 +30,28 @@ export function Banner({
   tone,
   title,
   children,
+  action,
+  icon,
 }: {
   tone: keyof typeof tones;
   title: ReactNode;
   children?: ReactNode;
+  /** Optional button on the right, e.g. “Open FD-3050”. */
+  action?: ReactNode;
+  icon?: string;
 }) {
   const t = tones[tone];
   return (
     <div
       role={tone === "error" ? "alert" : "status"}
-      className={cn("flex w-full items-start gap-3 rounded-[10px] border px-3.5 py-3", t.box)}
+      className={cn("flex w-full gap-3 rounded-[10px] border px-3.5 py-3", action ? "items-center" : "items-start", t.box)}
     >
-      <Icon name={t.icon} size={20} />
+      <Icon name={icon ?? t.icon} size={20} className={action ? "self-start" : undefined} />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <p className={cn("text-label-m", t.title)}>{title}</p>
         {children && <p className="text-body-s text-text-primary">{children}</p>}
       </div>
+      {action}
     </div>
   );
 }

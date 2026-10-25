@@ -24,7 +24,7 @@ export default function InviteSetUpAuthenticatorPage() {
       flowId={flowId}
       overline="Step 2 of 3 · Two-step verification"
       onConfirmed={(session) => {
-        completeSignIn(session.user.email);
+        completeSignIn(session.user.email, session.operator?.name);
         update({ user: session.user, operator: session.operator, recoveryCodes: session.recovery_codes ?? [] });
         router.push(`/invite/${token}/backup-codes`);
       }}

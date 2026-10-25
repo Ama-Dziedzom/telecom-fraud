@@ -1,4 +1,5 @@
-import { mockResponseCode, mockSyntheticResponse, mockUpstreamPath } from "@/lib/api/mock-scenarios";
+import { mockFixture } from "@/lib/api/mock-fixtures";
+import { mockResponseCode, mockSuccessCode, mockSyntheticResponse, mockUpstreamPath } from "@/lib/api/mock-scenarios";
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
@@ -47,6 +48,18 @@ function clearTokens(res: NextResponse) {
   res.cookies.delete(REFRESH_COOKIE);
 }
 
+/** Text fields of a multipart body (for the mock’s demo state; files are not read). */
+async function formFields(body: ArrayBuffer, contentType: string) {
+  try {
+    const form = await new Response(body, { headers: { "content-type": contentType } }).formData();
+    return Object.fromEntries(
+      Array.from(form.entries()).map(([k, v]) => [k, typeof v === "string" ? v : { name: v.name, size: v.size }]),
+    );
+  } catch {
+    return null;
+  }
+}
+
 function parseJson(text: string): Record<string, unknown> | null {
   try {
     return text ? (JSON.parse(text) as Record<string, unknown>) : null;
@@ -55,15 +68,44 @@ function parseJson(text: string): Record<string, unknown> | null {
   }
 }
 
-function upstream(method: string, path: string, init: { body?: string; token?: string; extra?: HeadersInit; search?: string }) {
+function upstream(
+  method: string,
+  path: string,
+  init: { body?: string | ArrayBuffer; contentType?: string; token?: string; extra?: HeadersInit; search?: string },
+) {
   const headers = new Headers({ accept: "application/json", ...init.extra });
-  if (init.body) headers.set("content-type", "application/json");
+  if (init.body) headers.set("content-type", init.contentType ?? "application/json");
   if (init.token) headers.set("authorization", `Bearer ${init.token}`);
   return fetch(`${BASE_URL}/${path}${init.search ?? ""}`, {
     method,
     headers,
     body: init.body,
     cache: "no-store",
+  });
+}
+
+/**
+ * Mock only: the Postman mock sends its example events and closes, which
+ * would make EventSource reconnect every few seconds (and hit the mock’s rate
+ * limit). Relay the events, then keep the connection open with heartbeats.
+ */
+function holdOpenAfter(body: ReadableStream<Uint8Array>, signal: AbortSignal) {
+  const encoder = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const reader = body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        controller.enqueue(value);
+      }
+      controller.enqueue(encoder.encode("\n"));
+      const heartbeat = setInterval(() => controller.enqueue(encoder.encode(": keep-alive\n\n")), 15_000);
+      signal.addEventListener("abort", () => {
+        clearInterval(heartbeat);
+        controller.close();
+      });
+    },
   });
 }
 
@@ -81,8 +123,12 @@ async function handle(req: NextRequest, ctx: RouteContext<"/api/fd/[...path]">) 
   let access = req.cookies.get(ACCESS_COOKIE)?.value;
   const refresh = req.cookies.get(REFRESH_COOKIE)?.value;
 
-  let body = method === "GET" || method === "HEAD" ? undefined : await req.text();
-  const parsedBody = body ? parseJson(body) : null;
+  // File uploads (multipart) pass through untouched; everything else is JSON.
+  const contentType = req.headers.get("content-type") ?? "";
+  const multipart = contentType.startsWith("multipart/form-data");
+  let body: string | ArrayBuffer | undefined =
+    method === "GET" || method === "HEAD" ? undefined : multipart ? await req.arrayBuffer() : await req.text();
+  const parsedBody = typeof body === "string" ? parseJson(body) : multipart && body ? await formFields(body, contentType) : null;
 
   // The refresh token lives in a cookie; the client never sends it.
   if (path === "auth/refresh") body = JSON.stringify({ refresh_token: refresh ?? "" });
@@ -104,16 +150,19 @@ async function handle(req: NextRequest, ctx: RouteContext<"/api/fd/[...path]">) 
   let status: number;
   let data: Record<string, unknown> | null;
 
-  const synthetic = MOCK ? mockSyntheticResponse(method, path, parsedBody) : undefined;
+  const synthetic = MOCK ? (mockSyntheticResponse(method, path, parsedBody) ?? mockFixture(method, path, parsedBody, req.nextUrl.searchParams)) : undefined;
   if (synthetic) {
     status = synthetic.status;
     data = synthetic.body as Record<string, unknown>;
   } else {
-    const mockCode = MOCK ? mockResponseCode(method, path, parsedBody) : undefined;
+    const mockCode = MOCK
+      ? (mockResponseCode(method, path, parsedBody) ?? mockSuccessCode(method, mockUpstreamPath(path)))
+      : undefined;
     let res: Response;
     try {
       res = await upstream(method, MOCK ? mockUpstreamPath(path) : path, {
         body,
+        contentType: multipart ? contentType : undefined,
         token: access,
         search: req.nextUrl.search,
         extra: mockCode ? { "x-mock-response-code": String(mockCode) } : undefined,
@@ -123,6 +172,15 @@ async function handle(req: NextRequest, ctx: RouteContext<"/api/fd/[...path]">) 
         { status: 502, code: "upstream_unreachable", title: "We couldn’t reach FraudDetection" },
         { status: 502 },
       );
+    }
+    if (res.ok && res.headers.get("content-type")?.includes("text/event-stream")) {
+      const stream = MOCK && res.body ? holdOpenAfter(res.body, req.signal) : res.body;
+      const response = new NextResponse(stream, {
+        status: res.status,
+        headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform" },
+      });
+      cookieOps.forEach((op) => op(response));
+      return response;
     }
     status = res.status;
     data = parseJson(await res.text());

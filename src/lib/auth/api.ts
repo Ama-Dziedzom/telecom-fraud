@@ -19,6 +19,10 @@ export type User = {
   status: string;
   shift?: string;
   last_active_at?: string;
+  /** Proposed (TODO(api)): regions this analyst covers, for “My regions only”. */
+  regions?: string[];
+  /** Proposed (TODO(api)): who takes over at the end of this shift. */
+  next_shift?: { user: { id: string; name: string; initials: string }; shift: string; starts_at: string } | null;
 };
 
 /** Signed-in response once the proxy has moved the tokens into cookies. */

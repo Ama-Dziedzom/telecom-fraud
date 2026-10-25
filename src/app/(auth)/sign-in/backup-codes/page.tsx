@@ -12,9 +12,9 @@ export default function SignInBackupCodesPage() {
 
   // Codes are shown once; without them (e.g. after a refresh) carry on into the app.
   useEffect(() => {
-    if (recoveryCodes.length === 0) router.replace("/analyst");
+    if (recoveryCodes.length === 0) router.replace("/queue");
   }, [recoveryCodes.length, router]);
 
   if (recoveryCodes.length === 0) return null;
-  return <BackupCodesStep codes={recoveryCodes} onFinish={() => router.push("/analyst")} />;
+  return <BackupCodesStep codes={recoveryCodes} onFinish={() => router.push("/queue")} />;
 }

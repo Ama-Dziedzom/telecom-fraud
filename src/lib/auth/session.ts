@@ -10,6 +10,7 @@ import { useSyncExternalStore } from "react";
 
 const WELCOME_KEY = "fd:show-welcome";
 const ACCOUNT_KEY = "fd:account";
+const OPERATOR_KEY = "fd:operator";
 
 function safely<T>(fn: () => T, fallback: T): T {
   try {
@@ -31,10 +32,11 @@ const notify = () => listeners.forEach((l) => l());
 /** Read once per sign-in, so the toast shows on the first signed-in page only. */
 let welcomeSnapshot: boolean | null = null;
 
-export function completeSignIn(email?: string) {
+export function completeSignIn(email?: string, operatorName?: string) {
   safely(() => {
     sessionStorage.setItem(WELCOME_KEY, "1");
     if (email) sessionStorage.setItem(ACCOUNT_KEY, email);
+    if (operatorName) sessionStorage.setItem(OPERATOR_KEY, operatorName);
   }, undefined);
   welcomeSnapshot = null;
 }
@@ -63,6 +65,15 @@ export function useWelcomeToast() {
 
 export function signedInAccount() {
   return safely(() => sessionStorage.getItem(ACCOUNT_KEY), null);
+}
+
+/** The operator chosen at sign-in (/me doesn’t include it). */
+export function useOperatorName() {
+  return useSyncExternalStore(
+    subscribe,
+    () => safely(() => sessionStorage.getItem(OPERATOR_KEY), null),
+    () => null,
+  );
 }
 
 export function useSignedInAccount() {

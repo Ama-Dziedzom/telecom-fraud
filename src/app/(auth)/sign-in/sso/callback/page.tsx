@@ -29,8 +29,8 @@ function SsoCallback() {
     }
     completeSso(code, state)
       .then((session) => {
-        completeSignIn(session.user.email);
-        router.replace("/analyst");
+        completeSignIn(session.user.email, session.operator?.name);
+        router.replace("/queue");
       })
       .catch((err) => {
         if (err instanceof ApiError && err.code === "sso_not_assigned") {
