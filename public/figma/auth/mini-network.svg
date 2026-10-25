@@ -1,0 +1,16 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="235.2" height="115.2" viewBox="0 0 235.2 115.2" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="mini network">
+<path id="Vector" d="M36 57.6L117.6 26.4" stroke-width="1.5" stroke="white" stroke-opacity="0.25"/>
+<path id="Vector_2" d="M36 57.6L117.6 88.8" stroke-width="1.5" stroke="white" stroke-opacity="0.25"/>
+<path id="Vector_3" d="M117.6 26.4L192 16.8" stroke-width="1.5" stroke="white" stroke-opacity="0.25"/>
+<path id="Vector_4" d="M117.6 26.4L199.2 62.4" stroke-width="1.5" stroke="white" stroke-opacity="0.25"/>
+<path id="Vector_5" d="M117.6 88.8L199.2 62.4" stroke-width="1.5" stroke="white" stroke-opacity="0.25"/>
+<path id="Vector_6" d="M117.6 88.8L192 103.2" stroke-width="1.5" stroke="white" stroke-opacity="0.25"/>
+<circle id="Ellipse" cx="36" cy="57.6" r="12" fill="#FF6B6B"/>
+<circle id="Ellipse_2" cx="117.6" cy="26.4" r="8.4" fill="white" fill-opacity="0.85"/>
+<circle id="Ellipse_3" cx="117.6" cy="88.8" r="8.4" fill="white" fill-opacity="0.85"/>
+<circle id="Ellipse_4" cx="192" cy="16.8" r="7.2" fill="#887CFD"/>
+<circle id="Ellipse_5" cx="199.2" cy="62.4" r="7.2" fill="#887CFD"/>
+<circle id="Ellipse_6" cx="192" cy="103.2" r="7.2" fill="#887CFD"/>
+</g>
+</svg>

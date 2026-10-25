@@ -1,26 +1,179 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * FraudDetection design tokens — mirrors the "FD · Color" and "FD · Shell"
+ * collections in Figma (07 · Handoff). Use tokens, never hex.
+ * Status colours always come as fg/bg/border triplets.
+ */
+@theme {
+  /* brand */
+  --color-brand-primary: #5347ce;
+  --color-brand-primary-hover: #4b40b9;
+  --color-brand-primary-pressed: #4239a5;
+  --color-brand-primary-subtle: #eeedfa;
+  --color-brand-primary-subtle-hover: #e5e3f8;
+  --color-brand-primary-strong: #3e359b;
+  --color-brand-ink: #1d1948;
+  --color-brand-ink-deep: #14112f;
+  --color-brand-highlight: #887cfd;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* surface */
+  --color-surface-canvas: #eeedf6;
+  --color-surface-base: #ffffff;
+  --color-surface-raised: #f7f6fb;
+  --color-surface-sunken: #efeef6;
+  --color-surface-inverse: #1d1948;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  /* border */
+  --color-border-subtle: #e6e4f0;
+  --color-border-default: #e1dfeb;
+  --color-border-strong: #d4d4d4;
+  --color-border-focus: #5347ce;
+
+  /* text */
+  --color-text-primary: #1f1f24;
+  --color-text-secondary: #5f5f66;
+  --color-text-tertiary: #8b8b93;
+  --color-text-disabled: #b4b4b8;
+  --color-text-inverse: #ffffff;
+  --color-text-brand: #4b40b9;
+
+  /* status */
+  --color-critical-fg: #b51c1c;
+  --color-critical-bg: #fbeaea;
+  --color-critical-border: #efc1c1;
+  --color-high-fg: #b9430f;
+  --color-high-bg: #fdf0e8;
+  --color-high-border: #f6cdb2;
+  --color-medium-fg: #8b621a;
+  --color-medium-bg: #fdf6ea;
+  --color-medium-border: #f3dcb2;
+  --color-success-fg: #206224;
+  --color-success-bg: #ebf4ec;
+  --color-success-border: #c2dcc4;
+  --color-info-fg: #2b5a98;
+  --color-info-bg: #edf5ff;
+  --color-info-border: #c9ddf7;
+  --color-neutral-fg: #4a4a50;
+  --color-neutral-bg: #f1f1f3;
+  --color-neutral-border: #e2e2e6;
+
+  /* logo */
+  --color-logo-accent: #b7b1f5;
+
+  /* overlay (modals: #14112F @ 45%) */
+  --color-overlay: rgb(20 17 47 / 0.45);
+
+  /* type scale (FD/*) */
+  --text-display: 40px;
+  --text-display--line-height: 48px;
+  --text-display--letter-spacing: -0.6px;
+  --text-display--font-weight: 700;
+  --text-h1: 28px;
+  --text-h1--line-height: 36px;
+  --text-h1--letter-spacing: -0.28px;
+  --text-h1--font-weight: 700;
+  --text-h2: 22px;
+  --text-h2--line-height: 30px;
+  --text-h2--letter-spacing: -0.11px;
+  --text-h2--font-weight: 700;
+  --text-h3: 18px;
+  --text-h3--line-height: 26px;
+  --text-h3--font-weight: 700;
+  --text-title: 16px;
+  --text-title--line-height: 24px;
+  --text-title--font-weight: 700;
+  --text-body-l: 16px;
+  --text-body-l--line-height: 24px;
+  --text-body-m: 14px;
+  --text-body-m--line-height: 22px;
+  --text-body-s: 13px;
+  --text-body-s--line-height: 20px;
+  --text-label-m: 14px;
+  --text-label-m--line-height: 20px;
+  --text-label-m--font-weight: 500;
+  --text-label-s: 13px;
+  --text-label-s--line-height: 18px;
+  --text-label-s--font-weight: 500;
+  --text-caption: 12px;
+  --text-caption--line-height: 18px;
+  --text-overline: 11px;
+  --text-overline--line-height: 16px;
+  --text-overline--letter-spacing: 0.66px;
+  --text-overline--font-weight: 700;
+  --text-mono-m: 14px;
+  --text-mono-m--line-height: 20px;
+  --text-mono-m--font-weight: 500;
+  --text-mono-s: 12px;
+  --text-mono-s--line-height: 18px;
+  --text-mono-s--font-weight: 500;
+  --text-mono-code: 26px;
+  --text-mono-code--line-height: 32px;
+  --text-mono-code--font-weight: 500;
+
+  /* effects */
+  --shadow-sm: 0 1px 2px rgb(20 18 51 / 0.06);
+  --shadow-md: 0 6px 20px rgb(20 18 51 / 0.08);
+  --shadow-lg: 0 16px 40px rgb(20 18 51 / 0.16);
+  --shadow-focus: 0 0 0 3px rgb(83 71 206 / 0.22);
+
+  --animate-shake: shake 300ms ease-in-out;
+
+  @keyframes modal-in {
+    from {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+
+  @keyframes shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    20%,
+    60% {
+      transform: translateX(-6px);
+    }
+    40%,
+    80% {
+      transform: translateX(6px);
+    }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@theme inline {
+  --font-sans: var(--font-satoshi), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+@layer base {
+  body {
+    background: var(--color-surface-base);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+  }
+
+  /* FD/Focus ring — every focusable element on keyboard focus */
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
