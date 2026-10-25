@@ -12,7 +12,9 @@ import { Segmented } from "@/components/ui/Segmented";
 import { FieldLabel, Select, TextArea, TextField } from "@/components/ui/TextField";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
-import { useAgent, useCaseTransactions, useColleagues, useEvidence, type CaseDetail, type Transaction } from "@/lib/api/cases";
+import { useAgent, useCaseTransactions, useColleagues, useEvidence, type CaseDetail, type Colleague, type EscalationTarget, type Transaction } from "@/lib/api/cases";
+import { fraudTypeLabel } from "@/lib/api/fd";
+import { roleLabel } from "@/lib/auth/api";
 import { cn } from "@/lib/cn";
 import { formatClock, formatMoney, now as appNow } from "@/lib/time";
 import { useState, type ReactNode } from "react";
@@ -70,23 +72,39 @@ function Chips<T extends string>({ value, onChange, options, tone }: { value: T;
 
 // ─── D7 · Log a call with the subscriber ──────────────────────────────────
 
-const OUTCOMES: Array<["reached" | "no_answer" | "wrong_person" | "call_back", string]> = [
+const OUTCOMES: Array<["reached" | "no_answer" | "wrong_number" | "call_back_later", string]> = [
   ["reached", "Reached"],
   ["no_answer", "No answer"],
-  ["wrong_person", "Wrong person"],
-  ["call_back", "Call back later"],
+  ["wrong_number", "Wrong number"],
+  ["call_back_later", "Call back later"],
 ];
+
+type Answer = "yes" | "no" | "unsure";
+const ANSWERS: Array<[Answer, string]> = [
+  ["yes", "Yes"],
+  ["no", "No"],
+  ["unsure", "Not sure"],
+];
+const LANGUAGES = ["Twi", "English", "Ga", "Ewe", "Fante", "Hausa"];
 
 export function CallLogModal({ detail, onClose }: { detail: CaseDetail; onClose: () => void }) {
   const toast = useToast();
   const { busy, failure, run } = useCaseSubmit(detail.id);
-  const contact = detail.contact ?? { alt_msisdn: "Alternate number", registered: detail.subject.msisdn, language: "English" };
-  const [number, setNumber] = useState<"alternate" | "registered">("alternate");
-  const [language, setLanguage] = useState(contact.language);
+  const contact = detail.contact;
+  const alt = contact?.alt_msisdn ?? null;
+  const [number, setNumber] = useState<"alternate" | "registered">(alt ? "alternate" : "registered");
+  // `language` lists what the subscriber speaks (“Twi, English”); the first is the default.
+  const spoken = contact?.language?.split(/,\s*/)[0];
+  const [language, setLanguage] = useState(LANGUAGES.includes(spoken ?? "") ? spoken! : "English");
   const [outcome, setOutcome] = useState<(typeof OUTCOMES)[number][0]>("reached");
   const first = detail.subject.name.split(" ")[0];
-  const questions = ["Did they request the SIM swap?", `Do they recognise the ${detail.what_happened.find((s) => s.kind === "payments_out")?.label.match(/\d+/)?.[0] ?? ""} transfers?`.replace("  ", " "), "Did anyone ask for their PIN or ID recently?"];
-  const [answers, setAnswers] = useState<Array<{ checked: boolean; answer: string }>>(questions.map(() => ({ checked: false, answer: "" })));
+  const transfers = detail.what_happened.find((s) => s.kind === "payments_out")?.label.match(/\d+/)?.[0] ?? "";
+  const questions = [
+    { id: "asked_for_new_sim", text: "Did they request the SIM swap?" },
+    { id: "made_transfers", text: `Do they recognise the ${transfers} transfers?`.replace("  ", " ") },
+    { id: "asked_for_pin", text: "Did anyone ask for their PIN or ID recently?" },
+  ];
+  const [answers, setAnswers] = useState<Array<{ checked: boolean; answer: Answer | null }>>(questions.map(() => ({ checked: false, answer: null })));
   const [summary, setSummary] = useState("");
   const [tried, setTried] = useState(false);
 
@@ -94,12 +112,12 @@ export function CallLogModal({ detail, onClose }: { detail: CaseDetail; onClose:
     setTried(true);
     if (!summary.trim()) return;
     const ok = await run(async () => {
+      // TODO(api): 0.2 has no field for which number was called; the summary should say.
       await apiFetch("POST", `/cases/${detail.id}/calls`, {
-        number_ref: number === "alternate" ? "alt" : "registered",
         outcome,
-        notes: summary,
-        language,
-        answers: questions.map((q, i) => ({ question: q, ...answers[i] })).filter((a) => a.checked),
+        language: language.toLowerCase(),
+        answers: outcome === "reached" ? questions.flatMap((q, i) => (answers[i].checked && answers[i].answer ? [{ question_id: q.id, answer: answers[i].answer }] : [])) : [],
+        note: summary,
       });
     });
     if (ok) {
@@ -130,11 +148,11 @@ export function CallLogModal({ detail, onClose }: { detail: CaseDetail; onClose:
     >
       <div className="flex gap-4">
         <Select label="Number called" value={number} onChange={(e) => setNumber(e.target.value as typeof number)} iconLeft={<Icon name="app/icon-phone-16" size={16} />}>
-          <option value="alternate">{contact.alt_msisdn} · alternate</option>
-          <option value="registered">{contact.registered} · registered (compromised)</option>
+          {alt && <option value="alternate">{alt} · alternate</option>}
+          <option value="registered">{contact?.registered ?? detail.subject.msisdn} · registered (compromised)</option>
         </Select>
         <Select label="Language" value={language} onChange={(e) => setLanguage(e.target.value)}>
-          {["Twi", "English", "Ga", "Ewe", "Fante", "Hausa"].map((l) => (
+          {LANGUAGES.map((l) => (
             <option key={l}>{l}</option>
           ))}
         </Select>
@@ -147,21 +165,30 @@ export function CallLogModal({ detail, onClose }: { detail: CaseDetail; onClose:
         <div className="flex flex-col gap-2">
           <FieldLabel>Key answers</FieldLabel>
           {questions.map((q, i) => (
-            <div key={q} className={cn("flex flex-col gap-1.5 rounded-[10px]", answers[i].checked && "")}>
+            <div key={q.id} className="flex flex-col gap-1.5 rounded-[10px]">
               <CheckCard
                 checked={answers[i].checked}
                 onChange={(e) => setAnswers((a) => a.map((x, j) => (j === i ? { ...x, checked: e.target.checked } : x)))}
-                title={q}
+                title={q.text}
                 description={
                   answers[i].checked ? (
-                    <input
-                      aria-label={`Answer: ${q}`}
-                      placeholder="Their answer"
-                      value={answers[i].answer}
-                      onClick={(e) => e.preventDefault()}
-                      onChange={(e) => setAnswers((a) => a.map((x, j) => (j === i ? { ...x, answer: e.target.value } : x)))}
-                      className="w-full bg-transparent text-body-s text-text-secondary outline-none focus-visible:shadow-none"
-                    />
+                    <span role="radiogroup" aria-label={`Answer: ${q.text}`} className="flex gap-1.5" onClick={(e) => e.preventDefault()}>
+                      {ANSWERS.map(([id, label]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          role="radio"
+                          aria-checked={answers[i].answer === id}
+                          onClick={() => setAnswers((a) => a.map((x, j) => (j === i ? { ...x, answer: id } : x)))}
+                          className={cn(
+                            "h-7 rounded-full border px-2.5 text-label-s",
+                            answers[i].answer === id ? "border-brand-primary bg-brand-primary text-text-inverse" : "border-border-default bg-surface-base text-text-primary",
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </span>
                   ) : (
                     "Tick when asked"
                   )
@@ -323,8 +350,8 @@ export function EscalateModal({ detail, prefill, onClose }: { detail: CaseDetail
   const { data: people } = useColleagues();
   const { data: evidence } = useEvidence(detail.id);
   const { busy, failure, run } = useCaseSubmit(detail.id);
-  const supervisor = people?.data.find((p) => p.role === "Fraud Supervisor");
-  const [to, setTo] = useState<"supervisor" | "legal" | "momo_ops">("supervisor");
+  const supervisor = people?.data.find((p) => p.role === "fraud_supervisor");
+  const [to, setTo] = useState<EscalationTarget>("supervisor");
   const [priority, setPriority] = useState<"urgent" | "high" | "normal">("urgent");
   const [question, setQuestion] = useState(prefill ?? "");
   const [include, setInclude] = useState(true);
@@ -338,8 +365,8 @@ export function EscalateModal({ detail, prefill, onClose }: { detail: CaseDetail
     if (tooShort) return;
     const ok = await run(async () => {
       await apiFetch("POST", `/cases/${detail.id}/escalations`, {
+        target: to,
         to_user_id: to === "supervisor" ? supervisor?.id : undefined,
-        team: to,
         question,
         kind: "question",
         priority,
@@ -385,7 +412,7 @@ export function EscalateModal({ detail, prefill, onClose }: { detail: CaseDetail
           checked={to === "supervisor"}
           onChange={() => setTo("supervisor")}
           title="Fraud supervisor"
-          description={supervisor ? `${supervisor.name} · ${supervisor.on_shift ? "on shift" : "off shift"}${supervisor.reply_minutes ? ` · usually replies in ~${supervisor.reply_minutes} min` : ""}` : "On shift now"}
+          description={supervisor ? `${supervisor.name} · ${supervisor.on_shift ? "on shift" : "off shift"}${supervisor.typical_reply_minutes ? ` · usually replies in ~${supervisor.typical_reply_minutes} min` : ""}` : "On shift now"}
           indent
         />
         <OptionCard name="to" checked={to === "legal"} onChange={() => setTo("legal")} title="Legal & compliance" description="For police referrals or regulator notices" indent />
@@ -426,7 +453,7 @@ export function AgentSuspensionModal({ detail, agentCode, onClose }: { detail: C
   const { data: agent } = useAgent(agentCode);
   const { data: people } = useColleagues();
   const { busy, failure, run } = useCaseSubmit(detail.id);
-  const supervisor = people?.data.find((p) => p.role === "Fraud Supervisor");
+  const supervisor = people?.data.find((p) => p.role === "fraud_supervisor");
   const [duration, setDuration] = useState<"1" | "7" | "30">("7");
   const [why, setWhy] = useState("");
   const [tried, setTried] = useState(false);
@@ -436,12 +463,14 @@ export function AgentSuspensionModal({ detail, agentCode, onClose }: { detail: C
     setTried(true);
     if (!why.trim()) return;
     const ok = await run(async () => {
+      // TODO(api): escalations have no agent or duration fields; both go in the question.
       await apiFetch("POST", `/cases/${detail.id}/escalations`, {
+        target: "supervisor",
         to_user_id: supervisor?.id,
         kind: "agent_suspension",
-        question: why,
-        agent_code: agentCode,
-        days: Number(duration),
+        priority: "urgent",
+        question: `Suspend agent ${agentCode} for ${duration === "1" ? "24 hours" : `${duration} days`}: ${why}`,
+        include_evidence: true,
       });
     });
     if (ok) {
@@ -508,6 +537,9 @@ export function AgentSuspensionModal({ detail, agentCode, onClose }: { detail: C
 
 // ─── D15 · Hand the case to a colleague ───────────────────────────────────
 
+/** “Agent cash-out, SIM swap to MoMo”. */
+const skillsOf = (p: Colleague) => p.skills.map(fraudTypeLabel).join(", ");
+
 export function HandToColleagueModal({ detail, onClose }: { detail: CaseDetail; onClose: () => void }) {
   const toast = useToast();
   const { data } = useColleagues();
@@ -515,7 +547,7 @@ export function HandToColleagueModal({ detail, onClose }: { detail: CaseDetail; 
   const [query, setQuery] = useState("");
   const analysts = (data?.data ?? [])
     .filter((p) => p.open_cases !== undefined)
-    .filter((p) => !query || `${p.name} ${p.skills}`.toLowerCase().includes(query.toLowerCase()))
+    .filter((p) => !query || `${p.name} ${skillsOf(p)}`.toLowerCase().includes(query.toLowerCase()))
     // Who has capacity now: on shift first, then fewest open cases.
     .sort((a, b) => Number(b.on_shift) - Number(a.on_shift) || (a.open_cases ?? 0) - (b.open_cases ?? 0));
   const [to, setTo] = useState<string | null>(null);
@@ -536,8 +568,9 @@ export function HandToColleagueModal({ detail, onClose }: { detail: CaseDetail; 
   };
 
   const capacity = (p: (typeof analysts)[number]): ReactNode => {
+    if (p.status === "on_leave") return <Badge label="On leave" tone="neutral" />;
     if (!p.on_shift) return <Badge label="Off shift" tone="neutral" />;
-    const full = (p.open_cases ?? 0) >= (p.limit ?? Infinity);
+    const full = (p.open_cases ?? 0) >= (p.case_limit ?? Infinity);
     return <span className={cn("text-caption", full ? "text-critical-fg" : "text-text-secondary")}>{p.open_cases} open{full ? " (at limit)" : ""}</span>;
   };
 
@@ -572,7 +605,7 @@ export function HandToColleagueModal({ detail, onClose }: { detail: CaseDetail; 
       />
       <div role="radiogroup" className="flex flex-col gap-2">
         {analysts.map((p) => {
-          const full = (p.open_cases ?? 0) >= (p.limit ?? Infinity);
+          const full = (p.open_cases ?? 0) >= (p.case_limit ?? Infinity);
           const on = chosen?.id === p.id;
           return (
             <label
@@ -594,7 +627,7 @@ export function HandToColleagueModal({ detail, onClose }: { detail: CaseDetail; 
               <Avatar initials={p.initials} size={32} />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className={cn("text-label-m", p.on_shift ? "text-text-primary" : "text-text-secondary")}>{p.name}</span>
-                <span className="truncate text-caption text-text-secondary">{[p.role, p.skills, p.note].filter(Boolean).join(" · ")}</span>
+                <span className="truncate text-caption text-text-secondary">{[roleLabel(p.role), skillsOf(p), p.shift].filter(Boolean).join(" · ")}</span>
               </span>
               {capacity(p)}
             </label>

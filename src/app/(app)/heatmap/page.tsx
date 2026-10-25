@@ -4,39 +4,66 @@ import { AppHeader } from "@/components/app/AppHeader";
 import { PageBody, PageHead } from "@/components/app/AppShell";
 import { Skeleton } from "@/components/app/Card";
 import { EmptyState } from "@/components/app/EmptyState";
-import { HeatMap, type Layers } from "@/components/heatmap/HeatMap";
+import { HeatMap } from "@/components/heatmap/HeatMap";
 import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import { Icon } from "@/components/ui/Icon";
 import { Segmented } from "@/components/ui/Segmented";
-import { useApi } from "@/lib/api/fd";
+import { fraudTypeLabel, useApi, type Money, type SubscriberRef } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
-import { formatClock } from "@/lib/time";
+import { formatClock, formatMoney } from "@/lib/time";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 
+type Area = { id: string; name: string };
+type Town = { id: string; name: string; parent: string; top_fraud_type?: string; agents?: number; alerts: number; change: number };
+type Region = { id: string; name: string; top_towns: string[]; alerts: number; change: number };
+type HeatAgent = { code: string; area: string; swaps_today: number; swaps_became_fraud: number; alerts: number; change: number; hot: boolean };
+/** GET /heatmap. Country and region views send `confirmed_fraud` and `new_since`; a district sends `money_out` and `agents_in_view`. */
+type Heat = {
+  area: Area & { level: "country" | "region" | "district"; path: Area[] };
+  metric: string;
+  period: string;
+  filters?: { fraud_type?: string; region?: string };
+  kpis: {
+    alerts: { value: number; change_pct: number | null };
+    hottest_area: { area_id: string; name: string; alerts: number; agents: number } | null;
+    confirmed_fraud?: { money: Money; cases_closed: number };
+    new_since?: { since: string; value: number; top_area_id: string | null };
+    money_out?: { money: Money; wallets: number };
+    agents_in_view?: { value: number; with_fraud: number };
+  };
+  shapes: Array<{ id: string; intensity: number }>;
+  towns: Town[];
+  regions: Region[];
+  agents: HeatAgent[];
+  /** Nothing matches the filters: where to look instead. */
+  empty: { focus_area_id: string; last_7d: number; last_7d_area_ids: string[] } | null;
+  updated_at: string;
+  refresh_seconds: number;
+};
+/** GET /heatmap/layers: what the map draws. It can fail on its own (504 upstream_timeout) while the numbers stay live. */
+type MapLayers = { area: string; period: string; shapes: Array<{ id: string; intensity: number }>; pins: Array<{ id: string; alerts: number }> };
+type AreaDetail = {
+  id: string;
+  name: string;
+  path: Area[];
+  period: string;
+  /** Engine text. */
+  summary: string;
+  alerts: number;
+  usual_alerts: number;
+  agents: number;
+  moved_out: Money;
+  drivers: Array<{ fraud_type: string; alerts: number }>;
+  agent_list: Array<{ code: string; street: string; swaps_today: number; swaps_became_fraud: number }>;
+  untriaged: { total: number; data: Array<{ id: string; risk_score: number; fraud_type: string; subscriber: SubscriberRef }> };
+};
 type Kpi = { label: string; value: string; sub: string; icon: string; tone?: "critical" | "medium" };
 type Row = { id: string; name: string; parent?: string; sub: string; value: number; change: number | null };
-type Heat = {
-  area: { id: string; name: string; level: string; path: Array<{ id: string; name: string }> };
-  kpis: Kpi[];
-  ranking: { title: string; tabs: string[]; rows: Row[]; regions: Row[]; footer: string | null };
-  legend: string;
-  updated_at: string;
-  empty?: { title: string; detail: string; focus: string };
-};
-type AreaDetail = {
-  name: string;
-  path: string;
-  summary: string;
-  tiles: Array<[string, string, string | null]>;
-  drivers: Array<{ label: string; value: number; tone: string }>;
-  agents: Array<{ id: string; where: string; today: number; to_fraud: number; hot: boolean }>;
-  untriaged: { total: number; data: Array<{ id: string; risk: number; title: string }> };
-};
 
 const KPI_ICON: Record<string, string> = {
   alert: "app/icon-alert-triangle-secondary-18",
@@ -46,13 +73,11 @@ const KPI_ICON: Record<string, string> = {
   building: "app/icon-building-tertiary-18",
 };
 const LEVEL: Record<string, "country" | "ashanti" | "kumasi"> = { ghana: "country", ashanti: "ashanti", kumasi: "kumasi" };
-const FRAUD_TYPES = [
+const FRAUD_TYPES: ReadonlyArray<readonly [string, string]> = [
   ["", "All fraud types"],
-  ["sim_swap_to_momo", "SIM swap to MoMo"],
-  ["account_takeover", "Account takeover"],
-  ["wallet_takeover", "Wallet takeover"],
-  ["agent_fraud", "Agent fraud"],
-] as const;
+  ...["sim_swap_to_momo", "account_takeover", "agent_cash_out"].map((t) => [t, fraudTypeLabel(t)] as const),
+];
+const METRIC: Record<string, string> = { alerts: "Alerts", confirmed: "Confirmed fraud", ghs_lost: "GHS lost" };
 const REGIONS = [
   ["", "All regions"],
   ["ashanti", "Ashanti"],
@@ -85,6 +110,113 @@ function Change({ n }: { n: number | null }) {
   return <span className={cn("text-caption font-medium", n > 0 ? "text-critical-fg" : "text-text-tertiary")}>{n > 0 ? `▲ ${n}` : `▼ ${-n}`}</span>;
 }
 
+const money = (m: Money) => formatMoney(m.amount_minor, m.currency);
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const humanise = (id: string) => id.split("-").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+
+/** An area’s name from what the response lists, else from its ID (“accra-central” → “Accra Central”). */
+function areaName(heat: Heat, id: string) {
+  return heat.towns.find((t) => t.id === id)?.name ?? heat.regions.find((r) => r.id === id)?.name ?? REGIONS.find(([r]) => r === id)?.[1] ?? humanise(id);
+}
+
+/** The four KPI cards. Country and region show confirmed fraud and what’s new; a district shows money out and its agents. */
+function kpisOf(heat: Heat): Kpi[] {
+  const { kpis, area, period } = heat;
+  const level = area.level;
+  const filtered = Boolean(heat.filters?.fraud_type || heat.filters?.region);
+  const change = kpis.alerts.change_pct;
+  const vs = period === "24h" ? "yesterday" : "the period before";
+  const hottest = kpis.hottest_area;
+  const cards: Kpi[] = [
+    {
+      label: `Alerts · ${level === "country" ? period : area.name}`,
+      value: kpis.alerts.value.toLocaleString("en-GB"),
+      sub: change === null ? (kpis.alerts.value ? "no change" : "none matching") : `${change >= 0 ? "▲" : "▼"} ${Math.abs(change)}% vs ${vs}`,
+      icon: "alert",
+      tone: change && change > 0 ? "critical" : undefined,
+    },
+    {
+      label: level === "country" ? "Hottest area" : level === "region" ? "Hottest district" : "Hottest neighbourhood",
+      value: hottest?.name ?? "—",
+      sub: hottest ? `${plural(hottest.alerts, "alert")} · ${plural(hottest.agents, "agent")}` : "no activity",
+      icon: "pin",
+    },
+  ];
+  if (kpis.money_out) cards.push({ label: "Moved out", value: money(kpis.money_out.money), sub: `across ${plural(kpis.money_out.wallets, "wallet")}`, icon: "wallet" });
+  else if (kpis.confirmed_fraud) {
+    const region = heat.filters?.region;
+    cards.push({
+      label: "Confirmed fraud",
+      value: money(kpis.confirmed_fraud.money),
+      sub: filtered && region && !kpis.confirmed_fraud.cases_closed ? `in ${areaName(heat, region)} today` : `${plural(kpis.confirmed_fraud.cases_closed, "case")} closed today`,
+      icon: "wallet",
+    });
+  }
+  if (kpis.agents_in_view) {
+    cards.push({
+      label: level === "district" ? "Agents in view" : "Agents involved",
+      value: String(kpis.agents_in_view.value),
+      sub: `${kpis.agents_in_view.with_fraud} with swaps that became fraud`,
+      icon: "building",
+      tone: "medium",
+    });
+  } else if (kpis.new_since) {
+    const n = kpis.new_since;
+    cards.push({
+      label: `New since ${formatClock(n.since)}`,
+      value: n.value ? `+${n.value}` : "0",
+      sub: n.top_area_id ? `mostly ${areaName(heat, n.top_area_id)}` : "—",
+      icon: "activity",
+      tone: n.value ? "medium" : undefined,
+    });
+  }
+  return cards;
+}
+
+/** The ranking beside the map: towns and regions for Ghana, neighbourhoods and agents for a district. */
+function rankingOf(heat: Heat) {
+  const { area } = heat;
+  const town = (t: Town): Row =>
+    area.level === "country"
+      ? { id: t.id, name: t.name, parent: t.parent, sub: t.top_fraud_type ? fraudTypeLabel(t.top_fraud_type) : "", value: t.alerts, change: t.change }
+      : { id: t.id, name: t.name, sub: t.agents ? `${t.parent} · ${plural(t.agents, "agent")}` : t.parent, value: t.alerts, change: t.change };
+  const towns = heat.towns.map(town);
+  if (area.level === "country") {
+    return {
+      title: "Hotspots",
+      tabs: ["Towns", "Regions"],
+      lists: [towns, heat.regions.map((r): Row => ({ id: r.id, name: r.name, sub: r.top_towns.join(", "), value: r.alerts, change: r.change }))],
+    };
+  }
+  if (area.level === "region") return { title: `${area.name} · by district`, tabs: [] as string[], lists: [towns] };
+  return {
+    title: `${area.name} · neighbourhoods`,
+    tabs: ["Neighbourhoods", "Agents"],
+    lists: [
+      towns,
+      heat.agents.map((a): Row => ({ id: a.code, name: a.code, sub: a.swaps_became_fraud ? `${a.area} · ${a.swaps_became_fraud} to fraud` : a.area, value: a.alerts, change: a.change })),
+    ],
+  };
+}
+
+/** “Alerts per region · last 24h”, or the filters when there are some. */
+function legendOf(heat: Heat) {
+  const { fraud_type, region } = heat.filters ?? {};
+  if (fraud_type || region) return [fraud_type && fraudTypeLabel(fraud_type), region && areaName(heat, region), `last ${heat.period}`].filter(Boolean).join(" · ");
+  return `${METRIC[heat.metric] ?? heat.metric} per ${heat.area.level === "country" ? "region" : "district"} · last ${heat.period}`;
+}
+
+/** G25 · “No account takeover in Northern today” / “There were 2 in the last 7 days, both in Tamale.” */
+function emptyCopy(heat: Heat, empty: NonNullable<Heat["empty"]>) {
+  const what = heat.filters?.fraud_type ? fraudTypeLabel(heat.filters.fraud_type).toLowerCase() : "alerts";
+  const title = `No ${what} in ${areaName(heat, empty.focus_area_id)} ${heat.period === "24h" ? "today" : `in the last ${heat.period}`}`;
+  const n = empty.last_7d;
+  const places = empty.last_7d_area_ids.map((id) => areaName(heat, id));
+  const where = places.length === 1 ? `${n === 1 ? "" : n === 2 ? "both " : "all "}in ${places[0]}` : places.length ? `in ${places.slice(0, -1).join(", ")} and ${places.at(-1)}` : "";
+  const detail = n ? `There ${n === 1 ? "was 1" : `were ${n}`} in the last 7 days${where ? `, ${where}` : ""}.` : "None in the last 7 days either.";
+  return { title: title[0].toUpperCase() + title.slice(1), detail };
+}
+
 /** G21–G27 · Fraud heatmap — Ghana → region → district, with the agents, alerts and cases behind each area. */
 export default function HeatmapPage() {
   const router = useRouter();
@@ -101,18 +233,21 @@ export default function HeatmapPage() {
   const q = new URLSearchParams({ area, metric, period });
   if (fraudType) q.set("fraud_type", fraudType);
   if (region) q.set("region", region);
-  if (params.get("demo")) q.set("demo", params.get("demo")!);
-  // TODO(api): GET /heatmap returns {area, alerts, confirmed_fraud, change_pct}; KPIs, ranking and layers are proposed.
+  const layersQ = new URLSearchParams(q);
+  layersQ.delete("metric");
   const { data, error } = useApi<Heat>(`/heatmap?${q}`);
-  const { data: layers, error: layersError } = useApi<Layers>(`/heatmap/layers?${q}`);
-  const { data: detail } = useApi<AreaDetail>(drawer ? `/heatmap/areas/${drawer}` : null);
+  const { data: layers, error: layersError } = useApi<MapLayers>(`/heatmap/layers?${layersQ}`);
+  const { data: detail } = useApi<AreaDetail>(drawer ? `/heatmap/areas/${drawer}?period=${period}` : null);
+  const ranking = data && rankingOf(data);
+  const empty = data?.empty ? emptyCopy(data, data.empty) : null;
+  const hot = detail && detail.alerts > detail.usual_alerts;
 
   const go = (next: string) => {
     setTab(0);
     setRegion("");
     router.push(next === "ghana" ? "/heatmap" : `/heatmap?area=${next}`, { scroll: false });
   };
-  const rows = data ? (tab === 1 && data.ranking.regions.length ? data.ranking.regions : data.ranking.rows) : [];
+  const rows = ranking ? (ranking.lists[tab]?.length ? ranking.lists[tab] : ranking.lists[0]) : [];
   const max = Math.max(1, ...rows.map((r) => r.value));
   const regionLabel = area === "kumasi" ? "Ashanti › Kumasi" : area === "ashanti" ? "Ashanti" : undefined;
 
@@ -139,7 +274,7 @@ export default function HeatmapPage() {
         />
 
         <div className="grid grid-cols-4 gap-4">
-          {(data?.kpis ?? Array.from({ length: 4 }, () => null)).map((k, i) =>
+          {(data ? kpisOf(data) : Array.from({ length: 4 }, () => null)).map((k, i) =>
             k ? (
               <div key={k.label} className="flex flex-col gap-1.5 rounded-xl border border-border-subtle bg-surface-base px-5 py-4">
                 <span className="flex items-center justify-between text-caption text-text-secondary">
@@ -203,7 +338,7 @@ export default function HeatmapPage() {
               title="The map didn’t load"
               className="h-[640px] min-w-0 flex-1"
               actions={
-                <Button variant="secondary" size="md" onClick={() => mutate(`/heatmap/layers?${q}`)} iconLeft={<Icon name="app/icon-refresh-16" size={16} />}>
+                <Button variant="secondary" size="md" onClick={() => mutate(`/heatmap/layers?${layersQ}`)} iconLeft={<Icon name="app/icon-refresh-16" size={16} />}>
                   Try again
                 </Button>
               }
@@ -218,16 +353,20 @@ export default function HeatmapPage() {
           ) : (
             <HeatMap
               level={LEVEL[area] ?? "country"}
-              layers={layers}
-              legendTitle={data.legend}
-              focus={data.empty?.focus}
+              layers={{
+                shapes: layers.shapes,
+                pins: layers.pins.map((p) => ({ id: p.id, name: areaName(data, p.id), alerts: p.alerts })),
+                agents: data.agents.map((a) => ({ code: a.code, hot: a.hot })),
+              }}
+              legendTitle={legendOf(data)}
+              focus={data.empty?.focus_area_id}
               onDrill={go}
               onPin={setDrawer}
               overlay={
-                data.empty && (
+                empty && (
                   <EmptyCard
-                    title={data.empty.title}
-                    detail={data.empty.detail}
+                    title={empty.title}
+                    detail={empty.detail}
                     onWeek={() => setPeriod("7d")}
                     onAll={() => {
                       setRegion("");
@@ -261,21 +400,21 @@ export default function HeatmapPage() {
             </HeatMap>
           )}
 
-          <section aria-label={data?.ranking.title ?? "Hotspots"} className="flex w-[400px] shrink-0 flex-col gap-3 rounded-xl border border-border-subtle bg-surface-base px-5 py-4">
+          <section aria-label={ranking?.title ?? "Hotspots"} className="flex w-[400px] shrink-0 flex-col gap-3 rounded-xl border border-border-subtle bg-surface-base px-5 py-4">
             <header className="flex items-center gap-2">
               <Icon name={area === "ghana" ? "app/icon-zap-secondary-18" : "app/icon-map-pin-secondary-16"} size={16} />
-              <h3 className="text-title text-text-primary">{data?.ranking.title ?? "Hotspots"}</h3>
+              <h3 className="text-title text-text-primary">{ranking?.title ?? "Hotspots"}</h3>
               <span className="rounded-full bg-surface-sunken px-1.5 text-caption font-medium text-text-tertiary">{rows.length}</span>
               <span className="flex-1" />
               {rows.length > 0 && <span className="text-caption text-text-tertiary">vs yesterday</span>}
             </header>
-            {data && data.ranking.tabs.length > 0 && (
+            {ranking && ranking.tabs.length > 0 && rows.length > 0 && (
               <div className="w-fit">
                 <Segmented
                   label="Rank by"
                   value={String(tab)}
                   onChange={(v) => setTab(Number(v))}
-                  options={data.ranking.tabs.map((t, i) => ({ id: String(i), label: t, count: i === 1 && area === "kumasi" ? data.ranking.regions.length : undefined }))}
+                  options={ranking.tabs.map((t, i) => ({ id: String(i), label: t, count: i === 1 && data?.area.level === "district" ? ranking.lists[1]?.length : undefined }))}
                 />
               </div>
             )}
@@ -286,7 +425,8 @@ export default function HeatmapPage() {
             ) : (
               <ol className="flex flex-col">
                 {rows.map((r, i) => {
-                  const drill = r.id === "ashanti" || r.id === "kumasi" || r.id === "adum-kumasi" ? (r.id === "adum-kumasi" ? "ashanti" : r.id) : null;
+                  // Adum, Kumasi opens the Kumasi district, where Adum’s detail lives.
+                  const drill = r.id === "ashanti" || r.id === "kumasi" || r.id === "adum-kumasi" ? (r.id === "adum-kumasi" ? "kumasi" : r.id) : null;
                   const open = () => (drill && drill !== area ? go(drill) : r.id === "adum" ? setDrawer("adum") : r.id.startsWith("AG-") ? router.push(`/network?seed=${r.id}`) : undefined);
                   return (
                     <li key={r.id} className="border-b border-border-subtle last:border-b-0">
@@ -312,7 +452,6 @@ export default function HeatmapPage() {
                 })}
               </ol>
             )}
-            {data?.ranking.footer && <p className="text-caption text-text-tertiary">{data.ranking.footer}</p>}
           </section>
         </div>
 
@@ -327,18 +466,24 @@ export default function HeatmapPage() {
           badges={
             <span className="flex items-center gap-2">
               <Badge label="Hotspot" tone="critical" dot />
-              <span className="text-caption text-text-secondary">{detail?.path}</span>
+              <span className="text-caption text-text-secondary">
+                {detail?.path
+                  .filter((p) => p.id !== "ghana")
+                  .reverse()
+                  .map((p) => p.name)
+                  .join(" · ")}
+              </span>
             </span>
           }
           title={detail?.name ?? "…"}
           subtitle={detail?.summary}
           footer={
             <>
-              <ButtonLink href={`/network?seed=${detail?.agents[0]?.id ?? ""}`} variant="secondary" size="md" iconLeft={<Icon name="app/icon-network-primary-16" size={16} />}>
-                Open {detail?.agents[0]?.id} in network
+              <ButtonLink href={`/network?seed=${detail?.agent_list[0]?.code ?? ""}`} variant="secondary" size="md" iconLeft={<Icon name="app/icon-network-primary-16" size={16} />}>
+                Open {detail?.agent_list[0]?.code} in network
               </ButtonLink>
               <span className="flex-1" />
-              <ButtonLink href="/alerts?area=adum" size="md" iconRight={<Icon name="app/icon-arrow-right-white-16" size={16} />}>
+              <ButtonLink href={`/alerts?area=${detail?.id ?? drawer}`} size="md" iconRight={<Icon name="app/icon-arrow-right-white-16" size={16} />}>
                 Triage {detail?.untriaged.total ?? ""} alerts
               </ButtonLink>
             </>
@@ -349,32 +494,38 @@ export default function HeatmapPage() {
           ) : (
             <div className="flex flex-col gap-5">
               <div className="grid grid-cols-3 gap-2.5">
-                {detail.tiles.map(([v, l, tone]) => (
+                {(
+                  [
+                    [String(detail.alerts), `alerts · ${detail.period}`, hot],
+                    [String(detail.agents), `agents in ${detail.name}`, false],
+                    [money(detail.moved_out), "moved out", detail.moved_out.amount_minor > 0],
+                  ] as const
+                ).map(([v, l, critical]) => (
                   <div key={l} className="flex flex-col rounded-[10px] bg-surface-raised px-3.5 py-3">
-                    <span className={cn("text-h3", tone === "critical" ? "text-critical-fg" : "text-text-primary")}>{v}</span>
+                    <span className={cn("text-h3", critical ? "text-critical-fg" : "text-text-primary")}>{v}</span>
                     <span className="text-caption text-text-secondary">{l}</span>
                   </div>
                 ))}
               </div>
               <div className="flex flex-col gap-2.5">
                 <p className="text-overline text-text-tertiary uppercase">What’s driving it</p>
-                {detail.drivers.map((d) => (
-                  <div key={d.label} className="flex flex-col gap-1">
+                {detail.drivers.map((d, i) => (
+                  <div key={d.fraud_type} className="flex flex-col gap-1">
                     <span className="flex justify-between text-body-s text-text-primary">
-                      {d.label}
-                      <span>{d.value}</span>
+                      {fraudTypeLabel(d.fraud_type)}
+                      <span>{d.alerts}</span>
                     </span>
                     <span className="h-1 rounded-full bg-surface-sunken">
                       <span
-                        className={cn("block h-1 rounded-full", d.tone === "critical" ? "bg-critical-fg" : d.tone === "high" ? "bg-high-fg" : "bg-medium-fg")}
-                        style={{ width: `${(d.value / detail.drivers[0].value) * 100}%` }}
+                        className={cn("block h-1 rounded-full", i === 0 ? "bg-critical-fg" : i === 1 ? "bg-high-fg" : "bg-medium-fg")}
+                        style={{ width: `${(d.alerts / Math.max(1, detail.drivers[0].alerts)) * 100}%` }}
                       />
                     </span>
                   </div>
                 ))}
               </div>
               <div className="flex flex-col gap-2.5">
-                <p className="text-overline text-text-tertiary uppercase">Agents in Adum</p>
+                <p className="text-overline text-text-tertiary uppercase">Agents in {detail.name}</p>
                 <div className="overflow-hidden rounded-[10px] border border-border-subtle">
                   <table className="w-full text-left">
                     <thead className="bg-surface-raised">
@@ -385,17 +536,23 @@ export default function HeatmapPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {detail.agents.map((a) => (
-                        <tr key={a.id} className={cn("border-t border-border-subtle", a.hot && "shadow-[inset_3px_0_0_#b51c1c]")}>
+                      {detail.agent_list.map((a) => (
+                        <tr key={a.code} className={cn("border-t border-border-subtle", a.swaps_became_fraud > 1 && "shadow-[inset_3px_0_0_#b51c1c]")}>
                           <td className="py-2.5 pl-3.5">
-                            <Link href={`/network?seed=${a.id}`} className="rounded font-mono text-mono-m text-text-brand hover:underline">
-                              {a.id}
+                            <Link href={`/network?seed=${a.code}`} className="rounded font-mono text-mono-m text-text-brand hover:underline">
+                              {a.code}
                             </Link>
-                            <p className="text-caption text-text-secondary">{a.where}</p>
+                            <p className="text-caption text-text-secondary">
+                              {detail.name} · {a.street}
+                            </p>
                           </td>
-                          <td className="py-2.5 text-body-s text-text-secondary">{a.today} swaps</td>
+                          <td className="py-2.5 text-body-s text-text-secondary">{a.swaps_today} swaps</td>
                           <td className="py-2.5 pr-3.5 text-right">
-                            <Badge label={a.to_fraud ? `${a.to_fraud} to fraud` : "0"} tone={a.to_fraud > 1 ? "critical" : a.to_fraud ? "high" : "neutral"} dot={a.to_fraud > 0} />
+                            <Badge
+                              label={a.swaps_became_fraud ? `${a.swaps_became_fraud} to fraud` : "0"}
+                              tone={a.swaps_became_fraud > 1 ? "critical" : a.swaps_became_fraud ? "high" : "neutral"}
+                              dot={a.swaps_became_fraud > 0}
+                            />
                           </td>
                         </tr>
                       ))}
@@ -406,15 +563,17 @@ export default function HeatmapPage() {
               <div className="flex flex-col gap-1">
                 <p className="flex items-center justify-between text-overline text-text-tertiary uppercase">
                   Untriaged alerts · {detail.untriaged.total}
-                  <Link href="/alerts?area=adum" className="rounded text-label-s tracking-normal text-text-brand normal-case hover:underline">
+                  <Link href={`/alerts?area=${detail.id}`} className="rounded text-label-s tracking-normal text-text-brand normal-case hover:underline">
                     View all
                   </Link>
                 </p>
                 {detail.untriaged.data.map((a) => (
                   <div key={a.id} className="flex items-center gap-3 border-b border-border-subtle py-2.5 last:border-b-0">
-                    <span className={cn("w-6 text-label-m", a.risk >= 90 ? "text-critical-fg" : "text-high-fg")}>{a.risk}</span>
+                    <span className={cn("w-6 text-label-m", a.risk_score >= 90 ? "text-critical-fg" : "text-high-fg")}>{a.risk_score}</span>
                     <span className="flex flex-1 flex-col">
-                      <span className="text-body-s text-text-primary">{a.title}</span>
+                      <span className="text-body-s text-text-primary">
+                        {fraudTypeLabel(a.fraud_type)} · {a.subscriber.msisdn}
+                      </span>
                       <span className="font-mono text-mono-s text-text-tertiary">{a.id}</span>
                     </span>
                     <Link href={`/alerts?open=${a.id}`} className="rounded text-label-s text-text-brand hover:underline">

@@ -1,30 +1,35 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { apiFetch } from "./client";
+import { useApi, type PersonRef } from "./fd";
 
 /**
- * Data the screens need that the App API doesn’t provide yet. Each function
- * resolves locally (design data, or this browser’s storage) and is marked
- * with the missing endpoint, so it can be swapped for a real call without
- * touching the screens.
+ * Shift handover (GET /handovers/shift/latest, POST /handovers/shift), plus
+ * what only this browser needs to remember: which handover note was already
+ * read today, the handover sent today and the first-day checklist.
  */
 
+export type HandoverChoice = "hand_over" | "keep" | "watch";
+
 export type ShiftHandover = {
-  author: { name: string; initials: string };
-  shift: string;
+  id: string;
+  from: PersonRef;
+  to: PersonRef;
+  shift: { name: string; starts: string; ends: string };
   at: string;
   note: string;
+  cases: Array<{ case_id: string; choice: HandoverChoice }>;
+  read_at: string | null;
 };
 
-export type Colleague = { id: string; name: string; initials: string; shift: string; startsAt: string };
+/** The note the previous shift left for me. */
+export const useLatestHandover = () => useApi<ShiftHandover>("/handovers/shift/latest");
 
-export type NightHandover = ShiftHandover & {
-  shiftHours: string;
-  handedCount: number;
-  flagged: Array<{ ref: string; href: string; title: string; detail: string }>;
-  breachedOvernight: string;
-  alertsWaiting: string;
-};
+/** Day 08:00-16:00 · evening 16:00-00:00 · night 00:00-08:00, from “16:00-00:00” or “16:00”. */
+export function shiftName(hours: string) {
+  return { "00": "night", "08": "day", "16": "evening" }[hours.slice(0, 2)] ?? hours;
+}
 
 const listeners = new Set<() => void>();
 const write = (key: string, value: unknown) => {
@@ -61,48 +66,24 @@ export function useStored<T>(key: string | null): T | null {
 
 const dayKey = (prefix: string, day: number) => `${prefix}:${new Date(day).toDateString()}`;
 
-/** TODO(api): no shift-handover endpoint in the collection (A1, A5–A7). */
-export async function getLatestHandover(): Promise<ShiftHandover> {
-  return {
-    author: { name: "Kwame Asante", initials: "KA" },
-    shift: "night shift",
-    at: "2026-10-20T07:58:00Z",
-    note: "Watch agent 557210 in Adum: 4 cash-outs flagged overnight, linked to FD-3047. The MoMo connector was slow around 03:00.",
-  };
-}
+/** What the queue shows after handing over: the server’s handover, plus when the next shift starts. */
+export type SubmittedHandover = ShiftHandover & { submitted_at: number; starts_at: string };
 
-/** TODO(api): who takes over next (A5). */
-export async function getNextShift(): Promise<Colleague> {
-  return { id: "usr_kwame", name: "Kwame Asante", initials: "KA", shift: "night", startsAt: "16:00" };
-}
-
-/** TODO(api): the full night handover for the start of the day shift (A7). */
-export async function getNightHandover(): Promise<NightHandover> {
-  return {
-    ...(await getLatestHandover()),
-    note: "Watch agent 557210 in Adum: 4 cash-outs flagged overnight, linked to FD-3047. The MoMo connector was slow around 03:00 (now fine).",
-    shiftHours: "22:00-08:00",
-    handedCount: 7,
-    flagged: [
-      { ref: "FD-3047", href: "/cases/FD-3047", title: "Agent cash-out · Agent 557210", detail: "4 cash-outs overnight: check the agent first" },
-      { ref: "FD-3044", href: "/cases/FD-3044", title: "Account takeover", detail: "Efua sent it back: needs the call log" },
-      { ref: "AL-88190", href: "/alerts?alert=AL-88190", title: "MoMo velocity · Kasoa", detail: "Came in 07:52, not triaged" },
-    ],
-    breachedOvernight: "None",
-    alertsWaiting: "9 untriaged · oldest 14 min",
-  };
-}
-
-export type SubmittedHandover = { at: number; to: Colleague; handed: string[]; note: string };
-
-/** TODO(api): store the shift note; the per-case offers use POST /cases/{id}/handover. */
-export async function saveHandover(handover: SubmittedHandover) {
-  write(handoverKey(handover.at), handover);
+export async function submitHandover(
+  body: { to_user_id: string; note?: string; cases: ShiftHandover["cases"] },
+  startsAt: string,
+  at: number,
+) {
+  const handover = await apiFetch<ShiftHandover>("POST", "/handovers/shift", body);
+  const submitted: SubmittedHandover = { ...handover, submitted_at: at, starts_at: startsAt };
+  write(handoverKey(at), submitted);
+  return submitted;
 }
 
 export const handoverKey = (day: number) => dayKey("fd:handover", day);
 export const nightHandoverKey = (day: number) => dayKey("fd:night-handover-read", day);
 
+/** TODO(api): 0.2 has no call to mark the handover read (`read_at`), so this browser remembers it per day. */
 export function markNightHandoverSeen(day: number) {
   write(nightHandoverKey(day), true);
 }

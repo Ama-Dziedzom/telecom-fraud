@@ -158,7 +158,7 @@ export function Sidebar({ user, operatorName: operatorFromSession }: { user: Use
           title="Work"
           pathname={pathname}
           items={[
-            { href: "/queue", label: "My queue", icon: "nav-inbox", count: cases?.data.length },
+            { href: "/queue", label: "My queue", icon: "nav-inbox", count: cases?.counts.mine },
             { href: "/alerts", label: "Live alerts", icon: "nav-alert", count: openAlerts.length, countTone: "critical" },
             { href: "/cases", label: "Cases", icon: "nav-folder" },
           ]}

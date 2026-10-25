@@ -1,80 +1,99 @@
 "use client";
 
 /**
- * Subscriber 360 and the analysis checks. GET /subscribers/{id} is in the
- * collection; the extra fields and the check endpoints are proposed.
+ * Subscriber 360’s extra panels and the analysis checks. The profile itself
+ * is `Subscriber` / `useSubscriber` in ./fd.
  */
-import { useApi, type Money, type Page, type Subscriber } from "./fd";
-
-export type Subscriber360 = Subscriber & {
-  initials?: string;
-  plan?: string;
-  prepaid_since?: string;
-  home?: string;
-  kyc: Subscriber["kyc"] & { dob_masked?: string };
-  device: Subscriber["device"] & { usual_months?: number };
-  wallet: Subscriber["wallet"] & { frozen_at?: string; frozen_by?: string; usual_recipients?: string; new_recipients_today?: number };
-  counts?: { activity: number; transactions: number; devices: number; cases: number };
-  risk_reasons?: Array<{ rule: string; text: string; points: number }>;
-  sim_history?: Array<{ at: string; iccid: string; event: "sim_swap" | "new_sim"; where: string; agent: string | null; id_check: string; id_ok: boolean }>;
-  devices_on_wallet?: Array<{ model: string; imei: string; first_seen: string; last_seen: string; shared_with: string; risky: boolean }>;
-  device_warning?: { title: string; detail: string } | null;
-  /** Sources that didn’t answer; their figures are from `*_as_of`. */
-  unavailable?: string[];
-  wallet_as_of?: string;
-  wallet_last_try?: string;
-};
+import { useApi, type Money, type Page } from "./fd";
 
 export type Outflow = { days: Array<{ date: string; amount: Money }>; typical: { min: Money; max: Money }; today: Money };
 
+/** Newest first. `text` is written by the event pipeline. */
+export type RecentEvent = {
+  at: string;
+  until?: string;
+  kind: string;
+  text: string;
+  amount?: Money;
+  flagged: boolean;
+  case_id?: string;
+};
+
+type Signal<T> = { usual: T; today: T; unusual: boolean };
 export type Behaviour = {
   compared_days: number;
-  signals: Array<{ key: string; label: string; usual: string; today: string; unusual: boolean }>;
+  signals: {
+    place: Signal<string>;
+    device: Signal<string>;
+    active_hours: Signal<{ from: string; to: string }>;
+    average_transfer: Signal<Money>;
+    recipients: Signal<number> & { today_new: number };
+  };
   daily: Array<{ date: string; amount: Money }>;
   normal_max: Money;
   hours: { usual: number[]; today: number[] };
-  places: Array<{ name: string; share: number; today?: boolean }>;
-  verdict: { title: string; detail: string } | null;
+  places: Array<{ name: string; share_pct: number; today_only: boolean }>;
+  /** `title` and `detail` are engine text. */
+  verdict: { kind: string; title: string; detail: string } | null;
 };
+
+/** A case another number or SIM is in, with how it ended. */
+export type LinkedCase = { id: string; outcome: string };
 
 export type SimCheck = {
   status: "duplicate" | "clear";
-  sim: string;
+  iccid: string;
   window_hours: number;
-  phones: Array<{ label: string; model: string; place: string; cell?: string; seen?: string; imei?: string; note?: string; usual: boolean }>;
-  distance_km?: number;
-  minutes_apart?: number;
+  /** `index` is the phone’s lane; registrations point at it. */
+  phones: Array<{
+    index: number;
+    model: string;
+    place: string;
+    cell_id: string;
+    imei: string;
+    usual: boolean;
+    used_months: number;
+    first_seen_at: string;
+    last_seen_at: string;
+  }>;
+  distance_km: number | null;
+  minutes_apart: number | null;
   registrations: Array<{ phone: number; at: string }>;
-  overlap?: { from: string; to: string };
+  overlap: { from: string; to: string } | null;
   axis: { from: string; to: string };
-  also_used?: Array<{ sim: string; msisdn: string; case: { id: string; label: string } | null }>;
-  checked?: Array<[string, string]>;
+  also_used: Array<{ iccid: string; msisdn: string; case: LinkedCase | null }>;
 };
 
 export type DeviceCheck = {
   model: string | null;
   imei: string;
-  source: string;
-  luhn: { valid: boolean; expected: number; actual: number };
-  tac: { brand: string; matches: boolean; note: string } | null;
+  /** Index of the phone in the SIM check this IMEI came from. */
+  from_phone: number | null;
+  first_seen_on_sim_at: string;
+  luhn: { valid: boolean; expected_digit: number; actual_digit: number };
+  /** Null while the device registry is unavailable. */
+  tac: { brand: string; model: string; year: number; matches_reported_model: boolean } | null;
   stolen: { listed: boolean; checked_at: string } | null;
   registry: "ok" | "unavailable";
+  /** TODO(api): 0.2 doesn’t say when the registry was last tried (C25). */
   registry_last_try?: string;
-  other_sims: Array<{ msisdn: string; case: { id: string; label: string } | null }>;
-  other_window: string;
+  other_sims: { window_days: number; data: Array<{ msisdn: string; case: LinkedCase | null }> };
 };
 
 export type Patterns = {
   transfers: Array<{ at: string; amount: Money; flagged: boolean }>;
   normal_max: Money;
   cluster: { from: string; to: string; count: number; total: Money; minutes: number } | null;
-  findings: Array<{ kind: "burst" | "fanout" | "drain"; title: string; headline: string; detail: string }>;
+  /** `headline` and `detail` are engine text. */
+  findings: Array<{ kind: "burst" | "fan_out" | "drain"; headline: string; detail: string }>;
 };
 
 export type AuditEvent = { id: string; at: string; actor: { id: string; name: string; initials: string }; action: string; object: string; reason: string };
 
-export const useSubscriber360 = (id: string) => useApi<Subscriber360>(`/subscribers/${id}`);
-export const useRecent = (id: string) => useApi<Page<{ at: string; until?: string; text: string; hot: boolean }>>(`/subscribers/${id}/recent`);
+/** Lane name for a phone in the SIM and device checks (index 0 → Phone A). */
+export const phoneLabel = (index: number) => `Phone ${String.fromCharCode(65 + index)}`;
+
+export const useRecent = (id: string) => useApi<Page<RecentEvent>>(`/subscribers/${id}/recent`);
 export const useOutflow = (id: string, days: number) => useApi<Outflow>(`/subscribers/${id}/outflow?days=${days}`);
 export const useBehaviour = (id: string) => useApi<Behaviour>(`/subscribers/${id}/behaviour`);
 export const useSimCheck = (id: string) => useApi<SimCheck>(`/subscribers/${id}/sim-check`);

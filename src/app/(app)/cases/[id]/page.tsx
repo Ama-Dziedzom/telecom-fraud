@@ -3,7 +3,7 @@
 import { AppHeader } from "@/components/app/AppHeader";
 import { PageBody, useShell } from "@/components/app/AppShell";
 import { Skeleton, Tabs } from "@/components/app/Card";
-import { ActionBanner, EscalationBanner, ExportMenu, HandoverBanner, ReversalCard, ReversalResults } from "@/components/case/CaseBanners";
+import { ActionBanner, EscalationBanner, ExportMenu, HandoverBanner, ReversalCard, ReversalResults, escalationAnswer } from "@/components/case/CaseBanners";
 import { CaseDialogs, type CaseDialog } from "@/components/case/CaseDialogs";
 import {
   CompactStrip,
@@ -30,7 +30,8 @@ import { Icon } from "@/components/ui/Icon";
 import { Menu, MenuDivider, MenuItem, MenuLabel } from "@/components/ui/Menu";
 import { useToast } from "@/components/ui/Toast";
 import { ApiError, apiFetch } from "@/lib/api/client";
-import { useCase, type CaseDetail, type NextStepKind } from "@/lib/api/cases";
+import { useCase, type CaseDetail, type CaseStarted, type NextStepKind } from "@/lib/api/cases";
+import type { PersonRef } from "@/lib/api/fd";
 import { formatClock, useNow } from "@/lib/time";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -38,6 +39,10 @@ import { useSWRConfig } from "swr";
 
 type Tab = "summary" | "alerts" | "timeline" | "transactions" | "evidence" | "network";
 const TABS: Tab[] = ["summary", "alerts", "timeline", "transactions", "evidence", "network"];
+
+/** Banners that have their own component (start, sign-off, sent back) instead of the generic one. */
+const BANNERS_ELSEWHERE = ["new", "pending_decision", "sent_back"];
+const BANNER_TONE: Record<string, "success" | "warning" | "info"> = { protected: "success", reopened: "warning" };
 
 const PROTECT_ITEMS = [
   { kind: "freeze_wallet", icon: "app/icon-wallet-18", title: "Freeze MoMo wallet", detail: "Blocks transfers and cash-outs." },
@@ -70,32 +75,35 @@ export default function CasePage() {
   const setTab = (t: Tab) => router.replace(`${pathname}${t === "summary" ? "" : `?tab=${t}`}`, { scroll: false });
 
   // D13 · say so when a supervisor answers while you’re on the case (once per answer).
-  const answered = detail?.escalation?.status === "answered" ? detail.escalation : null;
+  const answered = detail?.escalation && detail.escalation.status !== "waiting" ? detail.escalation : null;
   const announced = useRef<string | null>(null);
   useEffect(() => {
     if (!answered || announced.current === answered.id) return;
     announced.current = answered.id;
     toast({
       title: `${answered.to.name.split(" ")[0]} answered your escalation`,
-      body: `${caseId} · ${answered.answer?.label.replace(/^Approved: /, "") ?? "see the answer on the case"}`,
+      body: `${caseId} · ${escalationAnswer(answered.status)}: ${answered.answer ?? "see the answer on the case"}`,
       action: { label: "View", onClick: () => document.getElementById("case-banners")?.scrollIntoView({ behavior: "smooth" }) },
     });
   }, [answered, caseId, toast]);
 
   if (error) return <CaseProblem caseId={caseId} error={error} />;
 
+  /** Keep what an action answered with on the cached case (the mock would refetch the old state). */
+  const patchCase = (patch: (c: CaseDetail) => Partial<CaseDetail>) =>
+    mutate<CaseDetail>(`/cases/${caseId}`, (c) => (c ? { ...c, ...patch(c) } : c), { revalidate: false });
+
   const start = async () => {
     setStarting(true);
     try {
-      // TODO(api): proposed POST /cases/{id}/start (New → Investigating).
-      const updated = await apiFetch<CaseDetail>("POST", `/cases/${caseId}/start`);
-      await mutate(`/cases/${caseId}`, updated, { revalidate: false });
+      const started = await apiFetch<CaseStarted>("POST", `/cases/${caseId}/start`);
+      const { first_response: fr, ...change } = started;
+      await patchCase((c) => ({ ...change, glance: { ...c.glance, first_response: fr } }));
       await mutate(`/cases/${caseId}/timeline`);
-      const fr = updated.glance.first_response;
       toast({
         tone: "success",
         title: `You’re on it: ${caseId} is now Investigating`,
-        body: fr.minutes !== null ? `First response in ${fr.minutes} minutes · SLA ${fr.met ? "met" : "missed"}.` : undefined,
+        body: `First response in ${fr.minutes} minutes · SLA ${fr.met ? "met" : "missed"}.`,
       });
     } catch (err) {
       toast({ title: "Couldn’t start the case", body: err instanceof ApiError ? err.problem.title : "Try again." });
@@ -105,25 +113,57 @@ export default function CasePage() {
   };
 
   const returnToQueue = async () => {
-    // TODO(api): POST /cases/{id}/assign needs a user; proposed `user_id: null` for the team queue.
     await apiFetch("POST", `/cases/${caseId}/assign`, { user_id: null, note: "Not mine" }).catch(() => undefined);
     toast({ title: `${caseId} is back in the team queue` });
     router.push("/queue");
+  };
+
+  const pickUp = async () => {
+    setStarting(true);
+    try {
+      await apiFetch("POST", "/cases/pick-up", { case_ids: [caseId] });
+      const me: PersonRef | null = user ? { id: user.id, name: user.name, initials: user.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase() } : null;
+      await patchCase(() => ({ assignee: me }));
+      toast({ tone: "success", title: `${caseId} is yours`, body: "Start investigating when you’re ready." });
+    } catch (err) {
+      toast({ title: "Couldn’t pick up the case", body: err instanceof ApiError ? (err.problem.detail ?? err.problem.title) : "Try again." });
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const remind = async () => {
+    try {
+      const r = await apiFetch<{ reminded: PersonRef; next_allowed_at: string }>("POST", `/cases/${caseId}/resolution/remind`);
+      toast({ tone: "success", title: `Reminder sent to ${r.reminded.name.split(" ")[0]}`, body: `You can send another at ${formatClock(r.next_allowed_at)}.` });
+    } catch (err) {
+      toast({ title: "Couldn’t send a reminder", body: err instanceof ApiError ? (err.problem.detail ?? err.problem.title) : "Try again." });
+    }
+  };
+
+  const linkCase = async (other: string | undefined) => {
+    if (!other) return setTab("network");
+    await apiFetch("POST", `/cases/${caseId}/links`, { case_id: other }).catch(() => undefined);
+    await mutate(`/cases/${caseId}`);
+    toast({ tone: "success", title: `${other} linked to ${caseId}` });
   };
 
   const onStep = (kind: NextStepKind) => {
     if (kind === "freeze_wallet" || kind === "suspend_sim" || kind === "block_recipients") setDialog({ kind: "protect", parts: [kind] });
     else if (kind === "call_subscriber") setDialog({ kind: "call" });
     else if (kind === "request_reversal") setDialog({ kind: "reversal" });
-    else if (kind === "report_agent") setDialog({ kind: "suspend_agent" });
+    else if (kind === "report_agent" || kind === "agent_suspension") setDialog({ kind: "suspend_agent" });
     else if (kind === "add_evidence") setTab("evidence");
     else if (kind === "watch_repeat") setDialog({ kind: "monitor" });
-    else if (kind === "await_signoff")
-      // TODO(api): proposed POST /cases/{id}/resolution/remind.
-      toast({ tone: "success", title: `Reminder sent to ${detail?.resolution?.reviewer?.name.split(" ")[0] ?? "your supervisor"}` });
+    else if (kind === "start") void start();
+    else if (kind === "pick_up") void pickUp();
+    else if (kind === "wait") void remind();
+    // The step names the case to link in its title (“Link FD-3050”).
+    else if (kind === "link_case") void linkCase(detail?.next_steps.recommended?.title.match(/FD-\d+/)?.[0]);
   };
 
   const isNew = detail?.status === "new";
+  const unassigned = Boolean(detail && !detail.assignee);
   const closed = detail?.status === "closed";
   const locked = detail?.status === "pending_decision";
   const sentBack = detail?.status === "sent_back";
@@ -150,7 +190,7 @@ export default function CasePage() {
             <div className="flex items-center justify-between">
               <StageBar stage={detail.stage} status={detail.status} />
               <div className="flex items-center gap-2">
-                {!isNew && !closed && (
+                {!isNew && !closed && !unassigned && (
                   <Button variant="ghost" size="sm" onClick={() => setDialog({ kind: "handover" })} iconLeft={<Icon name="app/icon-users-secondary-16" size={16} />}>
                     Hand over
                   </Button>
@@ -170,9 +210,11 @@ export default function CasePage() {
                     <ButtonLink href={`/cases/${caseId}/story`} variant="secondary" size="md" iconLeft={<Icon name="app/icon-play-story-18" size={18} />}>
                       Play story
                     </ButtonLink>
-                    <Button variant="ghost" size="md" onClick={returnToQueue}>
-                      Not mine: return to queue
-                    </Button>
+                    {!unassigned && (
+                      <Button variant="ghost" size="md" onClick={returnToQueue}>
+                        Not mine: return to queue
+                      </Button>
+                    )}
                   </>
                 ) : (
                   <>
@@ -280,7 +322,7 @@ export default function CasePage() {
                 )
               }
             />
-            {isNew && <StartBanner detail={detail} onStart={start} busy={starting} />}
+            {isNew && <StartBanner detail={detail} onStart={unassigned ? pickUp : start} busy={starting} />}
             <div id="case-banners" className="flex flex-col gap-3 empty:hidden">
               <RejectedBanner detail={detail} />
               <SignoffBanner detail={detail} />
@@ -288,16 +330,20 @@ export default function CasePage() {
               {!locked && !closed && <ActionBanner detail={detail} />}
               <EscalationBanner detail={detail} />
               <HandoverBanner detail={detail} />
-              {!locked && !closed && !sentBack && detail.latest_action?.status !== "partial" &&
-                detail.banners.map((b) => (
-                  <Banner
-                    key={b.kind + b.at}
-                    tone={b.kind === "protected" ? "success" : b.kind === "sent_back" ? "warning" : "info"}
-                    title={`${b.title}${b.at ? ` · ${formatClock(b.at)} by you` : ""}`}
-                  >
-                    {b.detail}
-                  </Banner>
-                ))}
+              {detail.banners
+                .filter((b) => (b.kind === "read_only" ? true : !locked && !closed && !sentBack && !BANNERS_ELSEWHERE.includes(b.kind)))
+                .filter((b) => b.kind !== "protected" || detail.latest_action?.status !== "partial")
+                .map((b) => {
+                  // The protected banner names no one: it is whoever asked for the action.
+                  const by = b.by ?? (b.kind === "protected" ? detail.latest_action?.requested_by : undefined);
+                  // Some titles carry the time already (“Reopened at 08:41”).
+                  const time = b.at && !b.title.includes(formatClock(b.at)) ? ` · ${formatClock(b.at)}` : "";
+                  return (
+                    <Banner key={b.kind + (b.at ?? "")} tone={BANNER_TONE[b.kind] ?? "info"} title={`${b.title}${time}${time && by?.id === user?.id ? " by you" : ""}`}>
+                      {b.detail}
+                    </Banner>
+                  );
+                })}
             </div>
             {compact ? <CompactStrip detail={detail} now={now} /> : <GlanceTiles detail={detail} now={now} />}
             <Tabs

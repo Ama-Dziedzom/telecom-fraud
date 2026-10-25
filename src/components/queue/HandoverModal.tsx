@@ -7,13 +7,21 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
 import { TextField } from "@/components/ui/TextField";
-import { apiFetch } from "@/lib/api/client";
 import { fraudTypeLabel, type CaseSummary } from "@/lib/api/fd";
-import { saveHandover, type Colleague, type SubmittedHandover } from "@/lib/api/local";
-import { now } from "@/lib/time";
+import type { User } from "@/lib/auth/api";
+import { shiftName, submitHandover, type HandoverChoice, type SubmittedHandover } from "@/lib/api/local";
+import { formatClock, now } from "@/lib/time";
 import { useState } from "react";
 
 type Choice = "hand" | "keep_supervisor" | "keep_tomorrow" | "keep_decision" | "keep";
+/** The reasons for keeping a case are for the analyst; the API only hears “keep”. */
+const SENT_AS: Record<Choice, HandoverChoice> = {
+  hand: "hand_over",
+  keep_supervisor: "keep",
+  keep_tomorrow: "keep",
+  keep_decision: "keep",
+  keep: "keep",
+};
 
 const KEEP_LABELS: Record<Exclude<Choice, "hand">, string> = {
   keep_supervisor: "Keep: waiting on supervisor",
@@ -30,7 +38,7 @@ function defaultChoice(c: CaseSummary): Choice {
   return "hand";
 }
 
-/** A5 · Hand over shift — offers chosen cases to the next shift (POST /cases/{id}/handover). */
+/** A5 · Hand over shift — one note and a choice per open case for the next shift (POST /handovers/shift). */
 export function HandoverModal({
   open,
   onClose,
@@ -42,7 +50,7 @@ export function HandoverModal({
   open: boolean;
   onClose: () => void;
   cases: CaseSummary[];
-  next: Colleague;
+  next: NonNullable<User["next_shift"]>;
   resolvedToday?: number;
   onSubmitted: (handover: SubmittedHandover) => void;
 }) {
@@ -55,18 +63,23 @@ export function HandoverModal({
 
   const choiceFor = (c: CaseSummary) => choices[c.id] ?? defaultChoice(c);
   const handed = cases.filter((c) => choiceFor(c) === "hand");
+  const first = next.user.name.split(" ")[0];
+  const startsAt = formatClock(next.starts_at);
+  const nextShift = shiftName(next.shift);
 
   const submit = async () => {
     setSubmitting(true);
     setFailure(null);
     try {
-      await Promise.all(
-        handed.map((c) =>
-          apiFetch("POST", `/cases/${c.id}/handover`, { to_user_id: next.id, note: note || undefined }),
-        ),
+      const handover = await submitHandover(
+        {
+          to_user_id: next.user.id,
+          note: note || undefined,
+          cases: cases.map((c) => ({ case_id: c.id, choice: SENT_AS[choiceFor(c)] })),
+        },
+        next.starts_at,
+        now(),
       );
-      const handover = { at: now(), to: next, handed: handed.map((c) => c.id), note };
-      await saveHandover(handover);
       onSubmitted(handover);
     } catch (err) {
       setFailure(err);
@@ -83,7 +96,7 @@ export function HandoverModal({
       icon="app/icon-users-brand-22"
       tone="brand"
       title="Hand over your shift"
-      description={`${next.name.split(" ")[0]} takes over at ${next.startsAt}. Handed-over cases move to their queue with your note.`}
+      description={`${first} takes over at ${startsAt}. Handed-over cases move to their queue with your note.`}
       actions={
         <>
           <Button variant="secondary" size="md" onClick={onClose}>
@@ -103,7 +116,7 @@ export function HandoverModal({
       <div className="flex flex-wrap items-center gap-3">
         {resolvedToday !== undefined && <Badge label={`${resolvedToday} resolved today`} tone="success" />}
         <Badge label={`${cases.length} open`} tone="neutral" />
-        <Badge label={`${handed.length} handed to ${next.shift} shift`} tone="brand" />
+        <Badge label={`${handed.length} handed to ${nextShift} shift`} tone="brand" />
       </div>
 
       <RequestError error={failure} />
@@ -126,7 +139,7 @@ export function HandoverModal({
                   className="min-w-0 flex-1 cursor-pointer appearance-none bg-transparent text-body-s text-text-primary outline-none focus-visible:shadow-none"
                 >
                   <option value="hand">
-                    Hand to {next.name.split(" ")[0]} ({next.shift})
+                    Hand to {first} ({nextShift})
                   </option>
                   {(Object.keys(KEEP_LABELS) as Array<keyof typeof KEEP_LABELS>).map((k) => (
                     <option key={k} value={k}>

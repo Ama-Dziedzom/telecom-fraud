@@ -10,7 +10,14 @@ import { apiFetch } from "@/lib/api/client";
 import { useApi } from "@/lib/api/fd";
 import { useState, type ReactNode } from "react";
 
-type Prefs = { start_page: string; density: "comfortable" | "compact"; time_format: "24h" | "12h"; language: string; money_format: string; critical_sound: boolean };
+type Prefs = {
+  start_page: "queue" | "alerts" | "cases" | "overview";
+  density: "comfortable" | "compact";
+  time_format: "24h" | "12h";
+  locale: string;
+  money_format: "code" | "symbol";
+  critical_sound: boolean;
+};
 
 function Row({ title, detail, children }: { title: string; detail: string; children: ReactNode }) {
   return (
@@ -42,7 +49,6 @@ function Pick({ label, value, onChange, options }: { label: string; value: strin
 /** I10 · Account · preferences. */
 export default function PreferencesPage() {
   const toast = useToast();
-  // TODO(api): proposed GET/PATCH /me/preferences.
   const { data } = useApi<Prefs>("/me/preferences");
   const [edits, setEdits] = useState<Partial<Prefs>>({});
   const [busy, setBusy] = useState(false);
@@ -71,12 +77,12 @@ export default function PreferencesPage() {
               <Pick
                 label="Start page"
                 value={p.start_page}
-                onChange={(v) => set("start_page", v)}
+                onChange={(v) => set("start_page", v as Prefs["start_page"])}
                 options={[
-                  ["/queue", "My queue"],
-                  ["/alerts", "Live alerts"],
-                  ["/cases", "Cases"],
-                  ["/overview", "Overview"],
+                  ["queue", "My queue"],
+                  ["alerts", "Live alerts"],
+                  ["cases", "Cases"],
+                  ["overview", "Overview"],
                 ]}
               />
             </Row>
@@ -103,16 +109,16 @@ export default function PreferencesPage() {
               />
             </Row>
             <Row title="Language" detail="Twi and Ewe coming soon">
-              <Pick label="Language" value={p.language} onChange={(v) => set("language", v)} options={[["en-GH", "English (Ghana)"]]} />
+              <Pick label="Language" value={p.locale} onChange={(v) => set("locale", v)} options={[["en-GH", "English (Ghana)"]]} />
             </Row>
             <Row title="Show amounts as" detail="Currency for all money values">
               <Pick
                 label="Show amounts as"
                 value={p.money_format}
-                onChange={(v) => set("money_format", v)}
+                onChange={(v) => set("money_format", v as Prefs["money_format"])}
                 options={[
-                  ["GHS 18,400.00", "GHS 18,400.00"],
-                  ["GH₵ 18,400.00", "GH₵ 18,400.00"],
+                  ["code", "GHS 18,400.00"],
+                  ["symbol", "GH₵ 18,400.00"],
                 ]}
               />
             </Row>

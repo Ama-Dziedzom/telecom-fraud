@@ -5,19 +5,24 @@ import { CheckLayout } from "@/components/subscriber/CheckLayout";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Select, TextField } from "@/components/ui/TextField";
-import { usePatterns, useSubscriber360 } from "@/lib/api/subscribers";
+import { useSubscriber } from "@/lib/api/fd";
+import { usePatterns } from "@/lib/api/subscribers";
 import { cn } from "@/lib/cn";
 import { TZ, formatClock, formatMoney } from "@/lib/time";
 import { useParams } from "next/navigation";
 import { useDeferredValue, useState } from "react";
 
 const MAX_GHS = 20_000;
-const FINDING_ICON = { burst: "app/icon-zap-critical-16", fanout: "app/icon-users-critical-16", drain: "app/icon-wallet-critical-16" };
+const FINDING = {
+  burst: { title: "Burst", icon: "app/icon-zap-critical-16" },
+  fan_out: { title: "Fan-out", icon: "app/icon-users-critical-16" },
+  drain: { title: "Drain", icon: "app/icon-wallet-critical-16" },
+};
 
 /** C26 · Transaction patterns — every transfer out, by amount, with what stands out. */
 export default function PatternsPage() {
   const { id } = useParams<{ id: string }>();
-  const { data: sub } = useSubscriber360(id);
+  const { data: sub } = useSubscriber(id);
   const [direction, setDirection] = useState("out");
   const [days, setDays] = useState("7");
   const [min, setMin] = useState(0);
@@ -172,9 +177,9 @@ export default function PatternsPage() {
               <section key={f.kind} className="flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-critical-border bg-surface-base px-[18px] py-4">
                 <h3 className="flex items-center gap-2.5 text-title text-text-primary">
                   <span className="flex size-8 items-center justify-center rounded-[10px] bg-critical-bg">
-                    <Icon name={FINDING_ICON[f.kind]} size={16} />
+                    <Icon name={FINDING[f.kind]?.icon ?? "app/icon-zap-critical-16"} size={16} />
                   </span>
-                  {f.title}
+                  {FINDING[f.kind]?.title ?? f.kind.replace(/_/g, " ")}
                 </h3>
                 <p className="text-h3 text-critical-fg">{f.headline}</p>
                 <p className="text-body-s text-text-secondary">{f.detail}</p>

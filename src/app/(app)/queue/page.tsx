@@ -18,29 +18,25 @@ import {
   isOpenAlert,
   useAlerts,
   useMyCases,
+  useMyInsights,
   useNotifications,
-  useOverview,
   type CaseStatus,
   type CaseSummary,
 } from "@/lib/api/fd";
 import {
-  getLatestHandover,
-  getNextShift,
-  getNightHandover,
   handoverKey,
   markNightHandoverSeen,
   nightHandoverKey,
+  shiftName,
+  useLatestHandover,
   useStored,
-  type Colleague,
-  type NightHandover,
-  type ShiftHandover,
   type SubmittedHandover,
 } from "@/lib/api/local";
 import { cn } from "@/lib/cn";
 import { formatClock, formatClockOrDay, formatDay, greeting, useNow } from "@/lib/time";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 const SOON_MS = 30 * 60_000;
 
@@ -193,8 +189,6 @@ function SkeletonCard({ rows }: { rows: number }) {
   );
 }
 
-const shiftEnd = (shift?: string) => shift?.split("-")[1];
-
 /** A1–A7 · My queue (default, loading, first day, feed delayed, hand over, submitted, night handover) */
 export default function MyQueuePage() {
   const now = useNow();
@@ -202,12 +196,9 @@ export default function MyQueuePage() {
   const { data: casesPage, isLoading: casesLoading } = useMyCases();
   const { data: alertsPage, isLoading: alertsLoading } = useAlerts();
   const { data: notifications } = useNotifications();
-  const { data: overview } = useOverview();
+  const { data: mine } = useMyInsights();
+  const { data: handover } = useLatestHandover();
   const feed = useFeed();
-
-  const [handover, setHandover] = useState<ShiftHandover | null>(null);
-  const [nightHandover, setNightHandover] = useState<NightHandover | null>(null);
-  const [nextShift, setNextShift] = useState<Colleague | null>(null);
   const params = useSearchParams();
   const nav = useRouter();
   // ⌘ Shift H and the profile menu land here with ?handover=1.
@@ -216,12 +207,6 @@ export default function MyQueuePage() {
   const toast = useToast();
   const submitted = useStored<SubmittedHandover>(handoverKey(now));
   const nightRead = useStored<boolean>(nightHandoverKey(now));
-
-  useEffect(() => {
-    void getLatestHandover().then(setHandover);
-    void getNightHandover().then(setNightHandover);
-    void getNextShift().then(setNextShift);
-  }, []);
 
   const loading = casesLoading || alertsLoading;
   const cases = casesPage?.data ?? [];
@@ -234,9 +219,8 @@ export default function MyQueuePage() {
   const critical = openAlerts.filter((a) => a.severity === "critical").length;
   const newAlerts = openAlerts.filter((a) => a.status === "new").length;
   const shiftStart = user?.shift?.split("-")[0];
-  const kpi = (key: string) => overview?.kpis.find((k) => k.key === key);
-  const resolved = kpi("confirmed_fraud");
-  const response = kpi("response_time");
+  const vsAverage = mine ? mine.resolved - mine.resolved_avg : 0;
+  const slowResponse = mine ? mine.first_response_median_minutes > mine.first_response_sla_minutes : false;
   const firstName = user?.name.split(" ")[0] ?? "";
 
   const subtitle = loading
@@ -280,7 +264,7 @@ export default function MyQueuePage() {
 
         {submitted && (
           <Banner tone="success" title={`Handover submitted ${formatClock(submitted.at)}`}>
-            {submitted.to.name} takes over at {submitted.to.startsAt}. You can edit it until they open it.
+            {submitted.to.name} takes over at {formatClock(submitted.starts_at)}. You can edit it until they open it.
           </Banner>
         )}
 
@@ -310,20 +294,31 @@ export default function MyQueuePage() {
                   sub={`${critical} critical · ${newAlerts} new${shiftStart ? ` since ${shiftStart}` : ""}`}
                   subTone={critical ? "critical" : "secondary"}
                 />
-                {/* TODO(api): no per-analyst “resolved today” figure; confirmed_fraud from /insights/overview is the closest. */}
                 <KpiCard
                   label="Resolved today"
                   icon="app/icon-check-circle-tertiary-18"
-                  value={resolved?.value ?? "–"}
-                  sub={resolved && resolved.change > 0 ? `▲ ${resolved.change} vs your average` : resolved ? "In line with your average" : undefined}
-                  subTone="success"
+                  value={mine?.resolved ?? "–"}
+                  sub={
+                    !mine
+                      ? undefined
+                      : vsAverage > 0
+                        ? `▲ ${vsAverage} vs your average`
+                        : vsAverage < 0
+                          ? `▼ ${-vsAverage} vs your average`
+                          : "In line with your average"
+                  }
+                  subTone={vsAverage < 0 ? "secondary" : "success"}
                 />
                 <KpiCard
                   label="My first response"
                   icon="app/icon-timer-tertiary-18"
-                  value={response ? `${response.value}m` : "–"}
-                  sub={response ? (response.value <= 30 ? "Within the 30 min SLA" : "Over the 30 min SLA") : undefined}
-                  subTone={response && response.value > 30 ? "critical" : "success"}
+                  value={mine ? `${mine.first_response_median_minutes}m` : "–"}
+                  sub={
+                    mine
+                      ? `${slowResponse ? "Over" : "Within"} the ${mine.first_response_sla_minutes} min SLA`
+                      : undefined
+                  }
+                  subTone={slowResponse ? "critical" : "success"}
                 />
               </>
             )}
@@ -367,8 +362,8 @@ export default function MyQueuePage() {
                   <Card title="Shift handover" icon="app/icon-users-secondary-18">
                     <div className="flex flex-col gap-2">
                       <p className="flex items-center gap-2 text-caption text-text-secondary">
-                        <Avatar initials={handover.author.initials} />
-                        {handover.author.name} · {handover.shift} · {formatClockOrDay(handover.at, now)}
+                        <Avatar initials={handover.from.initials} />
+                        {handover.from.name} · {handover.shift.name} shift · {formatClockOrDay(handover.at, now)}
                       </p>
                       <p className="text-body-s text-text-primary">{handover.note}</p>
                     </div>
@@ -392,34 +387,36 @@ export default function MyQueuePage() {
         </div>
       </PageBody>
 
-      {nextShift && !casesLoading && (
+      {user?.next_shift && !casesLoading && (
         <HandoverModal
           key={handoverOpen ? "open" : "closed"}
           open={handoverOpen}
           onClose={() => {
             setHandoverOpen(false);
             if (params.get("handover")) nav.replace("/queue");
-            if (params.get("handover")) nav.replace("/queue");
           }}
           cases={cases}
-          next={{ ...nextShift, startsAt: shiftEnd(user?.shift) ?? nextShift.startsAt }}
-          resolvedToday={resolved?.value}
+          next={user.next_shift}
+          resolvedToday={mine?.resolved}
           onSubmitted={(h) => {
             setHandoverOpen(false);
             toast({
               tone: "success",
               title: `Handover sent to ${h.to.name.split(" ")[0]}`,
-              body: `${cases.length} cases · ${h.handed.length} handed to the ${h.to.shift} shift.`,
+              body: `${cases.length} cases · ${h.cases.filter((c) => c.choice === "hand_over").length} handed to the ${shiftName(user.next_shift!.shift)} shift.`,
               action: { label: "View", onClick: () => setHandoverOpen(true) },
             });
           }}
         />
       )}
 
-      {nightHandover && !firstDay && (
+      {handover && !handover.read_at && !firstDay && (
         <NightHandoverDrawer
           open={nightRead !== true && !loading}
-          handover={nightHandover}
+          handover={handover}
+          cases={cases}
+          alerts={openAlerts}
+          myShift={user?.shift ? shiftName(user.shift) : "day"}
           now={now}
           onDone={() => markNightHandoverSeen(now)}
         />

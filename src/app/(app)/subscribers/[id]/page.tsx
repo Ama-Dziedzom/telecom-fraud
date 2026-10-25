@@ -15,7 +15,7 @@ import {
   SummaryStrip,
   WhyHighRisk,
 } from "@/components/subscriber/ProfileParts";
-import { RevealModal } from "@/components/subscriber/RevealModal";
+import { RevealModal, revealReasonLabel } from "@/components/subscriber/RevealModal";
 import { CaseHistory } from "@/components/subscriber/SubscriberDrawer";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
@@ -24,8 +24,9 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Menu, MenuItem } from "@/components/ui/Menu";
 import { ApiError } from "@/lib/api/client";
+import { useSubscriber, type Subscriber } from "@/lib/api/fd";
 import { hide, useRevealed } from "@/lib/api/reveal";
-import { useAudit, useSubscriber360, type Subscriber360 } from "@/lib/api/subscribers";
+import { useAudit } from "@/lib/api/subscribers";
 import { cn } from "@/lib/cn";
 import { formatClock, formatDate, formatSpan, formatWhen, useNow } from "@/lib/time";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -34,8 +35,22 @@ import { useSWRConfig } from "swr";
 
 type Tab = "overview" | "activity" | "transactions" | "sim" | "cases" | "audit";
 const TABS: Tab[] = ["overview", "activity", "transactions", "sim", "cases", "audit"];
+const PLAN: Record<Subscriber["plan"], string> = { prepaid: "Prepaid", postpaid: "Postpaid" };
+const ID_DOCUMENT: Record<string, string> = { ghana_card: "Ghana Card", passport: "Passport", voter_id: "Voter ID" };
+const ID_METHOD: Record<string, string> = { biometric: "biometric", typed: "typed in", scanned: "scanned" };
 
-function SimDevicesTab({ sub, now }: { sub: Subscriber360; now: number }) {
+/** “Ghana Card · biometric” · “Ghana Card · typed in · not matched” */
+const idCheck = ({ document, method, matched }: Subscriber["sim_history"][number]["id_check"]) =>
+  [ID_DOCUMENT[document] ?? document.replace(/_/g, " "), ID_METHOD[method] ?? method.replace(/_/g, " "), matched ? null : "not matched"].filter(Boolean).join(" · ");
+
+/** Now · Today 08:39 · Aug 2023 */
+function seen(iso: string, now: number) {
+  if (now - Date.parse(iso) < 15 * 60_000) return "Now";
+  const when = formatWhen(iso, now, { withTime: true });
+  return when.startsWith("Today") ? when : formatDate(iso).replace(/^\d+ /, "");
+}
+
+function SimDevicesTab({ sub, now }: { sub: Subscriber; now: number }) {
   return (
     <>
       {sub.device_warning && (
@@ -43,7 +58,7 @@ function SimDevicesTab({ sub, now }: { sub: Subscriber360; now: number }) {
           {sub.device_warning.detail}
         </Banner>
       )}
-      <Card title={<span className="flex items-center gap-2">SIM history <Badge label={String(sub.sim_history?.length ?? 0)} tone="neutral" /></span>} icon="app/icon-sim-18">
+      <Card title={<span className="flex items-center gap-2">SIM history <Badge label={String(sub.sim_history.length)} tone="neutral" /></span>} icon="app/icon-sim-18">
         <div className="overflow-hidden rounded-xl border border-border-subtle">
           <table className="w-full text-left">
             <thead className="border-b border-border-subtle bg-surface-raised">
@@ -56,7 +71,7 @@ function SimDevicesTab({ sub, now }: { sub: Subscriber360; now: number }) {
               </tr>
             </thead>
             <tbody>
-              {sub.sim_history?.map((h) => (
+              {sub.sim_history.map((h) => (
                 <tr key={h.at} className="relative border-b border-border-subtle last:border-b-0">
                   <td className="relative py-3 pl-5 font-mono text-mono-s text-text-primary">
                     {h.event === "sim_swap" && <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-critical-fg" />}
@@ -64,15 +79,15 @@ function SimDevicesTab({ sub, now }: { sub: Subscriber360; now: number }) {
                   </td>
                   <td className="py-3 pl-4 font-mono text-mono-s text-text-secondary">{h.iccid}</td>
                   <td className="py-3 pl-4">{h.event === "sim_swap" ? <Badge label="SIM swap" tone="critical" dot /> : <span className="text-body-s text-text-primary">New SIM · registration</span>}</td>
-                  <td className={cn("py-3 pl-4 text-body-s", h.agent ? "text-text-brand" : "text-text-primary")}>{h.where}</td>
-                  <td className={cn("py-3 pl-4 text-body-s", h.id_ok ? "text-text-secondary" : "text-critical-fg")}>{h.id_check}</td>
+                  <td className={cn("py-3 pl-4 text-body-s", h.agent ? "text-text-brand" : "text-text-primary")}>{h.agent ? `${h.agent} · ${h.place}` : h.place}</td>
+                  <td className={cn("py-3 pl-4 text-body-s", h.id_check.matched ? "text-text-secondary" : "text-critical-fg")}>{idCheck(h.id_check)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </Card>
-      <Card title={<span className="flex items-center gap-2">Devices on this wallet <Badge label={String(sub.devices_on_wallet?.length ?? 0)} tone="neutral" /></span>} icon="app/icon-phone-secondary-18">
+      <Card title={<span className="flex items-center gap-2">Devices on this wallet <Badge label={String(sub.devices_on_wallet.length)} tone="neutral" /></span>} icon="app/icon-phone-secondary-18">
         <div className="overflow-hidden rounded-xl border border-border-subtle">
           <table className="w-full text-left">
             <thead className="border-b border-border-subtle bg-surface-raised">
@@ -85,7 +100,7 @@ function SimDevicesTab({ sub, now }: { sub: Subscriber360; now: number }) {
               </tr>
             </thead>
             <tbody>
-              {sub.devices_on_wallet?.map((d) => (
+              {sub.devices_on_wallet.map((d) => (
                 <tr key={d.imei} className="border-b border-border-subtle last:border-b-0">
                   <td className="relative py-3 pl-5">
                     {d.risky && <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-critical-fg" />}
@@ -96,12 +111,12 @@ function SimDevicesTab({ sub, now }: { sub: Subscriber360; now: number }) {
                   </td>
                   <td className="py-3 pl-4 font-mono text-mono-s text-text-secondary">{d.imei}</td>
                   <td className={cn("py-3 pl-4 text-body-s", d.risky ? "text-critical-fg" : "text-text-secondary")}>
-                    {d.risky ? `Today ${formatClock(d.first_seen)}` : formatDate(d.first_seen).replace(/^\d+ /, "")}
+                    {seen(d.first_seen, now)}
                   </td>
-                  <td className="py-3 pl-4 text-body-s text-text-secondary">
-                    {d.last_seen === "now" ? "Now" : formatDate(d.last_seen).replace(/^\d+ /, "")}
+                  <td className="py-3 pl-4 text-body-s text-text-secondary">{seen(d.last_seen, now)}</td>
+                  <td className={cn("py-3 pl-4 text-body-s", d.risky ? "text-critical-fg" : "text-text-secondary")}>
+                    {d.wallets_24h > 1 ? [`${d.wallets_24h} wallets`, ...d.case_ids.map((c) => `in ${c}`)].join(" · ") : "This wallet only"}
                   </td>
-                  <td className={cn("py-3 pl-4 text-body-s", d.risky ? "text-critical-fg" : "text-text-secondary")}>{d.shared_with}</td>
                   <td className="py-3 pr-5 text-right">
                     {d.risky && (
                       <ButtonLink href={`/network?seed=${sub.id}`} variant="ghost" size="sm" iconLeft={<Icon name="app/icon-network-brand-16" size={16} />}>
@@ -152,7 +167,7 @@ export default function SubscriberPage() {
   const pathname = usePathname();
   const params = useSearchParams();
   const { mutate } = useSWRConfig();
-  const { data: sub, error, isLoading } = useSubscriber360(id);
+  const { data: sub, error, isLoading } = useSubscriber(id);
   const revealed = useRevealed(id);
   const [revealOpen, setRevealOpen] = useState(false);
   const tab = (TABS.includes(params.get("tab") as Tab) ? params.get("tab") : "overview") as Tab;
@@ -167,7 +182,7 @@ export default function SubscriberPage() {
   const hintMsisdn = params.get("msisdn");
   const title = sub ? (revealed?.values.msisdn ?? sub.msisdn) : (hintMsisdn ?? id);
   const initials =
-    sub?.initials ?? (sub?.name ?? hintName ?? "")
+    sub?.initials ?? (hintName ?? "")
       .split(/\s+/)
       .map((w) => w[0])
       .join("")
@@ -199,7 +214,7 @@ export default function SubscriberPage() {
             {sub && (
               <>
                 <span className="text-text-tertiary">·</span>
-                {sub.plan ?? "Prepaid"} since {formatDate(sub.prepaid_since ?? sub.customer_since).replace(/^\d+ /, "")} · {sub.home}
+                {PLAN[sub.plan] ?? sub.plan} since {formatDate(sub.customer_since).replace(/^\d+ /, "")} · {sub.home}
               </>
             )}
           </p>
@@ -290,7 +305,7 @@ export default function SubscriberPage() {
             <Icon name="app/icon-eye-medium-18" size={18} />
             <p className="flex-1 text-body-s text-medium-fg">
               Personal details visible · {formatSpan(Date.parse(revealed.expires_at) - now)} left · reason:{" "}
-              {revealed.case_id ? `investigating ${revealed.case_id}` : revealed.reason.replace(/_/g, " ")} · logged
+              {revealed.reason === "investigating_case" && revealed.case_id ? `investigating ${revealed.case_id}` : revealReasonLabel(revealed.reason)} · logged
             </p>
             <Button variant="secondary" size="sm" onClick={() => hide(id)} iconLeft={<Icon name="app/icon-eye-off-16" size={16} />}>
               Hide now
@@ -309,7 +324,7 @@ export default function SubscriberPage() {
           </div>
         ) : (
           <>
-            {sub.unavailable?.length ? (
+            {sub.unavailable.length ? (
               <Banner tone="warning" title="Some data is unavailable">
                 Mobile money didn’t respond. Wallet figures in the summary are from {sub.wallet_as_of ? formatClock(sub.wallet_as_of) : "earlier"} and may be out of date.
               </Banner>
@@ -321,9 +336,9 @@ export default function SubscriberPage() {
               onChange={setTab}
               tabs={[
                 { id: "overview", label: "Overview" },
-                { id: "activity", label: "Activity", count: sub.counts?.activity },
-                { id: "transactions", label: "Transactions", count: sub.counts?.transactions },
-                { id: "sim", label: "SIM & devices", count: sub.counts?.devices },
+                { id: "activity", label: "Activity", count: sub.counts.activity },
+                { id: "transactions", label: "Transactions", count: sub.counts.transactions },
+                { id: "sim", label: "SIM & devices", count: sub.counts.devices },
                 { id: "cases", label: "Cases", count: sub.cases.length },
                 { id: "audit", label: "Audit log" },
               ]}
@@ -333,7 +348,7 @@ export default function SubscriberPage() {
                 <div className="flex min-w-0 flex-1 flex-col gap-4">
                   <WhyHighRisk sub={sub} />
                   <OutflowChart id={id} />
-                  <RecentActivity id={id} now={now} total={sub.counts?.activity} onViewAll={() => setTab("activity")} />
+                  <RecentActivity id={id} now={now} total={sub.counts.activity} onViewAll={() => setTab("activity")} />
                 </div>
                 <div className="flex w-[400px] shrink-0 flex-col gap-4">
                   <IdentityCard sub={sub} revealed={revealed} onReveal={() => setRevealOpen(true)} onHide={() => hide(id)} />

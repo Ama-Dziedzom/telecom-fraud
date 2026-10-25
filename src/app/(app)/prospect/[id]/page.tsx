@@ -10,38 +10,70 @@ import { Checkbox } from "@/components/ui/Choice";
 import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api/client";
-import { useApi, type Person } from "@/lib/api/fd";
+import { RequestError } from "@/components/auth/RequestError";
+import { ruleChart, ruleText, type ProspectRule } from "@/components/cases/CaseModals";
+import { TextArea } from "@/components/ui/TextField";
+import { useApi, type PersonRef, type Severity } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
 import { formatAgo, useNow } from "@/lib/time";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
+type Flag = { kind: string; case_id?: string; count?: number };
 type Match = {
   id: string;
   name: string;
-  since: string;
+  /** Date the agent started trading. */
+  agent_since: string;
   today: number;
+  severity: Severity;
   by_day: Array<{ date: string; count: number }>;
+  /** Engine text. */
   summary: string;
-  tone: "critical" | "neutral";
-  tags: Array<[string, BadgeTone]>;
+  flags: Flag[];
 };
 type Prospect = {
   id: string;
+  title: string;
   hunch: string;
-  owner: Person;
+  owner: PersonRef;
   started_at: string;
-  rule: string;
+  status: string;
+  look_at: string;
+  rule: ProspectRule;
+  matches_count: number;
   matches: Match[];
   normal_max: number;
   verdict: { id: string; title: string; detail: string } | null;
 };
+type Promoted = {
+  case: { id: string; stage: string; status: string; assignee: PersonRef };
+  evidence_ids: string[];
+  linked_cases: string[];
+  remaining_matches: number;
+};
+
+/** Match flags → the tags under each card. */
+function flagTag(f: Flag): { label: string; tone: BadgeTone } {
+  switch (f.kind) {
+    case "linked_case":
+      return { label: `Linked to ${f.case_id}`, tone: "critical" };
+    case "paid_confirmed_mules":
+      return { label: `${f.count} confirmed ${f.count === 1 ? "mule" : "mules"} paid`, tone: "high" };
+    case "no_links":
+      return { label: "No links", tone: "neutral" };
+    case "likely_promo":
+      return { label: "Likely promo", tone: "neutral" };
+    default:
+      return { label: f.kind.replace(/_/g, " "), tone: "neutral" };
+  }
+}
 
 const STEPS = ["Prospect", "Investigate", "Decide", "Monitor", "Closed"];
 
 function SwapChart({ match }: { match: Match }) {
   const max = 16;
-  const hot = match.tone === "critical";
+  const hot = match.severity === "critical";
   return (
     <div className="flex flex-col gap-1">
       <div className="relative h-[72px] pl-6">
@@ -77,11 +109,11 @@ export default function ProspectPage() {
   const prospectId = decodeURIComponent(id).toUpperCase();
   const router = useRouter();
   const now = useNow();
-  // TODO(api): proposed GET /prospects/{id}.
   const { data, error, isLoading } = useApi<Prospect>(`/prospects/${prospectId}`);
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [busy, setBusy] = useState(false);
-  const [promoted, setPromoted] = useState<{ case_id: string; brought_across: string[]; remaining: number; from: string } | null>(null);
+  const [promoted, setPromoted] = useState<(Promoted & { from: string }) | null>(null);
+  const [dropping, setDropping] = useState(false);
 
   const selected = picked ?? new Set(data?.verdict ? [data.verdict.id] : []);
   const toggle = (mid: string, on: boolean) => {
@@ -94,18 +126,18 @@ export default function ProspectPage() {
   const promote = async () => {
     setBusy(true);
     try {
-      // TODO(api): proposed POST /prospects/{id}/promote {entity_ids}.
-      const res = await apiFetch<{ case_id: string; brought_across: string[]; remaining: number }>("POST", `/prospects/${prospectId}/promote`, { entity_ids: Array.from(selected) });
+      const res = await apiFetch<Promoted>("POST", `/prospects/${prospectId}/promote`, { entity_ids: Array.from(selected) });
       setPromoted({ ...res, from: Array.from(selected).join(", ") });
     } finally {
       setBusy(false);
     }
   };
 
-  const drop = async () => {
-    await apiFetch("POST", `/prospects/${prospectId}/drop`).catch(() => undefined);
+  const drop = async (reason: string) => {
+    await apiFetch("POST", `/prospects/${prospectId}/drop`, { reason });
     router.push("/cases?layout=board");
   };
+  const lookAt = data?.look_at ?? "agents";
 
   return (
     <>
@@ -148,11 +180,11 @@ export default function ProspectPage() {
                   <Badge label="Prospect" tone="brand" dot />
                 </h2>
                 <p className="text-body-s text-text-secondary">
-                  {data.id} · started by {data.owner.name} {formatAgo(data.started_at, now)} · rule: {data.rule}
+                  {data.id} · started by {data.owner.name} {formatAgo(data.started_at, now)} · rule: {ruleText(data.rule)}
                 </p>
               </div>
               <div className="flex items-center gap-2.5">
-                <Button variant="ghost" size="md" onClick={drop} iconLeft={<Icon name="app/icon-x-brand-14" size={16} />}>
+                <Button variant="ghost" size="md" onClick={() => setDropping(true)} iconLeft={<Icon name="app/icon-x-brand-14" size={16} />}>
                   Drop prospect
                 </Button>
                 <Button size="md" disabled={!selected.size} loading={busy} onClick={promote} iconLeft={<Icon name="app/icon-arrow-right-white-16" size={18} />}>
@@ -174,22 +206,21 @@ export default function ProspectPage() {
                   >
                     <span className="flex items-center gap-3">
                       <Checkbox label={`Select ${m.id}`} hideLabel checked={on} onChange={(e) => toggle(m.id, e.target.checked)} />
-                      <span className={cn("flex size-8 items-center justify-center rounded-lg", m.tone === "critical" ? "bg-critical-bg" : "bg-high-bg")}>
+                      <span className={cn("flex size-8 items-center justify-center rounded-lg", m.severity === "critical" ? "bg-critical-bg" : "bg-high-bg")}>
                         <Icon name="app/icon-building-high-20" size={16} />
                       </span>
                       <span className="flex flex-col">
                         <span className="font-mono text-mono-m font-semibold text-text-primary">{m.id}</span>
                         <span className="text-caption text-text-secondary">
-                          {m.name}
-                          {m.since ? ` · ${m.since}` : ""}
+                          {m.name} · agent since {m.agent_since.slice(0, 4)}
                         </span>
                       </span>
                     </span>
                     <SwapChart match={m} />
-                    <span className={cn("text-body-s", m.tone === "critical" ? "text-critical-fg" : "text-text-primary")}>{m.summary}</span>
+                    <span className={cn("text-body-s", m.severity === "critical" ? "text-critical-fg" : "text-text-primary")}>{m.summary}</span>
                     <span className="flex flex-wrap gap-1.5">
-                      {m.tags.map(([t, tone]) => (
-                        <Badge key={t} label={t} tone={tone} />
+                      {m.flags.map(flagTag).map((t) => (
+                        <Badge key={t.label} label={t.label} tone={t.tone} />
                       ))}
                     </span>
                   </label>
@@ -227,7 +258,7 @@ export default function ProspectPage() {
                 <Icon name="app/icon-check-circle-success-22" size={22} />
               </span>
               <span className="flex flex-col gap-1">
-                {promoted.from} is now case {promoted.case_id}
+                {promoted.from} is now case {promoted.case.id}
                 <span className="text-body-m font-normal text-text-secondary">It moved from Prospect to Investigate and is assigned to you. SLA starts now: first response in 4 hours.</span>
               </span>
             </span>
@@ -237,15 +268,15 @@ export default function ProspectPage() {
               <Button variant="secondary" size="md" onClick={() => setPromoted(null)}>
                 Stay on prospect
               </Button>
-              <ButtonLink href={`/cases/${promoted.case_id}`} size="md" iconLeft={<Icon name="app/icon-arrow-right-white-16" size={18} />}>
-                Open {promoted.case_id}
+              <ButtonLink href={`/cases/${promoted.case.id}`} size="md" iconLeft={<Icon name="app/icon-arrow-right-white-16" size={18} />}>
+                Open {promoted.case.id}
               </ButtonLink>
             </>
           }
         >
           <div className="flex flex-col gap-2">
             <p className="text-label-s text-text-secondary">Brought across</p>
-            {promoted.brought_across.map((b) => (
+            {["Your hunch and rule", ...(data ? [`${ruleChart(data.rule)} as evidence`] : []), ...promoted.linked_cases.map((c) => `Link to ${c}`)].map((b) => (
               <p key={b} className="flex items-center gap-2 text-body-m text-text-secondary">
                 <Icon name="app/icon-check-success-16" size={16} />
                 {b}
@@ -254,10 +285,49 @@ export default function ProspectPage() {
           </div>
           <p className="flex items-center gap-2.5 rounded-[10px] bg-surface-sunken px-3.5 py-3 text-body-s text-text-secondary">
             <Icon name="app/icon-info-secondary-16" size={16} />
-            {prospectId} stays open with the other {promoted.remaining} agents.
+            {prospectId} stays open with the other {promoted.remaining_matches} {promoted.remaining_matches === 1 ? lookAt.replace(/s$/, "") : lookAt}.
           </p>
         </Modal>
       )}
+      {dropping && <DropModal prospectId={prospectId} onDrop={drop} onClose={() => setDropping(false)} />}
     </>
+  );
+}
+
+/** Drop a prospect — the reason is kept with it. */
+function DropModal({ prospectId, onDrop, onClose }: { prospectId: string; onDrop: (reason: string) => Promise<void>; onClose: () => void }) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+  const drop = async () => {
+    setBusy(true);
+    try {
+      await onDrop(reason.trim());
+    } catch (err) {
+      setFailure(err);
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      width={500}
+      title={`Drop ${prospectId}?`}
+      description="It leaves the board. Nothing changes for customers."
+      actions={
+        <>
+          <Button variant="secondary" size="md" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="danger" size="md" onClick={drop} loading={busy} disabled={!reason.trim()}>
+            Drop prospect
+          </Button>
+        </>
+      }
+    >
+      <TextArea label="Why drop it?" required rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Wallets were a payroll batch." />
+      <RequestError error={failure} />
+    </Modal>
   );
 }

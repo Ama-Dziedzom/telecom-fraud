@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Segmented } from "@/components/ui/Segmented";
 import { useToast } from "@/components/ui/Toast";
-import { ApiError, apiFetch } from "@/lib/api/client";
+import { apiFetch, isProblem, type ApiError } from "@/lib/api/client";
 import { ConflictModal } from "./CaseProblem";
 import { useColleagues, useTimeline, type Colleague, type TimelineEvent } from "@/lib/api/cases";
+import { roleLabel } from "@/lib/auth/api";
 import { cn } from "@/lib/cn";
 import { formatWhen } from "@/lib/time";
 import { useMemo, useRef, useState } from "react";
@@ -129,6 +130,7 @@ function NoteComposer({ caseId }: { caseId: string }) {
     setFailure(null);
     try {
       const used = mentions.filter((p) => body.includes(`@${p.name}`));
+      // `force` posts the note even though the case changed (after a 409 case_changed).
       await apiFetch("POST", `/cases/${caseId}/notes`, { body, visibility, mentions: used.map((p) => p.id), force: force || undefined });
       setConflict(null);
       await mutate(`/cases/${caseId}/timeline`);
@@ -140,7 +142,7 @@ function NoteComposer({ caseId }: { caseId: string }) {
         body: used.length ? `${used.map((p) => p.name.split(" ")[0]).join(", ")} will be notified.` : "It’s on the timeline.",
       });
     } catch (err) {
-      if (err instanceof ApiError && err.code === "case_changed") setConflict(err);
+      if (isProblem(err, "case_changed")) setConflict(err);
       else setFailure(err);
     } finally {
       setBusy(false);
@@ -224,7 +226,7 @@ function NoteComposer({ caseId }: { caseId: string }) {
                       <Icon name="app/icon-user-secondary-16" size={16} className="mt-0.5" />
                       <span className="flex flex-col">
                         <span className="text-label-m text-text-primary">{p.name}</span>
-                        <span className="text-caption text-text-secondary">{[p.role, p.note].filter(Boolean).join(" · ")}</span>
+                        <span className="text-caption text-text-secondary">{[roleLabel(p.role), p.status === "on_leave" ? "on leave" : p.shift].join(" · ")}</span>
                       </span>
                     </button>
                   ))}
@@ -240,7 +242,7 @@ function NoteComposer({ caseId }: { caseId: string }) {
           <span className="flex flex-col">
             <span className="text-label-m text-text-primary">{p.name}</span>
             <span className="text-caption text-text-secondary">
-              {p.role} · {p.on_shift ? "on shift" : "off shift"}
+              {roleLabel(p.role)} · {p.status === "on_leave" ? "on leave" : p.on_shift ? "on shift" : "off shift"}
             </span>
           </span>
         </div>

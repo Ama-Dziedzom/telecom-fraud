@@ -19,9 +19,7 @@ export function CriticalAlertToast({ feed }: { feed: FeedState }) {
   const { data: alert } = useAlert(event && pathname !== "/alerts" ? event.id : null);
   if (!event || !alert || pathname === "/alerts" || pathname.startsWith(`/cases/${event.case_id}`)) return null;
 
-  const payments = alert.what_happened.find((s) => s.kind === "payments_out");
-  const outLine =
-    payments?.detail ?? (alert.money_out ? `${formatMoney(alert.money_out.amount_minor, alert.money_out.currency)} out` : null);
+  const outLine = alert.money_out ? `${formatMoney(alert.money_out.amount_minor, alert.money_out.currency)} out` : null;
 
   return (
     <div

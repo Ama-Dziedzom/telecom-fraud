@@ -61,7 +61,7 @@ export function AppHeader({ section, title, actions }: { section: string; title:
   const { data: alerts } = useAlerts();
   const { data: notifications } = useNotifications();
   const openAlerts = alerts?.data.filter(isOpenAlert).length ?? 0;
-  const unread = notifications?.data.some((n) => !n.read) ?? false;
+  const unread = (notifications?.unread ?? 0) > 0;
 
   return (
     <header className="flex h-[76px] shrink-0 items-center justify-between gap-4 border-b border-border-subtle px-7">

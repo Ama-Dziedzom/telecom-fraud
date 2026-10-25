@@ -8,6 +8,9 @@ import { Modal } from "@/components/ui/Modal";
 import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
 import { ApiError, apiFetch } from "@/lib/api/client";
+import { caseStatusLabel } from "@/components/app/indicators";
+import type { CaseChangedProblem } from "@/lib/api/cases";
+import type { CaseStatus, PersonRef } from "@/lib/api/fd";
 import { formatClock, formatDate, formatDay, useNow } from "@/lib/time";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
@@ -38,10 +41,9 @@ export function CaseProblem({ caseId, error }: { caseId: string; error: unknown 
               size="md"
               disabled={requested}
               onClick={async () => {
-                // TODO(api): proposed POST /cases/{id}/access-requests.
-                await apiFetch("POST", `/cases/${caseId}/access-requests`).catch(() => undefined);
+                const r = await apiFetch<{ approver: PersonRef }>("POST", `/cases/${caseId}/access-requests`, { reason: `Asked from the case page for ${caseId}.` }).catch(() => null);
                 setRequested(true);
-                toast({ tone: "success", title: "Access requested", body: "Your supervisor has been notified." });
+                toast({ tone: "success", title: "Access requested", body: `${r ? r.approver.name : "Your supervisor"} has been notified.` });
               }}
               iconLeft={<Icon name="app/icon-send-white-18" size={18} />}
             >
@@ -55,6 +57,7 @@ export function CaseProblem({ caseId, error }: { caseId: string; error: unknown 
     );
   } else if (status === 404) {
     const merged = problem?.merged_into as string | undefined;
+    const mergedBy = problem?.merged_by as PersonRef | undefined;
     body = (
       <EmptyState
         icon="app/icon-search-secondary-26"
@@ -75,7 +78,7 @@ export function CaseProblem({ caseId, error }: { caseId: string; error: unknown 
         }
       >
         {merged
-          ? `It was merged into ${merged} on ${formatDate(String(problem?.merged_at)).replace(/ \d{4}$/, "")} by ${problem?.merged_by}. Everything from it, alerts, notes and evidence, is now on ${merged}.`
+          ? `It was merged into ${merged} on ${formatDate(String(problem?.merged_at)).replace(/ \d{4}$/, "")}${mergedBy ? ` by ${mergedBy.name}` : ""}. Everything from it, alerts, notes and evidence, is now on ${merged}.`
           : "Check the case ID. It may have been typed wrong, or deleted under the retention policy."}
       </EmptyState>
     );
@@ -111,6 +114,10 @@ export function CaseProblem({ caseId, error }: { caseId: string; error: unknown 
   );
 }
 
+const FIELD_LABEL: Record<string, string> = { assignee: "Assignee", status: "Status", stage: "Stage", severity: "Severity" };
+const changeValue = (field: string, v: CaseChangedProblem["changes"][number]["from"]) =>
+  v === null ? "—" : typeof v === "object" ? v.name : field === "status" ? caseStatusLabel(v as CaseStatus) : v.replace(/_/g, " ");
+
 /** I15 · Conflict — the case changed while you were writing. Your note is kept. */
 export function ConflictModal({
   problem,
@@ -128,8 +135,13 @@ export function ConflictModal({
   busy?: boolean;
 }) {
   const toast = useToast();
-  const p = problem.problem as unknown as { title: string; detail: string; changes: Array<{ field: string; from: string; to: string }>; new_assignee?: { name: string } };
-  const first = p.new_assignee?.name.split(" ")[0];
+  const p = problem.problem as unknown as CaseChangedProblem;
+  const assignee = p.changes.find((c) => c.field === "assignee")?.to;
+  const first = assignee && typeof assignee === "object" ? assignee.name.split(" ")[0] : undefined;
+  const rows = [
+    ...p.changes.map((c) => ({ field: FIELD_LABEL[c.field] ?? c.field, from: changeValue(c.field, c.from), to: changeValue(c.field, c.to) })),
+    { field: "Changed by", from: "—", to: `${p.changed_by.name} · ${formatClock(p.changed_at)}` },
+  ];
   return (
     <Modal
       open
@@ -162,7 +174,7 @@ export function ConflictModal({
       }
     >
       <dl className="overflow-hidden rounded-[10px] border border-border-subtle bg-surface-raised">
-        {p.changes.map((c) => (
+        {rows.map((c) => (
           <div key={c.field} className="flex items-center gap-3 border-b border-border-subtle px-3.5 py-2.5 text-body-s last:border-b-0">
             <dt className="flex-1 text-text-secondary">{c.field}</dt>
             <dd className="flex items-center gap-2">

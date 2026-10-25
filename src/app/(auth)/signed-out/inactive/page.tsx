@@ -41,7 +41,7 @@ function SignedOutInactiveContent() {
     try {
       // Same three steps as a fresh sign-in, starting from the remembered email.
       const who = await identify(account);
-      update({ email: who.email, operator: who.operator, method: who.next, redirectUrl: who.redirect_url ?? null });
+      update({ email: who.email, operator: who.operator, method: who.next, redirectUrl: who.sso?.redirect_url ?? null });
       if (who.next === "sso") return router.push("/sign-in/sso");
       const result = await checkPassword(who.flow_id, password);
       update({ flowId: result.flow_id });

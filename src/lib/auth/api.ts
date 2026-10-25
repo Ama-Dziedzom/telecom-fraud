@@ -19,9 +19,9 @@ export type User = {
   status: string;
   shift?: string;
   last_active_at?: string;
-  /** Proposed (TODO(api)): regions this analyst covers, for “My regions only”. */
+  /** GET /me only (not the sign-in response): regions this analyst covers, for “My regions only”. */
   regions?: string[];
-  /** Proposed (TODO(api)): who takes over at the end of this shift. */
+  /** GET /me only: who takes over at the end of this shift. */
   next_shift?: { user: { id: string; name: string; initials: string }; shift: string; starts_at: string } | null;
 };
 
@@ -37,6 +37,7 @@ export type Session = {
 export const ROLE_LABELS: Record<string, string> = {
   fraud_analyst: "Fraud Analyst",
   fraud_supervisor: "Fraud Supervisor",
+  head_of_fraud: "Head of Fraud",
   it_admin: "IT Admin",
   auditor: "Auditor",
   super_admin: "Super Admin",
@@ -50,8 +51,8 @@ export type IdentifyResult = {
   next: "password" | "sso";
   operator: Operator;
   email: string;
-  /** SSO only: where to send the person to sign in with their company. */
-  redirect_url?: string;
+  /** SSO only: the company identity provider and where to send the person to sign in. */
+  sso?: { provider: string; protocol: "oidc" | "saml"; redirect_url: string };
 };
 
 export const identify = (email: string) =>

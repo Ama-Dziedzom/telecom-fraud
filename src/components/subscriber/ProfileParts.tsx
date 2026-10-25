@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/Button";
 import { KeyValueList } from "@/components/ui/Drawer";
 import { Icon } from "@/components/ui/Icon";
 import { Segmented } from "@/components/ui/Segmented";
+import type { Subscriber } from "@/lib/api/fd";
 import type { Revealed } from "@/lib/api/reveal";
-import { useOutflow, useRecent, type Subscriber360 } from "@/lib/api/subscribers";
+import { useOutflow, useRecent } from "@/lib/api/subscribers";
 import { cn } from "@/lib/cn";
 import { formatClock, formatDate, formatMoney, formatWhen } from "@/lib/time";
 import Link from "next/link";
@@ -16,12 +17,14 @@ import { useState, type ReactNode } from "react";
 
 const PII = "text-medium-fg";
 const money = (m: { amount_minor: number; currency: string }, decimals = false) => formatMoney(m.amount_minor, m.currency, { decimals });
+/** Where the latest swap happened (“Adum”), from the SIM history. */
+const swapPlace = (sub: Subscriber) => sub.sim_history.find((h) => h.event === "sim_swap")?.place.split(", ")[0];
 
 /** Risk score · Wallet · KYC · SIM · Device · Cases */
-export function SummaryStrip({ sub, now }: { sub: Subscriber360; now: number }) {
+export function SummaryStrip({ sub, now }: { sub: Subscriber; now: number }) {
   const swapToday = sub.sim.last_swap_at && now - Date.parse(sub.sim.last_swap_at) < 86_400_000;
   const newDevice = now - Date.parse(sub.device.first_seen) < 86_400_000;
-  const walletDown = sub.unavailable?.includes("wallet");
+  const walletDown = sub.unavailable.includes("wallet");
   const open = sub.cases.filter((c) => c.status !== "closed").length;
   const cells: Array<[string, ReactNode]> = [
     [
@@ -56,14 +59,14 @@ export function SummaryStrip({ sub, now }: { sub: Subscriber360; now: number }) 
   );
 }
 
-export function WhyHighRisk({ sub }: { sub: Subscriber360 }) {
-  const reasons = sub.risk_reasons ?? [];
+export function WhyHighRisk({ sub }: { sub: Subscriber }) {
+  const reasons = sub.risk_reasons;
   return (
     <Card title="Why this subscriber is high-risk" icon="app/icon-zap-secondary-18" aside={<Badge label={`Score ${sub.risk_score}`} tone="critical" />}>
       <ul className="flex flex-col">
         {reasons.map((r) => (
-          <li key={r.rule} className="flex items-center gap-3 border-b border-border-subtle py-2.5 last:border-b-0">
-            <span className="rounded-md bg-brand-primary-subtle px-1.5 py-px font-mono text-mono-s text-text-brand">{r.rule}</span>
+          <li key={r.rule_id} className="flex items-center gap-3 border-b border-border-subtle py-2.5 last:border-b-0">
+            <span className="rounded-md bg-brand-primary-subtle px-1.5 py-px font-mono text-mono-s text-text-brand">{r.rule_id}</span>
             <span className="flex-1 text-body-s text-text-primary">{r.text}</span>
             <span className="text-label-s text-critical-fg">+{r.points}</span>
           </li>
@@ -142,12 +145,12 @@ export function RecentActivity({ id, now, total, onViewAll }: { id: string; now:
       <ul className="flex flex-col">
         {data?.data.map((e, i) => (
           <li key={i} className="flex items-center gap-3 py-[9px]">
-            <span className={cn("size-2 shrink-0 rounded-full", e.hot ? "bg-critical-fg" : "bg-border-strong")} />
+            <span className={cn("size-2 shrink-0 rounded-full", e.flagged ? "bg-critical-fg" : "bg-border-strong")} />
             <span className="w-[110px] shrink-0 font-mono text-mono-s text-text-secondary">
               {e.until ? `${formatClock(e.at)}-${formatClock(e.until)}` : formatWhen(e.at, now, { withTime: false })}
               {formatWhen(e.at, now) === "Yesterday" ? ` ${formatClock(e.at)}` : ""}
             </span>
-            <span className={cn("text-body-s", e.hot ? "text-text-primary" : "text-text-secondary")}>{e.text}</span>
+            <span className={cn("text-body-s", e.flagged ? "text-text-primary" : "text-text-secondary")}>{e.text}</span>
           </li>
         ))}
       </ul>
@@ -155,7 +158,7 @@ export function RecentActivity({ id, now, total, onViewAll }: { id: string; now:
   );
 }
 
-export function IdentityCard({ sub, revealed, onReveal, onHide }: { sub: Subscriber360; revealed: Revealed | null; onReveal: () => void; onHide: () => void }) {
+export function IdentityCard({ sub, revealed, onReveal, onHide }: { sub: Subscriber; revealed: Revealed | null; onReveal: () => void; onHide: () => void }) {
   return (
     <Card
       title="Identity · KYC"
@@ -171,7 +174,7 @@ export function IdentityCard({ sub, revealed, onReveal, onHide }: { sub: Subscri
           ["Name on wallet", revealed?.values.name ? <span key="n" className={PII}>{revealed.values.name}</span> : `${sub.name} (masked)`],
           ["ID", revealed?.values.ghana_card ? <span key="i" className={PII}>{revealed.values.ghana_card}</span> : `Ghana Card · ${sub.kyc.ghana_card.replace(/\*+/, "…")}`],
           ["Verified", `${formatDate(sub.kyc.verified_at)}${sub.kyc.branch ? ` · ${sub.kyc.branch}` : ""}`],
-          ["Date of birth", revealed?.values.dob ? <span key="d" className={PII}>{revealed.values.dob}</span> : sub.kyc.dob_masked ?? "Masked"],
+          ["Date of birth", revealed?.values.date_of_birth ? <span key="d" className={PII}>{formatDate(revealed.values.date_of_birth)}</span> : sub.kyc.date_of_birth],
           ["Alternate number", revealed?.values.alt_msisdn ? <span key="a" className={PII}>{revealed.values.alt_msisdn}</span> : sub.contact.alt_msisdn],
         ]}
       />
@@ -179,7 +182,7 @@ export function IdentityCard({ sub, revealed, onReveal, onHide }: { sub: Subscri
   );
 }
 
-export function SimDeviceCard({ sub, now }: { sub: Subscriber360; now: number }) {
+export function SimDeviceCard({ sub, now }: { sub: Subscriber; now: number }) {
   const swapToday = sub.sim.last_swap_at && now - Date.parse(sub.sim.last_swap_at) < 86_400_000;
   const newDevice = now - Date.parse(sub.device.first_seen) < 86_400_000;
   return (
@@ -188,9 +191,9 @@ export function SimDeviceCard({ sub, now }: { sub: Subscriber360; now: number })
         rows={[
           ["SIM (ICCID)", sub.sim.iccid],
           ["SIM age", swapToday ? <span key="s" className="text-critical-fg">Swapped today {formatClock(sub.sim.last_swap_at!)}</span> : `${sub.sim.age_months} months`],
-          ["Swap agent", sub.sim.swap_agent ? `${sub.sim.swap_agent} · Adum` : "—"],
+          ["Swap agent", sub.sim.swap_agent ? [sub.sim.swap_agent, swapPlace(sub)].filter(Boolean).join(" · ") : "—"],
           ["Device now", <span key="d" className={newDevice ? "text-critical-fg" : undefined}>{sub.device.model}{newDevice ? ` · since ${formatClock(sub.device.first_seen)}` : ""}</span>],
-          ["Usual device", `${sub.device.usual_model}${sub.device.usual_months ? ` · ${sub.device.usual_months} months` : ""}`],
+          ["Usual device", `${sub.device.usual_model} · ${sub.device.usual_months} months`],
         ]}
       />
       <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -205,8 +208,8 @@ export function SimDeviceCard({ sub, now }: { sub: Subscriber360; now: number })
   );
 }
 
-export function MobileMoneyCard({ sub, onRetry }: { sub: Subscriber360; onRetry: () => void }) {
-  if (sub.unavailable?.includes("wallet")) {
+export function MobileMoneyCard({ sub, onRetry }: { sub: Subscriber; onRetry: () => void }) {
+  if (sub.unavailable.includes("wallet")) {
     return (
       <Card title="Mobile money" icon="app/icon-wallet-18" className="border-medium-border">
         <EmptyState icon="app/icon-wifi-off-medium-22" tone="medium" size="md" title="Couldn’t reach the MoMo service" className="border-0 px-2 py-4">
@@ -226,10 +229,10 @@ export function MobileMoneyCard({ sub, onRetry }: { sub: Subscriber360; onRetry:
       <KeyValueList
         rows={[
           ["Wallet", `Tier ${w.tier} · limit ${money(w.daily_limit).replace(",000", "k")}/day`],
-          ["Status", <span key="s" className={w.status === "frozen" ? "text-critical-fg" : undefined}>{w.status === "frozen" ? `Frozen${w.frozen_at ? ` ${formatClock(w.frozen_at)}` : ""}${w.frozen_by ? ` by ${w.frozen_by}` : ""}` : "Active"}</span>],
+          ["Status", <span key="s" className={w.status === "frozen" ? "text-critical-fg" : undefined}>{w.status === "frozen" ? `Frozen${w.frozen_at ? ` ${formatClock(w.frozen_at)}` : ""}${w.frozen_by ? ` by ${w.frozen_by.name.split(" ")[0]}` : ""}` : "Active"}</span>],
           ["Balance", money(w.balance, true)],
-          ["Usual recipients", w.usual_recipients ?? "—"],
-          ["New recipients today", <span key="n" className={w.new_recipients_today ? "text-critical-fg" : undefined}>{w.new_recipients_today ?? 0}</span>],
+          ["Usual recipients", String(w.usual_recipients)],
+          ["New recipients today", <span key="n" className={w.new_recipients_today ? "text-critical-fg" : undefined}>{w.new_recipients_today}</span>],
         ]}
       />
       <Link href={`/subscribers/${sub.id}/patterns`} className="text-label-s text-text-brand hover:underline">

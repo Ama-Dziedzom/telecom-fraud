@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
-import { useSubscriber360 } from "@/lib/api/subscribers";
+import { useSubscriber } from "@/lib/api/fd";
+import type { LinkedCase } from "@/lib/api/subscribers";
 import { cn } from "@/lib/cn";
 import { useState, type ReactNode } from "react";
 import { useSWRConfig } from "swr";
@@ -36,7 +37,7 @@ export function CheckLayout({
   loading: boolean;
   children: ReactNode;
 }) {
-  const { data: sub } = useSubscriber360(subscriberId);
+  const { data: sub } = useSubscriber(subscriberId);
   const toast = useToast();
   const { mutate } = useSWRConfig();
   const [adding, setAdding] = useState(false);
@@ -46,7 +47,7 @@ export function CheckLayout({
     if (!openCase) return;
     setAdding(true);
     try {
-      // TODO(api): proposed JSON form of POST /cases/{id}/evidence for a saved check.
+      // TODO(api): POST /cases/{id}/evidence takes files and transactions in 0.2, not a saved check.
       await apiFetch("POST", `/cases/${openCase.id}/evidence`, { title: evidenceTitle, check: { subscriber_id: subscriberId, kind: section } });
       await mutate(`/cases/${openCase.id}/evidence`);
       toast({ tone: "success", title: `Added to ${openCase.id}`, body: `“${evidenceTitle}” is on the Evidence tab.` });
@@ -126,16 +127,22 @@ export function Verdict({
   );
 }
 
+const OUTCOME: Record<string, string> = {
+  confirmed_fraud: "Confirmed fraud",
+  false_positive: "False positive",
+  inconclusive: "Inconclusive",
+};
+
 /** “+233 24 *** 6610  FD-2998 · Confirmed fraud” rows. */
-export function LinkedNumbers({ rows, sims }: { rows: Array<{ msisdn: string; sim?: string; case: { id: string; label: string } | null }>; sims?: boolean }) {
+export function LinkedNumbers({ rows, sims }: { rows: Array<{ msisdn: string; iccid?: string; case: LinkedCase | null }>; sims?: boolean }) {
   return (
     <ul className="flex flex-col">
       {rows.map((r) => (
         <li key={r.msisdn} className="flex items-center gap-3 py-2.5">
           <Icon name="app/icon-sim-tertiary-16" size={16} />
-          {sims && r.sim && <span className="font-mono text-mono-s text-text-secondary">{r.sim}</span>}
+          {sims && r.iccid && <span className="font-mono text-mono-s text-text-secondary">{r.iccid}</span>}
           <span className="font-mono text-mono-m text-text-primary">{r.msisdn}</span>
-          {r.case ? <Badge label={`${r.case.id} · ${r.case.label}`} tone="critical" /> : <Badge label="No case yet" tone="neutral" />}
+          {r.case ? <Badge label={`${r.case.id} · ${OUTCOME[r.case.outcome] ?? r.case.outcome.replace(/_/g, " ")}`} tone="critical" /> : <Badge label="No case yet" tone="neutral" />}
         </li>
       ))}
     </ul>

@@ -4,35 +4,30 @@ import { AppHeader } from "@/components/app/AppHeader";
 import { PageBody, PageHead } from "@/components/app/AppShell";
 import { Skeleton, Tabs } from "@/components/app/Card";
 import { EmptyState } from "@/components/app/EmptyState";
-import { NewReportModal, TEMPLATES } from "@/components/reports/ReportModals";
+import { formatLabel, NewReportModal, nextRunLabel, scheduleLabel, sharedLabel, templateLabel, TEMPLATES, type Report } from "@/components/reports/ReportModals";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Menu, MenuDivider, MenuItem } from "@/components/ui/Menu";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
-import { useApi } from "@/lib/api/fd";
+import { useApi, type Page } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
-import { formatClockOrDay, useNow } from "@/lib/time";
+import { formatClock, formatClockOrDay, useNow } from "@/lib/time";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 
-type Report = {
-  id: string;
-  name: string;
-  template_label: string;
-  schedule: string | null;
-  next_run_at: string | null;
-  status: "ready" | "building" | "failed";
-  progress_pct?: number;
-  last_run_at: string;
-  format: string;
-  shared_with: string[];
-  paused?: boolean;
-  error?: { title: string; detail: string; suggest_format: string };
-};
-type List = { data: Report[]; counts: { all: number; scheduled: number; shared: number } };
+type List = Page<Report> & { counts: { all: number; scheduled: number; shared: number } };
+
+/** Why a report failed, in the app’s words, and the format to retry in. */
+function failureCopy(r: Report) {
+  if (r.error?.code === "export_too_large" && r.format !== "csv") {
+    return { detail: `It’s over the size limit for ${formatLabel(r.format)}. Retry as CSV (no limit), or narrow the date range.`, retry: "csv" as const };
+  }
+  if (r.error?.code === "export_too_large") return { detail: "It’s over the size limit. Narrow the date range and try again.", retry: null };
+  return { detail: "Something went wrong while it was being generated. Try again.", retry: r.format };
+}
 
 const when = (iso: string, now: number) => {
   const d = formatClockOrDay(iso, now);
@@ -55,21 +50,20 @@ export default function ReportsPage() {
   const key = `/reports?${qs}`;
   const { data } = useApi<List>(key, { refreshInterval: (d) => (d?.data.some((r) => r.status === "building") ? 1500 : 0) });
   const failed = data?.data.find((r) => r.status === "failed");
+  const failure = failed && failureCopy(failed);
   const empty = data && data.counts.all === 0 && !q;
   const refresh = () => mutate((k) => typeof k === "string" && k.startsWith("/reports"));
 
   const download = async (r: Report) => {
     const res = await apiFetch<{ url: string }>("GET", `/reports/${r.id}/download`);
-    toast({ tone: "success", title: `Downloading ${r.name}`, body: `${r.format} · link valid for 1 hour.` });
+    toast({ tone: "success", title: `Downloading ${r.name}`, body: `${formatLabel(r.format)} · link valid for 24 hours.` });
     void res;
   };
   const retry = async (r: Report, format?: string) => {
-    // TODO(api): proposed POST /reports/{id}/retry {format}.
     await apiFetch("POST", `/reports/${r.id}/retry`, { format: format ?? r.format });
     await refresh();
   };
   const scheduleAction = async (r: Report, action: "run" | "pause" | "resume" | "delete") => {
-    // TODO(api): proposed POST /reports/{id}/run, PATCH /reports/{id}/schedule {paused}, DELETE /reports/{id}.
     if (action === "run") await apiFetch("POST", `/reports/${r.id}/run`);
     else if (action === "delete") await apiFetch("DELETE", `/reports/${r.id}`);
     else await apiFetch("PATCH", `/reports/${r.id}/schedule`, { paused: action === "pause" });
@@ -91,19 +85,21 @@ export default function ReportsPage() {
           }
         />
 
-        {failed?.error && (
+        {failed && failure && (
           <>
             <section role="alert" className="flex items-start gap-3 rounded-xl border border-critical-border bg-critical-bg px-4 py-3">
               <Icon name="icon-alert-circle-critical-20" size={18} className="mt-0.5 shrink-0" />
               <span className="flex flex-col gap-0.5">
-                <span className="text-label-m text-critical-fg">{failed.error.title}</span>
-                <span className="text-body-s text-text-primary">{failed.error.detail}</span>
+                <span className="text-label-m text-critical-fg">“{failed.name}” couldn’t be generated</span>
+                <span className="text-body-s text-text-primary">{failure.detail}</span>
               </span>
             </section>
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => retry(failed, failed.error!.suggest_format)} iconLeft={<Icon name="app/icon-refresh-white-18" size={14} />}>
-                Retry as {failed.error.suggest_format}
-              </Button>
+              {failure.retry && (
+                <Button size="sm" onClick={() => retry(failed, failure.retry!)} iconLeft={<Icon name="app/icon-refresh-white-18" size={14} />}>
+                  Retry as {formatLabel(failure.retry)}
+                </Button>
+              )}
               <Button variant="secondary" size="sm" onClick={() => setDialog({ template: "case_list" })}>
                 Edit range
               </Button>
@@ -205,14 +201,14 @@ export default function ReportsPage() {
                   >
                     <td className="py-3 pl-5">
                       <p className="text-label-m text-text-primary">{r.name}</p>
-                      <p className="text-caption text-text-secondary">{r.template_label}</p>
+                      <p className="text-caption text-text-secondary">{templateLabel(r.template)}</p>
                     </td>
-                    <td className="py-3 text-body-s text-text-primary">{r.schedule ?? "One-off"}</td>
+                    <td className="py-3 text-body-s text-text-primary">{scheduleLabel(r.schedule)}</td>
                     {tab === "scheduled" ? (
                       <>
-                        <td className="py-3 text-body-s text-text-primary">{r.paused || !r.next_run_at ? "—" : `${new Date(r.next_run_at).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Accra" })} ${r.next_run_at.slice(11, 16)}`}</td>
-                        <td className="py-3 text-body-s text-text-secondary">{r.shared_with.length ? r.shared_with.join(" ") : "Only me"}</td>
-                        <td className="py-3">{r.paused ? <Badge label="Paused" tone="neutral" dot /> : <Badge label="Active" tone="success" dot />}</td>
+                        <td className="py-3 text-body-s text-text-primary">{r.schedule?.paused || !r.next_run_at ? "—" : nextRunLabel(r.next_run_at)}</td>
+                        <td className="py-3 text-body-s text-text-secondary">{sharedLabel(r.shared_with)}</td>
+                        <td className="py-3">{r.schedule?.paused ? <Badge label="Paused" tone="neutral" dot /> : <Badge label="Active" tone="success" dot />}</td>
                       </>
                     ) : (
                       <>
@@ -220,7 +216,7 @@ export default function ReportsPage() {
                           {r.status === "building" ? (
                             <span className="flex items-center gap-1.5 text-label-s text-text-brand">
                               <Icon name="spinner-brand-20" size={14} className="animate-spin" />
-                              Generating · {r.progress_pct}%
+                              Generating · {r.progress_pct ?? 0}%
                             </span>
                           ) : r.status === "failed" ? (
                             <Badge label="Failed" tone="critical" dot />
@@ -228,11 +224,11 @@ export default function ReportsPage() {
                             <Badge label="Ready" tone="success" dot />
                           )}
                         </td>
-                        <td className="py-3 text-body-s text-text-secondary">{r.status === "building" ? `Started ${r.last_run_at.slice(11, 16)}` : when(r.last_run_at, now)}</td>
+                        <td className="py-3 text-body-s text-text-secondary">{r.status === "building" ? `Started ${formatClock(r.last_run_at)}` : when(r.last_run_at, now)}</td>
                         <td className="py-3">
-                          <Badge label={r.format} tone="neutral" />
+                          <Badge label={formatLabel(r.format)} tone="neutral" />
                         </td>
-                        <td className="py-3 text-body-s text-text-secondary">{r.shared_with.length ? r.shared_with.join(" ") : "Only me"}</td>
+                        <td className="py-3 text-body-s text-text-secondary">{sharedLabel(r.shared_with)}</td>
                       </>
                     )}
                     <td className="py-3 pr-5 text-right" onClick={(e) => e.stopPropagation()}>
@@ -259,9 +255,9 @@ export default function ReportsPage() {
                               <MenuItem icon="app/icon-sliders-18" title="Edit schedule" onSelect={() => (close(), setDialog({ template: "case_list", schedule: true }))} />
                               <MenuItem
                                 icon="app/icon-clock-secondary-18"
-                                title={r.paused ? "Resume" : "Pause"}
-                                description={r.paused ? undefined : "Keeps it listed; no emails"}
-                                onSelect={() => (close(), scheduleAction(r, r.paused ? "resume" : "pause"))}
+                                title={r.schedule?.paused ? "Resume" : "Pause"}
+                                description={r.schedule?.paused ? undefined : "Keeps it listed; no emails"}
+                                onSelect={() => (close(), scheduleAction(r, r.schedule?.paused ? "resume" : "pause"))}
                               />
                               <MenuDivider />
                               <MenuItem icon="app/icon-x-critical-16" title="Delete" tone="critical" onSelect={() => (close(), scheduleAction(r, "delete"))} />

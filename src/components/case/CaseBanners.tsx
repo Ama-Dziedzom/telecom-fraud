@@ -9,12 +9,12 @@ import { Icon } from "@/components/ui/Icon";
 import { Menu, MenuItem, MenuLabel } from "@/components/ui/Menu";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
-import { useReversal, type CaseDetail, type Reversal } from "@/lib/api/cases";
+import { useAction, useReversal, type CaseDetail, type Escalation, type Reversal } from "@/lib/api/cases";
 import { cn } from "@/lib/cn";
 import { formatClock, formatMoney } from "@/lib/time";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
-import { partLabel } from "./ProtectDialogs";
+import { partError, partLabel } from "./ProtectDialogs";
 
 const money = (m: { amount_minor: number; currency: string }) => formatMoney(m.amount_minor, m.currency);
 
@@ -23,8 +23,10 @@ export function ActionBanner({ detail }: { detail: CaseDetail }) {
   const { mutate } = useSWRConfig();
   const toast = useToast();
   const [retrying, setRetrying] = useState(false);
-  const a = detail.latest_action;
-  if (!a || a.status !== "partial") return null;
+  const partial = detail.latest_action?.status === "partial";
+  // The case only says how the action went; its parts come from the action.
+  const { data: a } = useAction(partial ? detail.latest_action?.id : null);
+  if (!partial || !a) return null;
   const applied = a.parts.filter((p) => p.status === "applied").length;
   const failed = a.parts.find((p) => p.status === "failed");
 
@@ -59,10 +61,10 @@ export function ActionBanner({ detail }: { detail: CaseDetail }) {
               </span>
               {p.status === "failed" ? (
                 <span className="max-w-[460px] text-caption text-critical-fg">
-                  {(p as { detail?: string }).detail ?? "It didn’t go through"} · error {p.code}. {p.kind === "suspend_sim" ? "The fraudster may still receive SMS on this number." : ""}
+                  {partError(p.code)}. {p.kind === "suspend_sim" ? "The fraudster may still receive SMS on this number." : ""}
                 </span>
               ) : (
-                (p as { detail?: string }).detail && <span className="text-caption text-text-secondary">{(p as { detail?: string }).detail}</span>
+                p.reference && <span className="text-caption text-text-secondary">{[p.at && formatClock(p.at), p.reference].filter(Boolean).join(" · ")}</span>
               )}
             </span>
           </li>
@@ -75,10 +77,12 @@ export function ActionBanner({ detail }: { detail: CaseDetail }) {
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => {
-            // TODO(api): proposed POST /actions/{id}/noc-ticket.
-            void apiFetch("POST", `/actions/${a.id}/noc-ticket`).catch(() => undefined);
-            toast({ title: "Raised with the NOC", body: "Network operations will look at the provisioning failure." });
+          onClick={async () => {
+            const t = await apiFetch<{ ticket: string; eta_minutes: number }>("POST", `/actions/${a.id}/noc-ticket`).catch(() => null);
+            toast({
+              title: t ? `Raised with the NOC · ${t.ticket}` : "Raised with the NOC",
+              body: `Network operations will look at the provisioning failure${t ? ` within about ${t.eta_minutes} min` : ""}.`,
+            });
           }}
           iconLeft={<Icon name="app/icon-escalate-18" size={16} />}
         >
@@ -89,6 +93,11 @@ export function ActionBanner({ detail }: { detail: CaseDetail }) {
     </section>
   );
 }
+
+const TARGET_LABEL: Record<Escalation["target"], string> = { supervisor: "Fraud supervisor", legal: "Legal & compliance", momo_ops: "MoMo operations" };
+const ANSWER_LABEL: Record<Exclude<Escalation["status"], "waiting">, string> = { approved: "Approved", declined: "Declined" };
+/** “Approved” — how a supervisor answered. */
+export const escalationAnswer = (status: Escalation["status"]) => (status === "waiting" ? "Waiting" : (ANSWER_LABEL[status] ?? status));
 
 /** D12/D13 · Escalation waiting or answered. */
 export function EscalationBanner({ detail }: { detail: CaseDetail }) {
@@ -101,12 +110,11 @@ export function EscalationBanner({ detail }: { detail: CaseDetail }) {
       <Avatar initials={e.to.initials} />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <p className="flex flex-wrap items-center gap-2 text-label-m text-text-brand">
-          {waiting ? `Escalated to ${e.to.name}${e.to.role ? ` (${e.to.role})` : ""} · ${e.priority[0].toUpperCase()}${e.priority.slice(1)}` : `${e.to.name.split(" ")[0]} answered your escalation`}
-          {!waiting && e.answered_at && <span className="text-caption text-text-tertiary">{formatClock(e.answered_at)}</span>}
-          {!waiting && e.answer && <Badge label={e.answer.label} tone="info" />}
+          {waiting ? `Escalated to ${e.to.name} (${TARGET_LABEL[e.target] ?? e.target}) · ${e.priority[0].toUpperCase()}${e.priority.slice(1)}` : `${e.to.name.split(" ")[0]} answered your escalation`}
+          {!waiting && <Badge label={escalationAnswer(e.status)} tone={e.status === "approved" ? "info" : "neutral"} />}
         </p>
         <p className="text-body-s text-text-primary">
-          {waiting ? `“${e.question}” Sent ${formatClock(e.sent_at)} · reply due by ${formatClock(e.reply_due_at)}.` : e.answer?.comment}
+          {waiting ? `“${e.question}” Sent ${formatClock(e.sent_at)} · reply due by ${formatClock(e.reply_due_at)}.` : e.answer}
         </p>
       </div>
       {/* TODO(api): no messaging endpoint; Message/Reply stay disabled. */}
@@ -118,7 +126,6 @@ export function EscalationBanner({ detail }: { detail: CaseDetail }) {
           variant="ghost"
           size="sm"
           onClick={async () => {
-            // TODO(api): proposed DELETE /escalations/{id}.
             await apiFetch("DELETE", `/escalations/${e.id}`).catch(() => undefined);
             await mutate(`/cases/${detail.id}`);
           }}
@@ -200,7 +207,8 @@ export function ReversalCard({ id }: { id: string }) {
   );
 }
 
-const RESULT: Record<Reversal["results"][number]["result"], (r: Reversal["results"][number]) => { label: string; tone: "success" | "critical" | "medium" | "neutral" }> = {
+type ReversalResult = NonNullable<Reversal["results"]>[number];
+const RESULT: Record<ReversalResult["result"], (r: ReversalResult) => { label: string; tone: "success" | "critical" | "medium" | "neutral" }> = {
   recovered: (r) => ({ label: `Recovered ${money(r.recovered)}`, tone: "success" }),
   cashed_out: () => ({ label: "Cashed out · nothing left", tone: "critical" }),
   declined: (r) => ({ label: `Declined · ${r.reason ?? "no reason given"}`, tone: "medium" }),
@@ -211,12 +219,13 @@ const RESULT: Record<Reversal["results"][number]["result"], (r: Reversal["result
 export function ReversalResults({ id }: { id: string }) {
   const toast = useToast();
   const { data } = useReversal(id);
-  if (!data || data.status !== "closed") return null;
-  const recovered = data.results.reduce((s, r) => s + r.recovered.amount_minor, 0);
-  const sent = data.results.reduce((s, r) => s + r.sent.amount_minor, 0);
+  if (!data || data.status !== "closed" || !data.results) return null;
+  const results = data.results;
+  const recovered = results.reduce((s, r) => s + r.recovered.amount_minor, 0);
+  const sent = results.reduce((s, r) => s + r.sent.amount_minor, 0);
   const lost = sent - recovered;
-  const declined = data.results.filter((r) => r.result === "declined");
-  const cashed = data.results.filter((r) => r.result === "cashed_out").length;
+  const declined = results.filter((r) => r.result === "declined");
+  const cashed = results.filter((r) => r.result === "cashed_out").length;
   return (
     <>
       <Banner tone="warning" title={`${data.id} closed · ${formatMoney(recovered, "GHS")} of ${formatMoney(sent, "GHS").replace("GHS ", "")} recovered`}>
@@ -235,7 +244,7 @@ export function ReversalResults({ id }: { id: string }) {
               </tr>
             </thead>
             <tbody>
-              {data.results.map((r) => {
+              {results.map((r) => {
                 const res = RESULT[r.result](r);
                 return (
                   <tr key={r.payment_id} className="border-b border-border-subtle last:border-b-0">
@@ -259,8 +268,8 @@ export function ReversalResults({ id }: { id: string }) {
             variant="secondary"
             size="sm"
             onClick={() => {
-              // TODO(api): proposed POST /reversals/{id}/appeal.
-              void apiFetch("POST", `/reversals/${data.id}/appeal`).catch(() => undefined);
+              // The appeal quotes the decline; the evidence for it goes on the Evidence tab.
+              void apiFetch("POST", `/reversals/${data.id}/appeal`, { reason: declined[0]?.reason ?? "Funds were still in the recipient wallet." }).catch(() => undefined);
               toast({ title: "Appeal started", body: "Attach evidence on the Evidence tab; MoMo ops will review it." });
             }}
             iconLeft={<Icon name="app/icon-file-plus-16" size={16} />}
@@ -270,10 +279,9 @@ export function ReversalResults({ id }: { id: string }) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => {
-              // TODO(api): proposed POST /reversals/{id}/accept-loss.
-              void apiFetch("POST", `/reversals/${data.id}/accept-loss`).catch(() => undefined);
-              toast({ tone: "success", title: `Loss of ${formatMoney(lost, "GHS")} accepted`, body: "It will be recorded when you resolve the case." });
+            onClick={async () => {
+              const r = await apiFetch<{ accepted_loss: { amount_minor: number; currency: string } }>("POST", `/reversals/${data.id}/accept-loss`, {}).catch(() => null);
+              toast({ tone: "success", title: `Loss of ${r ? money(r.accepted_loss) : formatMoney(lost, "GHS")} accepted`, body: "It will be recorded when you resolve the case." });
             }}
           >
             Accept {formatMoney(lost, "GHS")} loss
@@ -297,7 +305,7 @@ export function ExportMenu({ detail }: { detail: CaseDetail }) {
     if (id === "evidence") {
       await apiFetch("POST", "/exports/evidence-pack", { case_id: detail.id }).catch(() => undefined);
     }
-    // TODO(api): proposed GET /cases/{id}/report.pdf and /cases/{id}/transactions.csv; the brief supports ?format=pdf.
+    // TODO(api): 0.2 still has no case report PDF or transactions CSV; only the brief and the evidence pack export.
     toast({ tone: "success", title: "Export started", body: `${items.find((i) => i.id === id)?.title} for ${detail.id}. We’ll let you know when it’s ready.` });
   };
   return (

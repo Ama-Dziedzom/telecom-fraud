@@ -5,7 +5,7 @@ import { PageBody, PageHead } from "@/components/app/AppShell";
 import { Tabs } from "@/components/app/Card";
 import { EmptyState } from "@/components/app/EmptyState";
 import { CaseBoard } from "@/components/cases/CaseBoard";
-import { NewCaseModal, ProspectModal, SaveViewModal } from "@/components/cases/CaseModals";
+import { BulkNoteModal, NewCaseModal, ProspectModal, SaveViewModal } from "@/components/cases/CaseModals";
 import { CaseTable, Pagination } from "@/components/cases/CaseTable";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Choice";
@@ -13,22 +13,20 @@ import { Icon } from "@/components/ui/Icon";
 import { Menu, MenuDivider, MenuItem, MenuLabel } from "@/components/ui/Menu";
 import { Segmented } from "@/components/ui/Segmented";
 import { useToast } from "@/components/ui/Toast";
-import { ApiError, apiFetch } from "@/lib/api/client";
-import { useApi, type CaseStatus, type CaseSummary } from "@/lib/api/fd";
+import { ApiError, apiFetch, isProblem } from "@/lib/api/client";
+import { fraudTypeLabel, useApi, useMyCases, type CaseStatus, type CaseSummary, type Page, type PersonRef } from "@/lib/api/fd";
 import { useNow } from "@/lib/time";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 
 type Scope = "mine" | "team" | "all";
-type CaseList = {
-  data: CaseSummary[];
-  counts?: { mine: number; team: number; all: number; by_status: Record<string, number> };
-  closed_this_month?: number;
-  capacity?: { open_cases: number; limit: number };
-};
-type View = { id: string; name: string; owner: "me" | "team"; filters: Filters };
-type Filters = { risk?: string[]; region?: string[]; status?: string[] };
+/** The API calls the team queue `team_queue`. */
+const VIEW: Record<Scope, string> = { mine: "mine", team: "team_queue", all: "all" };
+type View = { id: string; name: string; owner: PersonRef; shared: boolean; default: boolean; filters: Filters };
+/** Saved views can carry a single value (`period: "7d"`) as well as lists. */
+type Filters = Record<string, string | string[] | undefined>;
+const valuesOf = (v: Filters[string]) => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
 
 const STATUS_TABS: Array<{ id: "all" | CaseStatus; label: string }> = [
   { id: "all", label: "All" },
@@ -40,8 +38,11 @@ const STATUS_TABS: Array<{ id: "all" | CaseStatus; label: string }> = [
   { id: "closed", label: "Closed" },
 ];
 
-const CHIP_LABEL: Record<string, string> = { risk: "Risk", region: "Region", status: "Status" };
+const CHIP_LABEL: Record<string, string> = { severity: "Risk", region: "Region", status: "Status", fraud_type: "Type", period: "Period", sla: "SLA" };
 const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const chipValue = (key: string, v: string) =>
+  key === "fraud_type" ? fraudTypeLabel(v) : key === "period" ? v.replace(/^(\d+)d$/, "Last $1 days") : titleCase(v.replace(/_/g, " "));
+const PER_PAGE = 25;
 
 function exportCsv(rows: CaseSummary[]) {
   const head = "case,subscriber,type,risk,status,assignee,alerts,sla_due_at";
@@ -69,23 +70,29 @@ export default function CasesPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [picking, setPicking] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<null | "new" | "prospect" | "save_view">(params.get("new") === "1" ? "new" : null);
+  const [dialog, setDialog] = useState<null | "new" | "prospect" | "save_view" | "note">(params.get("new") === "1" ? "new" : null);
 
-  const query = new URLSearchParams({ view: scope });
+  const query = new URLSearchParams({ view: VIEW[scope] });
   if (q.trim()) query.set("q", q.trim());
   if (status !== "all") query.set("status", status);
-  for (const [k, v] of Object.entries(filters)) if (v?.length) query.set(k, v.join(","));
+  for (const [k, v] of Object.entries(filters)) if (valuesOf(v).length) query.set(k, valuesOf(v).join(","));
+  // My cases and All cases are numbered pages; the team queue is one list.
+  if (scope !== "team" && page > 1) query.set("page", String(page));
   // Demo hook for the error state (G9).
   if (params.get("demo")) query.set("demo", params.get("demo")!);
-  const { data, error, isLoading } = useApi<CaseList>(layout === "list" ? `/cases?${query}` : null);
+  const { data, error, isLoading } = useApi<Page<CaseSummary>>(layout === "list" ? `/cases?${query}` : null);
+  // Counts, capacity and closed-this-month come with My cases (shared with the sidebar).
+  const { data: mine } = useMyCases();
   const { data: views } = useApi<{ data: View[] }>("/views");
 
   const rows = data?.data ?? [];
-  const counts = data?.counts;
-  const chips = Object.entries(filters).flatMap(([k, vs]) => (vs ?? []).map((v: string) => [k, v] as const));
+  const counts = mine?.counts;
+  const chips = Object.entries(filters).flatMap(([k, vs]) => valuesOf(vs).map((v) => [k, v] as const));
   const activeView = views?.data.find((v) => v.id === viewId);
   const team = scope === "team";
-  const room = data?.capacity ? data.capacity.limit - data.capacity.open_cases : null;
+  const capacity = mine?.capacity;
+  const room = capacity ? capacity.limit - capacity.open_cases : null;
+  const pages = Math.max(1, Math.ceil((data?.total ?? rows.length) / PER_PAGE));
   const loadFailed = error && !(error instanceof ApiError && error.status === 404);
 
   const changeScope = (s: Scope) => {
@@ -100,6 +107,7 @@ export default function CasesPage() {
     setFilters(v?.filters ?? {});
     if (v) setScope("all");
     setStatus("all");
+    setPage(1);
   };
 
   const pickUp = async (ids: string[]) => {
@@ -116,7 +124,7 @@ export default function CasesPage() {
         action: ids.length === 1 ? { label: "Open", onClick: () => router.push(`/cases/${ids[0]}`) } : undefined,
       });
     } catch (err) {
-      if (err instanceof ApiError && err.code === "capacity_exceeded") {
+      if (isProblem(err, "capacity_exceeded")) {
         toast({ title: err.problem.title ?? "Pick-up limit reached", body: `${err.problem.detail} Pick fewer, or hand one over first.` });
       } else {
         toast({ title: "Couldn’t pick up", body: "Nothing was assigned. Try again." });
@@ -130,7 +138,7 @@ export default function CasesPage() {
     layout === "board"
       ? "By stage · drag a card to move it, if your role allows."
       : counts
-        ? `${counts.mine} assigned to you · ${counts.team} waiting in the team queue`
+        ? `${counts.mine} assigned to you · ${counts.team_queue} waiting in the team queue`
         : " ";
 
   return (
@@ -175,10 +183,10 @@ export default function CasesPage() {
                 <Checkbox label="Clear selection" hideLabel checked indeterminate={selected.size < rows.length} onChange={() => setSelected(new Set())} />
                 <p className="text-label-m text-text-inverse">
                   {selected.size} {selected.size === 1 ? "case" : "cases"} selected
-                  {room !== null && data?.capacity && (
+                  {room !== null && capacity && (
                     <span className="text-body-s text-[#c9c6e6]">
                       {" "}
-                      · You have {data.capacity.open_cases} open, room for {room} more
+                      · You have {capacity.open_cases} open, room for {room} more
                     </span>
                   )}
                 </p>
@@ -196,8 +204,7 @@ export default function CasesPage() {
                 )}
                 <button
                   type="button"
-                  // TODO(api): no bulk-note endpoint; proposed POST /cases/notes {case_ids, body}.
-                  onClick={() => toast({ title: "Bulk notes aren’t available yet", body: "Add the note on each case for now." })}
+                  onClick={() => setDialog("note")}
                   className="flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-label-s text-text-inverse hover:bg-white/15"
                 >
                   <Icon name="app/icon-message-white-16" size={16} />
@@ -223,7 +230,7 @@ export default function CasesPage() {
                   onChange={changeScope}
                   options={[
                     { id: "mine", label: "My cases", count: counts?.mine },
-                    { id: "team", label: "Team queue", count: counts?.team },
+                    { id: "team", label: "Team queue", count: counts?.team_queue },
                     { id: "all", label: "All cases", count: counts?.all },
                   ]}
                 />
@@ -262,7 +269,7 @@ export default function CasesPage() {
                         <div key={owner} className="flex flex-col gap-0.5">
                           <MenuLabel>{owner === "me" ? "My views" : "Team views"}</MenuLabel>
                           {views?.data
-                            .filter((v) => v.owner === owner)
+                            .filter((v) => v.shared === (owner === "team"))
                             .map((v) => (
                               <MenuItem
                                 key={v.id}
@@ -301,7 +308,7 @@ export default function CasesPage() {
                     <div className="flex flex-col gap-3 p-2">
                       {(
                         [
-                          ["risk", ["critical", "high", "medium", "low"]],
+                          ["severity", ["critical", "high", "medium", "low"]],
                           ["region", ["Greater Accra", "Ashanti", "Central", "Western"]],
                         ] as const
                       ).map(([key, options]) => (
@@ -311,13 +318,14 @@ export default function CasesPage() {
                             <Checkbox
                               key={o}
                               label={titleCase(o)}
-                              checked={filters[key]?.includes(o) ?? false}
-                              onChange={(e) =>
+                              checked={valuesOf(filters[key]).includes(o)}
+                              onChange={(e) => {
+                                setPage(1);
                                 setFilters((f) => ({
                                   ...f,
-                                  [key]: e.target.checked ? [...(f[key] ?? []), o] : (f[key] ?? []).filter((x) => x !== o),
-                                }))
-                              }
+                                  [key]: e.target.checked ? [...valuesOf(f[key]), o] : valuesOf(f[key]).filter((x) => x !== o),
+                                }));
+                              }}
                             />
                           ))}
                         </fieldset>
@@ -333,13 +341,13 @@ export default function CasesPage() {
                 Filtered by
                 {chips.map(([k, v]) => (
                   <span key={k + v} className="flex items-center gap-1.5 rounded-full bg-brand-primary-subtle px-2.5 py-1 text-label-s text-text-brand">
-                    {CHIP_LABEL[k]}: {titleCase(v)}
+                    {CHIP_LABEL[k] ?? titleCase(k)}: {chipValue(k, v)}
                     <button
                       type="button"
                       aria-label={`Remove ${CHIP_LABEL[k]} ${v}`}
                       onClick={() => {
                         setViewId(null);
-                        setFilters((f) => ({ ...f, [k]: (f[k as keyof Filters] ?? []).filter((x) => x !== v) }));
+                        setFilters((f) => ({ ...f, [k]: valuesOf(f[k]).filter((x) => x !== v) }));
                       }}
                       className="flex rounded"
                     >
@@ -362,7 +370,12 @@ export default function CasesPage() {
                 tabs={STATUS_TABS.map((t) => ({
                   id: t.id,
                   label: t.label,
-                  count: t.id === "all" ? Object.entries(counts?.by_status ?? {}).reduce((s, [k, n]) => (k === "closed" ? s : s + n), 0) : counts?.by_status[t.id],
+                  count:
+                    t.id === "all"
+                      ? Object.entries(counts?.by_status ?? {}).reduce((s, [k, n]) => (k === "closed" ? s : s + (n ?? 0)), 0)
+                      : t.id === "closed"
+                        ? (counts?.by_status.closed ?? mine?.closed_this_month)
+                        : counts?.by_status[t.id],
                 }))}
               />
             )}
@@ -419,13 +432,13 @@ export default function CasesPage() {
                   <Pagination
                     summary={
                       team
-                        ? `Showing ${rows.length} of ${counts?.team ?? rows.length} unassigned`
+                        ? `Showing ${rows.length} of ${counts?.team_queue ?? rows.length} unassigned`
                         : chips.length || q
-                          ? `Showing ${rows.length} of ${rows.length} matching`
-                          : `Showing ${rows.length} of ${rows.length} open · ${data?.closed_this_month ?? 0} closed this month`
+                          ? `Showing ${rows.length} of ${data?.total ?? rows.length} matching`
+                          : `Showing ${rows.length} of ${data?.total ?? rows.length} open · ${mine?.closed_this_month ?? 0} closed this month`
                     }
-                    page={page}
-                    pages={13}
+                    page={data?.page ?? page}
+                    pages={pages}
                     onPage={setPage}
                   />
                 )}
@@ -439,8 +452,15 @@ export default function CasesPage() {
       {dialog === "prospect" && <ProspectModal onClose={() => setDialog(null)} />}
       {dialog === "save_view" && (
         <SaveViewModal
-          summary={[...chips.map(([k, v]) => `${CHIP_LABEL[k]} ${v}`), status !== "all" ? status.replace(/_/g, " ") : "", q].filter(Boolean).join(" · ")}
+          summary={[...chips.map(([k, v]) => `${CHIP_LABEL[k] ?? titleCase(k)} ${v}`), status !== "all" ? status.replace(/_/g, " ") : "", q].filter(Boolean).join(" · ")}
           filters={{ ...filters, ...(status !== "all" ? { status: [status] } : {}), q: q || undefined }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === "note" && (
+        <BulkNoteModal
+          caseIds={Array.from(selected)}
+          onDone={() => setSelected(new Set())}
           onClose={() => setDialog(null)}
         />
       )}

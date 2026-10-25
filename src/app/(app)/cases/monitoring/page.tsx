@@ -7,31 +7,46 @@ import { Badge } from "@/components/ui/Badge";
 import { Banner } from "@/components/ui/Banner";
 import { ButtonLink } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { useApi } from "@/lib/api/fd";
+import { useApi, type Page } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
 import { formatClock } from "@/lib/time";
-import { useSearchParams } from "next/navigation";
 
 type Watch = {
   case_id: string;
   title: string;
-  entities_summary: string;
+  entities: string[];
+  entity_counts: Record<string, number>;
+  until: string;
   days_left: number;
   days_total: number;
+  reopen_on_repeat: boolean;
   status: "quiet" | "near_miss" | "reopened";
   near_misses: number;
   reopened_at?: string;
+  /** Engine text. */
   repeat_detail?: string;
 };
+
+const ENTITY: Record<string, [string, string]> = {
+  wallet: ["wallet", "wallets"],
+  agent: ["agent", "agents"],
+  subscriber: ["subscriber", "subscribers"],
+  staff_account: ["staff account", "staff accounts"],
+  premium_number: ["premium number", "premium numbers"],
+  cell: ["cell", "cells"],
+  device: ["device", "devices"],
+};
+/** { wallet: 4, agent: 1 } → “4 wallets · 1 agent” */
+const entitiesText = (counts: Record<string, number>) =>
+  Object.entries(counts)
+    .map(([kind, n]) => `${n} ${(ENTITY[kind] ?? [kind.replace(/_/g, " "), `${kind.replace(/_/g, " ")}s`])[n === 1 ? 0 : 1]}`)
+    .join(" · ");
 
 const STEPS = ["Prospect", "Investigate", "Decide", "Monitor", "Closed"];
 
 /** F2/F3 · Monitoring — closed cases still on watch. A repeat reopens the case. */
 export default function MonitoringPage() {
-  const params = useSearchParams();
-  // `?repeat=1` shows the reopened state (F3) in mock mode.
-  // TODO(api): GET /watchlist exists; title, entities_summary, days_total, status and near_misses are proposed.
-  const { data, isLoading } = useApi<{ data: Watch[]; totals: { cases: number; watched: number } }>(`/watchlist?limit=25${params.get("repeat") ? "&repeat=1" : ""}`);
+  const { data, isLoading } = useApi<Page<Watch> & { totals: { cases: number; watched: number } }>("/watchlist?limit=25");
   const repeat = data?.data.find((w) => w.status === "reopened");
 
   return (
@@ -97,7 +112,7 @@ export default function MonitoringPage() {
                     <span className="font-mono text-mono-s text-text-secondary">{w.case_id}</span>
                     {w.title}
                   </span>
-                  <span className="text-caption text-text-secondary">{w.entities_summary}</span>
+                  <span className="text-caption text-text-secondary">{entitiesText(w.entity_counts)}</span>
                 </span>
                 <span className="flex w-[220px] flex-col gap-1">
                   <span className="h-1.5 w-full rounded-full bg-surface-sunken">

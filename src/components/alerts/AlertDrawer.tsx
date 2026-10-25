@@ -10,7 +10,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Icon } from "@/components/ui/Icon";
 import { Menu, MenuDivider, MenuItem, MenuLabel } from "@/components/ui/Menu";
 import { useToast } from "@/components/ui/Toast";
-import { ApiError, apiFetch } from "@/lib/api/client";
+import { ApiError, apiFetch, isProblem } from "@/lib/api/client";
 import {
   patchAlert,
   useAlert,
@@ -18,7 +18,7 @@ import {
   useSubscriber,
   useSubscriberActivity,
   type Alert,
-  type Person,
+  type PersonRef,
 } from "@/lib/api/fd";
 import { formatAgo, formatClock, formatMoney } from "@/lib/time";
 import Link from "next/link";
@@ -69,7 +69,7 @@ export function AlertDrawer({
   const { data: transactions } = useAlertTransactions(alert.id);
   const [tab, setTab] = useState<Tab>("summary");
   const [dialog, setDialog] = useState<Dialog>(initialDialog);
-  const [lockedBy, setLockedBy] = useState<{ by: Person; since?: string } | null>(null);
+  const [lockedBy, setLockedBy] = useState<{ by: PersonRef; since?: string } | null>(null);
   const [attaching, setAttaching] = useState(false);
 
   const open = alert.status === "new" || alert.status === "seen" || alert.status === "locked";
@@ -79,8 +79,8 @@ export function AlertDrawer({
     if (!open) return;
     let cancelled = false;
     apiFetch("POST", `/alerts/${alert.id}/lock`).catch((err) => {
-      if (cancelled || !(err instanceof ApiError) || err.status !== 423) return;
-      setLockedBy({ by: err.problem.locked_by as Person, since: err.problem.since as string | undefined });
+      if (cancelled || !isProblem(err, "locked")) return;
+      setLockedBy({ by: err.problem.locked_by as PersonRef, since: err.problem.since as string | undefined });
     });
     return () => {
       cancelled = true;
@@ -89,7 +89,7 @@ export function AlertDrawer({
 
   const related = relatedAlerts(alert, all);
   const newRecipients = new Set(
-    transactions?.data.filter((t) => t.counterparty_note.startsWith("New")).map((t) => t.counterparty),
+    transactions?.data.filter((t) => t.counterparty_new).map((t) => t.counterparty),
   );
   const options = protectOptions(detail, subscriber, newRecipients.size);
   const suggestion = detail?.suggested_case ?? null;
@@ -116,20 +116,23 @@ export function AlertDrawer({
     if (!suggestion) return;
     setAttaching(true);
     try {
-      await apiFetch("POST", `/alerts/${alert.id}/attach`, { case_id: suggestion.id });
-      await attach(suggestion.id);
+      await apiFetch("POST", `/alerts/${alert.id}/attach`, { case_id: suggestion.case_id });
+      await attach(suggestion.case_id);
     } finally {
       setAttaching(false);
     }
   };
 
   const takeOver = async () => {
-    // TODO(api): the collection has no way to take over a lock; proposed `take_over: true`.
-    await apiFetch("POST", `/alerts/${alert.id}/lock`, { take_over: true }).catch(() => undefined);
-    setLockedBy(null);
+    try {
+      await apiFetch("POST", `/alerts/${alert.id}/lock`, { take_over: true });
+      setLockedBy(null);
+    } catch (err) {
+      toast({ title: "Couldn’t take over", body: err instanceof ApiError ? err.message : "Try again in a moment." });
+    }
   };
 
-  const money = detail?.money_out;
+  const money = alert.money_out;
   const windowMin = transactions?.totals.window_minutes;
   const tabs = (
     <Tabs
@@ -293,13 +296,13 @@ export function AlertDrawer({
               />
               <Glance
                 label="Looks like"
-                value={alert.case_id ? `In ${alert.case_id}` : suggestion ? `Part of ${suggestion.id}` : "A new pattern"}
+                value={alert.case_id ? `In ${alert.case_id}` : suggestion ? `Part of ${suggestion.case_id}` : "A new pattern"}
                 tone={suggestion || alert.case_id ? "brand" : "neutral"}
               />
             </div>
             {detail ? (
               <>
-                {detail.what_happened.length > 0 && <WhatHappened steps={detail.what_happened} now={now} />}
+                {detail.what_happened.length > 0 && <WhatHappened steps={detail.what_happened} moneyOut={alert.money_out} now={now} />}
                 <RulesRow rules={detail.rules_fired} />
                 {suggestion && open && (
                   <Recommendation
@@ -338,8 +341,11 @@ export function AlertDrawer({
                 label: "Undo",
                 onClick: () => {
                   patchAlert(alert.id, null);
-                  // TODO(api): proposed POST /alerts/{id}/undo-dismiss (10 s window).
-                  void apiFetch("POST", `/alerts/${alert.id}/undo-dismiss`).catch(() => undefined);
+                  // Allowed until the dismissal’s `undo_until` (10 s); later the server answers 409.
+                  void apiFetch("POST", `/alerts/${alert.id}/undo-dismiss`).catch((err) => {
+                    patchAlert(alert.id, { status: "dismissed" });
+                    if (err instanceof ApiError && err.status === 409) toast({ title: "Too late to undo", body: `${alert.id} stays dismissed.` });
+                  });
                 },
               },
             });

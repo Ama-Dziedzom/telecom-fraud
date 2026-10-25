@@ -11,7 +11,7 @@ import { FieldLabel, Select, TextArea, TextField } from "@/components/ui/TextFie
 import { useToast } from "@/components/ui/Toast";
 import { RequestError } from "@/components/auth/RequestError";
 import { apiFetch } from "@/lib/api/client";
-import { useColleagues, useEvidence, useReversal, type CaseDetail, type Outcome } from "@/lib/api/cases";
+import { useColleagues, useEvidence, useReversal, type CaseChange, type CaseDetail, type Monitoring, type Outcome } from "@/lib/api/cases";
 import { formatClock, formatDate } from "@/lib/time";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -43,8 +43,8 @@ export function ResolveModal({ detail, onClose }: { detail: CaseDetail; onClose:
   const { mutate } = useSWRConfig();
   const { data: reversal } = useReversal(detail.reversal?.id);
   const { data: people } = useColleagues();
-  const supervisor = people?.data.find((p) => p.role === "Fraud Supervisor");
-  const recovered = reversal?.results.reduce((s, r) => s + r.recovered.amount_minor, 0) || detail.reversal?.secured.amount_minor;
+  const supervisor = people?.data.find((p) => p.role === "fraud_supervisor");
+  const recovered = reversal?.results?.reduce((s, r) => s + r.recovered.amount_minor, 0) || detail.reversal?.secured.amount_minor;
   const lostDefault = detail.what_happened.find((s) => s.amount)?.amount?.amount_minor ?? detail.glance.money.amount.amount_minor;
   const agent = detail.what_happened.find((s) => s.kind === "sim_swap")?.detail?.match(/AG-\d+/)?.[0];
   const ring = detail.linked_cases[0];
@@ -74,7 +74,7 @@ export function ResolveModal({ detail, onClose }: { detail: CaseDetail; onClose:
     setBusy(true);
     setFailure(null);
     try {
-      await apiFetch("POST", `/cases/${detail.id}/resolution`, {
+      const change = await apiFetch<CaseChange>("POST", `/cases/${detail.id}/resolution`, {
         outcome,
         summary,
         ...(outcome === "confirmed_fraud"
@@ -86,10 +86,11 @@ export function ResolveModal({ detail, onClose }: { detail: CaseDetail; onClose:
               link_cases: linkRing && ring ? [ring] : [],
             }
           : {}),
-        ...(outcome === "false_positive" ? { reason: legitReason, rule_feedback: ruleNote || undefined } : {}),
+        ...(outcome === "false_positive" ? { reason: legitReason, rule_feedback: true, rule_feedback_note: ruleNote || undefined } : {}),
         ...(outcome === "inconclusive" ? { watch_days: Number(watchDays), reopen_on_repeat: reopenOnRepeat } : {}),
       });
-      await Promise.all([mutate(`/cases/${detail.id}`), mutate(`/cases/${detail.id}/timeline`), mutate("/cases?view=mine")]);
+      await mutate<CaseDetail>(`/cases/${detail.id}`, (c) => (c ? { ...c, ...change } : c), { revalidate: false });
+      await Promise.all([mutate(`/cases/${detail.id}/timeline`), mutate("/cases?view=mine")]);
       if (outcome === "confirmed_fraud") {
         toast({ tone: "success", title: "Submitted for sign-off", body: `${supervisor?.name.split(" ")[0] ?? "Your supervisor"} will review ${detail.id}. We’ll let you know.` });
       } else {
@@ -235,27 +236,24 @@ export function ResubmitModal({ detail, onClose }: { detail: CaseDetail; onClose
   const toast = useToast();
   const { mutate } = useSWRConfig();
   const { data: evidence } = useEvidence(detail.id);
-  const r = detail.resolution!;
-  const since = r.sent_back?.at ?? r.submitted_at;
-  const added = (evidence?.data ?? []).filter((e) => Date.parse(e.attached_at) > Date.parse(r.submitted_at));
+  // The send-back is a banner on the case; the submission is a step in “What happened”.
+  const sentBack = detail.banners.find((b) => b.kind === "sent_back");
+  const submittedAt = detail.what_happened.findLast((s) => s.kind === "submitted")?.at ?? sentBack?.at ?? detail.opened.at;
+  const since = sentBack?.at ?? submittedAt;
+  const added = (evidence?.data ?? []).filter((e) => Date.parse(e.attached_at) > Date.parse(submittedAt));
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
-  const first = r.reviewer?.name.split(" ")[0] ?? "your supervisor";
+  const first = sentBack?.by?.name.split(" ")[0] ?? "your supervisor";
 
   const submit = async () => {
     setBusy(true);
     setFailure(null);
     try {
-      // TODO(api): proposed POST /cases/{id}/resubmit {reply}; the resolution is re-posted for now.
-      await apiFetch("POST", `/cases/${detail.id}/resolution`, {
-        outcome: r.outcome,
-        summary: r.summary,
-        amount_lost: r.amount_lost,
-        amount_recovered: r.amount_recovered,
-        reply: reply || undefined,
-      });
-      await Promise.all([mutate(`/cases/${detail.id}`), mutate(`/cases/${detail.id}/timeline`)]);
+      const change = await apiFetch<CaseChange>("POST", `/cases/${detail.id}/resubmit`, { reply: reply || undefined });
+      // Keep the new status: the mock would answer with the sent-back case again.
+      await mutate<CaseDetail>(`/cases/${detail.id}`, (c) => (c ? { ...c, ...change } : c), { revalidate: false });
+      await mutate(`/cases/${detail.id}/timeline`);
       toast({ tone: "success", title: "Resubmitted for sign-off", body: `${first} has been notified.` });
       onClose();
     } catch (err) {
@@ -273,7 +271,7 @@ export function ResubmitModal({ detail, onClose }: { detail: CaseDetail; onClose
       icon="app/icon-send-brand-22"
       tone="brand"
       title={`Resubmit ${detail.id} for sign-off`}
-      description={`${first} sent this back at ${formatClock(since)}. Here’s what changed.`}
+      description={`${first[0].toUpperCase()}${first.slice(1)} sent this back at ${formatClock(since)}. Here’s what changed.`}
       actions={
         <>
           <Button variant="secondary" size="md" onClick={onClose}>
@@ -286,7 +284,7 @@ export function ResubmitModal({ detail, onClose }: { detail: CaseDetail; onClose
       }
     >
       <div className="flex flex-col gap-2 rounded-[10px] bg-surface-raised px-3.5 py-3">
-        <p className="text-overline text-text-tertiary uppercase">Changes since {formatClock(r.submitted_at)}</p>
+        <p className="text-overline text-text-tertiary uppercase">Changes since {formatClock(submittedAt)}</p>
         {added.length ? (
           added.map((e) => (
             <p key={e.id} className="flex items-center gap-2 text-body-s text-text-primary">
@@ -329,8 +327,9 @@ export function ReopenModal({ detail, onClose }: { detail: CaseDetail; onClose: 
     setBusy(true);
     setFailure(null);
     try {
-      await apiFetch("POST", `/cases/${detail.id}/reopen`, { reason: `${REOPEN_REASONS.find(([id]) => id === reason)?.[1]}: ${details}` });
-      await Promise.all([mutate(`/cases/${detail.id}`), mutate(`/cases/${detail.id}/timeline`)]);
+      const change = await apiFetch<CaseChange>("POST", `/cases/${detail.id}/reopen`, { reason: `${REOPEN_REASONS.find(([id]) => id === reason)?.[1]}: ${details}` });
+      await mutate<CaseDetail>(`/cases/${detail.id}`, (c) => (c ? { ...c, ...change } : c), { revalidate: false });
+      await mutate(`/cases/${detail.id}/timeline`);
       toast({ tone: "success", title: `${detail.id} reopened`, body: "It’s back in Investigating, assigned to you." });
       onClose();
     } catch (err) {
@@ -350,7 +349,7 @@ export function ReopenModal({ detail, onClose }: { detail: CaseDetail; onClose: 
       title={`Reopen ${detail.id}?`}
       description={
         r
-          ? `Closed ${r.signed_off ? formatClock(r.signed_off.at) : formatDate(r.submitted_at)} as ${outcome}${r.signed_off ? ` · signed off by ${r.signed_off.by}` : ""}`
+          ? `Closed ${formatDate(r.closed_at)} as ${outcome}${r.signed_off_by ? ` · signed off by ${r.signed_off_by.name}` : ""}`
           : "This case is closed."
       }
       actions={
@@ -380,7 +379,7 @@ export function ReopenModal({ detail, onClose }: { detail: CaseDetail; onClose: 
         error={tried && !details.trim() ? "Say what changed." : undefined}
       />
       <Banner tone="info" title="Reopening returns it to Investigating, assigned to you">
-        The original resolution{r?.signed_off ? ` and ${r.signed_off.by.split(" ")[0]}’s sign-off` : ""} stay on the record.
+        The original resolution{r?.signed_off_by ? ` and ${r.signed_off_by.name.split(" ")[0]}’s sign-off` : ""} stay on the record.
       </Banner>
       <RequestError error={failure} />
     </Modal>
@@ -397,8 +396,9 @@ export function MonitorModal({ detail, onClose }: { detail: CaseDetail; onClose:
   const things = [
     { id: detail.subject.subscriber_id, title: `${first}’s wallet and SIM`, detail: "Any new swap, new phone or big transfer", on: true },
     ...(agent ? [{ id: agent, title: `Agent ${agent}`, detail: "SIM swaps over 5 a day", on: true }] : []),
+    // Not an entity: sent as `include_recipients`.
     { id: "recipients", title: "4 recipient wallets", detail: "Any money in from another victim", on: true },
-    { id: "imei", title: "Phone IMEI 35 209900 176148 7", detail: "If it shows up with another SIM", on: false },
+    { id: "dev_4417", title: "Phone IMEI 35 209900 176148 7", detail: "If it shows up with another SIM", on: false },
   ];
   const [days, setDays] = useState<30 | 60 | 90>(90);
   const [picked, setPicked] = useState(() => new Set(things.filter((t) => t.on).map((t) => t.id)));
@@ -410,9 +410,15 @@ export function MonitorModal({ detail, onClose }: { detail: CaseDetail; onClose:
     setBusy(true);
     setFailure(null);
     try {
-      await apiFetch("POST", `/cases/${detail.id}/monitor`, { days, entity_ids: Array.from(picked), reopen_on_repeat: then === "reopen" });
-      await Promise.all([mutate(`/cases/${detail.id}`), mutate("/watchlist")]);
-      toast({ tone: "success", title: `Watching for ${days} days`, body: `${picked.size} things on watch. ${then === "reopen" ? "A repeat reopens the case." : "We’ll tell you if anything happens."}` });
+      const watching = await apiFetch<Monitoring>("POST", `/cases/${detail.id}/monitor`, {
+        days,
+        entity_ids: Array.from(picked).filter((id) => id !== "recipients"),
+        include_recipients: picked.has("recipients"),
+        reopen_on_repeat: then === "reopen",
+      });
+      await mutate<CaseDetail>(`/cases/${detail.id}`, (c) => (c ? { ...c, stage: "monitor", monitoring: watching } : c), { revalidate: false });
+      await mutate("/watchlist");
+      toast({ tone: "success", title: `Watching for ${days} days`, body: `${watching.entities.length} things on watch. ${then === "reopen" ? "A repeat reopens the case." : "We’ll tell you if anything happens."}` });
       onClose();
     } catch (err) {
       setFailure(err);

@@ -11,20 +11,33 @@ import { Checkbox } from "@/components/ui/Choice";
 import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
-import { useApi } from "@/lib/api/fd";
+import { useApi, type Page } from "@/lib/api/fd";
+import { TZ } from "@/lib/time";
 import { cn } from "@/lib/cn";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
-type Row = { id: string; msisdn: string; ghana_card: string; activated: string; recent: boolean; calls_per_day: number; risk_score: number; suggested: boolean };
-type Bulk = { id: string; file_name: string; case_id: string; total: number; skipped: number; pattern: { title: string; detail: string } | null; data: Row[] };
+type Row = { id: string; msisdn: string; ghana_card: string; activated_on: string; recent: boolean; calls_per_day: number; risk_score: number; suggested: boolean };
+type Bulk = Page<Row> & {
+  id: string;
+  status: "running" | "done";
+  file_name: string;
+  case_id: string;
+  total: number;
+  skipped: number;
+  /** Engine text. */
+  pattern: { title: string; detail: string } | null;
+};
+
+/** Recent activations by month (“Aug 2026”), older ones by year (“2019”). */
+const activated = (r: Row) =>
+  new Date(r.activated_on).toLocaleDateString("en-GB", r.recent ? { month: "short", year: "numeric", timeZone: TZ } : { year: "numeric", timeZone: TZ });
 
 /** G19 · Bulk lookup results — sorted by risk, with the pattern called out and a bulk bar. */
 export default function BulkResultsPage() {
   const { id } = useParams<{ id: string }>();
   const toast = useToast();
-  // TODO(api): proposed GET /lookups/bulk/{id}.
-  const { data } = useApi<Bulk>(`/lookups/bulk/${id}`);
+  const { data } = useApi<Bulk>(`/lookups/bulk/${id}`, { refreshInterval: (b) => (b?.status === "running" ? 2000 : 0) });
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [watching, setWatching] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -40,7 +53,7 @@ export default function BulkResultsPage() {
   };
 
   const exportCsv = () => {
-    const body = ["number,ghana_card,activated,calls_per_day,risk", ...rows.map((r) => [r.msisdn, r.ghana_card, r.activated, r.calls_per_day, r.risk_score].join(","))].join("\n");
+    const body = ["number,ghana_card,activated,calls_per_day,risk", ...rows.map((r) => [r.msisdn, r.ghana_card, r.activated_on, r.calls_per_day, r.risk_score].join(","))].join("\n");
     const url = URL.createObjectURL(new Blob([body], { type: "text/csv" }));
     Object.assign(document.createElement("a"), { href: url, download: `${data?.file_name.replace(/\.csv$/, "") ?? "bulk"}-results.csv` }).click();
     URL.revokeObjectURL(url);
@@ -50,8 +63,8 @@ export default function BulkResultsPage() {
     if (!data) return;
     setAdding(true);
     try {
-      // TODO(api): proposed POST /cases/{id}/entities.
-      await apiFetch("POST", `/cases/${data.case_id}/entities`, { entity_ids: Array.from(selected), source: `bulk:${data.id}` });
+      // TODO(api): bulk rows carry no entity ID, so the row IDs are sent.
+      await apiFetch("POST", `/cases/${data.case_id}/entities`, { entity_ids: Array.from(selected), note: `From bulk lookup ${data.id} (${data.file_name})` });
       toast({ tone: "success", title: `${selected.size} numbers added to ${data.case_id}`, body: "They’re on the case network and in Evidence as a lookup export." });
       setPicked(new Set());
     } finally {
@@ -103,7 +116,7 @@ export default function BulkResultsPage() {
                       </td>
                       <td className="py-3 font-mono text-mono-m font-semibold text-text-primary">{r.msisdn}</td>
                       <td className="py-3 font-mono text-mono-s text-text-secondary">{r.ghana_card}</td>
-                      <td className={cn("py-3 text-body-s", r.recent ? "text-medium-fg" : "text-text-secondary")}>{r.activated}</td>
+                      <td className={cn("py-3 text-body-s", r.recent ? "text-medium-fg" : "text-text-secondary")}>{activated(r)}</td>
                       <td className="py-3 text-body-s text-text-secondary">{r.calls_per_day.toLocaleString("en-GB")} calls/day</td>
                       <td className="py-3 pr-5">
                         <RiskScore score={r.risk_score} />

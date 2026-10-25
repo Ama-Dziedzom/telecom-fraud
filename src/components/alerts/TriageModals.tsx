@@ -15,6 +15,7 @@ import {
   useMyCases,
   type Alert,
   type AlertDetail,
+  type BulkTriageResult,
   type ProtectiveAction,
   type Subscriber,
 } from "@/lib/api/fd";
@@ -60,7 +61,10 @@ export function DismissModal({
   open,
   onClose,
   onDone,
-}: Base & WithOthers & { onDone: (reason: DismissReason, feedback: boolean) => void }) {
+}: Base & WithOthers & {
+  /** `result` is set for bulk triage, which can leave some alerts out. */
+  onDone: (reason: DismissReason, feedback: boolean, result?: BulkTriageResult) => void;
+}) {
   const [reason, setReason] = useState<DismissReason | null>(null);
   const [note, setNote] = useState("");
   const [feedback, setFeedback] = useState(true);
@@ -74,10 +78,18 @@ export function DismissModal({
     setTried(true);
     if (!reason) return;
     void submit(async () => {
-      for (const a of all) {
-        await apiFetch("POST", `/alerts/${a.id}/dismiss`, { reason, note: note || undefined, rule_feedback: feedback });
+      if (others.length) {
+        // TODO(api): POST /alerts/bulk takes no note or rule_feedback for dismissals yet.
+        const result = await apiFetch<BulkTriageResult>("POST", "/alerts/bulk", {
+          alert_ids: all.map((a) => a.id),
+          action: "dismiss",
+          reason,
+        });
+        onDone(reason, feedback, result);
+      } else {
+        await apiFetch("POST", `/alerts/${alert.id}/dismiss`, { reason, note: note || undefined, rule_feedback: feedback });
+        onDone(reason, feedback);
       }
-      onDone(reason, feedback);
     });
   };
 
@@ -152,17 +164,6 @@ const CASE_TYPES = [
   ["other", "Other"],
 ] as const;
 
-const typeFromTitle = (title: string) => {
-  const t = title.toLowerCase();
-  if (t.includes("sim swap")) return "sim_swap_to_momo";
-  if (t.includes("takeover") || t.includes("pin")) return "account_takeover";
-  if (t.includes("sim box") || t.includes("bypass")) return "sim_box_bypass";
-  if (t.includes("cash-out")) return "agent_cash_out";
-  if (t.includes("wangiri")) return "wangiri";
-  if (t.includes("velocity") || t.includes("momo")) return "momo_velocity";
-  return "other";
-};
-
 export function PromoteModal({
   alert,
   open,
@@ -179,7 +180,7 @@ export function PromoteModal({
   onDone: (caseId: string, linked: number) => void;
 }) {
   const { data: mine } = useMyCases();
-  const [fraudType, setFraudType] = useState<string>(typeFromTitle(alert.title));
+  const [fraudType, setFraudType] = useState<string>(alert.fraud_type);
   const [priority, setPriority] = useState<string>(alert.severity === "low" ? "medium" : alert.severity);
   const [assign, setAssign] = useState<"me" | "team">("me");
   const [include, setInclude] = useState(related.length > 0);
@@ -190,6 +191,7 @@ export function PromoteModal({
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     void submit(async () => {
+      // TODO(api): 0.2 documents only `note` on promote; the type, priority, assignee and linked alerts are proposed.
       const created = await apiFetch<{ id: string }>("POST", `/alerts/${alert.id}/promote`, {
         note: note || undefined,
         fraud_type: fraudType,
@@ -289,7 +291,13 @@ const STRENGTH = {
   weak: { label: "Weak", tone: "neutral" as const },
 };
 
-export function AttachModal({ alert, others = [], open, onClose, onDone }: Base & WithOthers & { onDone: (caseId: string) => void }) {
+export function AttachModal({
+  alert,
+  others = [],
+  open,
+  onClose,
+  onDone,
+}: Base & WithOthers & { onDone: (caseId: string, result?: BulkTriageResult) => void }) {
   const { data: suggestions } = useCaseSuggestions(open ? alert.id : null);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
@@ -308,10 +316,17 @@ export function AttachModal({ alert, others = [], open, onClose, onDone }: Base 
     e.preventDefault();
     if (!target) return;
     void submit(async () => {
-      for (const a of [alert, ...others]) {
-        await apiFetch("POST", `/alerts/${a.id}/attach`, { case_id: target, note: note || undefined });
+      if (others.length) {
+        const result = await apiFetch<BulkTriageResult>("POST", "/alerts/bulk", {
+          alert_ids: [alert, ...others].map((a) => a.id),
+          action: "attach",
+          case_id: target,
+        });
+        onDone(target, result);
+      } else {
+        await apiFetch("POST", `/alerts/${alert.id}/attach`, { case_id: target, note: note || undefined });
+        onDone(target);
       }
-      onDone(target);
     });
   };
 
@@ -367,7 +382,7 @@ export function AttachModal({ alert, others = [], open, onClose, onDone }: Base 
                 </>
               }
               badge={<Badge label={STRENGTH[s.strength].label} tone={STRENGTH[s.strength].tone} />}
-              description={`Match: ${s.match}`}
+              description={`Match: ${s.reason}`}
               indent
             />
           ))}

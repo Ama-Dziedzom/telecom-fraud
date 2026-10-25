@@ -82,7 +82,7 @@ export const LEVELS: Record<Level["id"], Level> = {
       { name: "Gulf of Guinea", x: 640, y: 598, kind: "sea" },
     ],
     pins: [
-      { id: "adum-kumasi", x: 370.4, y: 407.8, size: 40, label: [125.4, 410.8], drill: "ashanti" },
+      { id: "adum-kumasi", x: 370.4, y: 407.8, size: 40, label: [125.4, 410.8], drill: "kumasi" },
       { id: "accra-central", x: 491.7, y: 504.8, size: 36, label: [523.7, 579.8] },
       { id: "tema", x: 514.2, y: 499.5, size: 28, label: [598.2, 530.5] },
       { id: "takoradi", x: 366.5, y: 562.7, size: 26, label: [256.5, 602.7] },

@@ -5,26 +5,42 @@ import { CheckLayout } from "@/components/subscriber/CheckLayout";
 import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { useBehaviour, useSubscriber360 } from "@/lib/api/subscribers";
+import { useSubscriber } from "@/lib/api/fd";
+import { useBehaviour, type Behaviour } from "@/lib/api/subscribers";
 import { cn } from "@/lib/cn";
 import { formatMoney } from "@/lib/time";
 import { useParams, useRouter } from "next/navigation";
 
-const SIGNAL_ICON: Record<string, string> = {
-  where: "app/icon-map-pin-secondary-16",
-  device: "app/icon-laptop-secondary-16",
-  hours: "app/icon-clock-secondary-16",
-  average: "app/icon-wallet-secondary-16",
-  recipients: "app/icon-users-secondary-16",
-};
+const money = (m: { amount_minor: number; currency: string }) => formatMoney(m.amount_minor, m.currency);
+
+/** The five signals in the design’s order, with how each one reads. */
+const SIGNALS: Array<{ key: keyof Behaviour["signals"]; label: string; icon: string; usual: (s: Behaviour["signals"]) => string; today: (s: Behaviour["signals"]) => string }> = [
+  { key: "place", label: "Where", icon: "app/icon-map-pin-secondary-16", usual: (s) => s.place.usual, today: (s) => s.place.today },
+  { key: "device", label: "Device", icon: "app/icon-laptop-secondary-16", usual: (s) => s.device.usual, today: (s) => s.device.today },
+  {
+    key: "active_hours",
+    label: "Active hours",
+    icon: "app/icon-clock-secondary-16",
+    usual: (s) => `${s.active_hours.usual.from}-${s.active_hours.usual.to}`,
+    today: (s) => `${s.active_hours.today.from}-${s.active_hours.today.to}`,
+  },
+  { key: "average_transfer", label: "Average transfer", icon: "app/icon-wallet-secondary-16", usual: (s) => money(s.average_transfer.usual), today: (s) => money(s.average_transfer.today) },
+  {
+    key: "recipients",
+    label: "Recipients",
+    icon: "app/icon-users-secondary-16",
+    usual: (s) => `${s.recipients.usual} regulars`,
+    today: (s) => (s.recipients.today_new === s.recipients.today ? `${s.recipients.today} never paid` : `${s.recipients.today} · ${s.recipients.today_new} new`),
+  },
+];
 
 /** C19/C20 · Behaviour profile — normal vs now */
 export default function BehaviourPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { data: sub } = useSubscriber360(id);
+  const { data: sub } = useSubscriber(id);
   const { data, isLoading } = useBehaviour(id);
-  const unusual = data?.signals.filter((s) => s.unusual).length ?? 0;
+  const unusual = data ? SIGNALS.filter((s) => data.signals[s.key].unusual).length : 0;
   const openCase = sub?.cases.find((c) => c.status !== "closed");
   const max = Math.max(...(data?.daily.map((d) => d.amount.amount_minor) ?? [1]));
   // Bars are scaled to GHS 600 so the normal band is readable; today breaks out of the frame.
@@ -36,7 +52,7 @@ export default function BehaviourPage() {
       subscriberId={id}
       section="Behaviour profile"
       title="Normal vs now"
-      status={data ? { label: `${unusual} of ${data.signals.length} signals unusual`, tone: unusual ? "critical" : "success" } : undefined}
+      status={data ? { label: `${unusual} of ${SIGNALS.length} signals unusual`, tone: unusual ? "critical" : "success" } : undefined}
       subtitle={sub && data ? `${sub.name} · ${sub.msisdn} · compared with his last ${data.compared_days} days` : undefined}
       evidenceTitle="Behaviour profile: normal vs now"
       loading={isLoading || !data}
@@ -44,26 +60,29 @@ export default function BehaviourPage() {
       {data && (
         <>
           <div className="flex gap-3">
-            {data.signals.map((s) => (
-              <div key={s.key} className={cn("flex min-w-0 flex-1 flex-col gap-2.5 rounded-xl border bg-surface-base px-[18px] py-4", s.unusual ? "border-critical-border" : "border-border-subtle")}>
-                <span className="flex items-center gap-2 text-label-s text-text-secondary">
-                  <Icon name={SIGNAL_ICON[s.key] ?? "app/icon-activity-secondary-18"} size={16} />
-                  {s.label}
-                </span>
-                <span className="flex items-center gap-2.5">
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="text-overline text-text-tertiary uppercase">Usual</span>
-                    <span className="truncate text-label-m text-text-primary">{s.usual}</span>
+            {SIGNALS.map((s) => {
+              const odd = data.signals[s.key].unusual;
+              return (
+                <div key={s.key} className={cn("flex min-w-0 flex-1 flex-col gap-2.5 rounded-xl border bg-surface-base px-[18px] py-4", odd ? "border-critical-border" : "border-border-subtle")}>
+                  <span className="flex items-center gap-2 text-label-s text-text-secondary">
+                    <Icon name={s.icon} size={16} />
+                    {s.label}
                   </span>
-                  <Icon name="app/icon-arrow-right-tertiary-16" size={16} />
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="text-overline text-text-tertiary uppercase">Today</span>
-                    <span className={cn("truncate text-label-m", s.unusual ? "text-critical-fg" : "text-text-primary")}>{s.today}</span>
+                  <span className="flex items-center gap-2.5">
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <span className="text-overline text-text-tertiary uppercase">Usual</span>
+                      <span className="truncate text-label-m text-text-primary">{s.usual(data.signals)}</span>
+                    </span>
+                    <Icon name="app/icon-arrow-right-tertiary-16" size={16} />
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <span className="text-overline text-text-tertiary uppercase">Today</span>
+                      <span className={cn("truncate text-label-m", odd ? "text-critical-fg" : "text-text-primary")}>{s.today(data.signals)}</span>
+                    </span>
                   </span>
-                </span>
-                <Badge label={s.unusual ? "Unusual" : "Normal"} tone={s.unusual ? "critical" : "success"} dot />
-              </div>
-            ))}
+                  <Badge label={odd ? "Unusual" : "Normal"} tone={odd ? "critical" : "success"} dot />
+                </div>
+              );
+            })}
           </div>
 
           <Card
@@ -139,11 +158,11 @@ export default function BehaviourPage() {
               <ul className="flex flex-col gap-3">
                 {data.places.map((p) => (
                   <li key={p.name} className="flex items-center gap-3">
-                    <span className="w-[150px] text-body-s text-text-primary">{p.name}</span>
+                    <span className="w-[150px] text-body-s text-text-primary">{p.today_only ? `${p.name} (today only)` : p.name}</span>
                     <span className="h-1.5 flex-1 rounded-full bg-surface-sunken">
-                      <span className={cn("block h-1.5 rounded-full", p.today ? "bg-critical-fg" : "bg-brand-highlight")} style={{ width: `${p.share}%` }} />
+                      <span className={cn("block h-1.5 rounded-full", p.today_only ? "bg-critical-fg" : "bg-brand-highlight")} style={{ width: `${p.share_pct}%` }} />
                     </span>
-                    <span className={cn("w-10 text-right font-mono text-mono-s", p.today ? "text-critical-fg" : "text-text-secondary")}>{p.share}%</span>
+                    <span className={cn("w-10 text-right font-mono text-mono-s", p.today_only ? "text-critical-fg" : "text-text-secondary")}>{p.share_pct}%</span>
                   </li>
                 ))}
               </ul>

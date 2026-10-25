@@ -6,7 +6,7 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { useCopy } from "@/components/ui/CopyButton";
 import { Icon } from "@/components/ui/Icon";
 import { SeverityBadge } from "@/components/app/indicators";
-import { STAGES, type CaseDetail } from "@/lib/api/cases";
+import { STAGES, type CaseDetail, type MoneyLabel } from "@/lib/api/cases";
 import { fraudTypeLabel, useMyCases } from "@/lib/api/fd";
 import { useRevealed } from "@/lib/api/reveal";
 import { cn } from "@/lib/cn";
@@ -135,6 +135,7 @@ export function CaseTitle({
             </span>
           )}
           {detail.status === "sent_back" && <Badge label="Sent back" tone="high" size="md" dot />}
+          {detail.status === "reopened" && <Badge label="Reopened" tone="high" size="md" dot />}
           {detail.status === "escalated" && <Badge label="Escalated" tone="critical" size="md" dot />}
         </h2>
         <p className="flex flex-wrap items-center gap-2 text-body-s text-text-secondary">
@@ -160,27 +161,32 @@ export function CaseTitle({
   );
 }
 
-/** C1 · “Opened automatically … Start investigating”. */
+/** C1 · “Opened automatically … Start investigating” — or, in the team queue, “Pick up”. */
 export function StartBanner({ detail, onStart, busy }: { detail: CaseDetail; onStart: () => void; busy: boolean }) {
+  const queued = !detail.assignee;
   return (
     <div className="flex items-center gap-3 rounded-xl bg-brand-primary-subtle px-4 py-3">
       <Icon name="app/icon-zap-brand-20" size={20} />
       <div className="flex flex-1 flex-col gap-0.5">
         <p className="text-label-m text-text-brand">
-          {detail.opened.from_alert
-            ? `Opened automatically from ${detail.severity} alert ${detail.opened.from_alert} and assigned to you`
-            : "Assigned to you and not started yet"}
+          {queued
+            ? `Unassigned in the team queue${detail.opened.from_alert ? ` · from ${detail.severity} alert ${detail.opened.from_alert}` : ""}`
+            : detail.opened.from_alert
+              ? `Opened automatically from ${detail.severity} alert ${detail.opened.from_alert} and assigned to you`
+              : "Assigned to you and not started yet"}
         </p>
-        <p className="text-body-s text-text-primary">Starting moves it to Investigating and stops the first-response clock.</p>
+        <p className="text-body-s text-text-primary">
+          {queued ? "Pick it up to make it yours, then start investigating." : "Starting moves it to Investigating and stops the first-response clock."}
+        </p>
       </div>
       <Button size="md" onClick={onStart} loading={busy} iconLeft={<Icon name="app/icon-play-white-18" size={18} />}>
-        Start investigating
+        {queued ? "Pick up" : "Start investigating"}
       </Button>
     </div>
   );
 }
 
-const MONEY_LABEL: Record<CaseDetail["glance"]["money"]["label"], string> = {
+const MONEY_LABEL: Record<MoneyLabel, string> = {
   money_at_stake: "Money at stake",
   money_out: "Money out",
   being_recovered: "Being recovered",
@@ -201,7 +207,10 @@ const FAMILY: Record<string, string> = {
 export function GlanceTiles({ detail, now }: { detail: CaseDetail; now: number }) {
   const g = detail.glance;
   const fr = g.first_response;
-  const dueIn = Math.round((Date.parse(detail.opened.at) + fr.sla_minutes * 60_000 - now) / 60_000);
+  // Until the case is started, `minutes` is 0 and the clock is still running.
+  const started = detail.status !== "new";
+  const due = detail.sla ? Date.parse(detail.sla.first_response_due_at) : Date.parse(detail.opened.at) + fr.sla_minutes * 60_000;
+  const dueIn = Math.round((due - now) / 60_000);
   const tile = "flex min-w-0 flex-1 flex-col gap-1.5 rounded-xl border px-[18px] py-4";
   return (
     <div className="flex h-[122px] gap-3">
@@ -228,7 +237,7 @@ export function GlanceTiles({ detail, now }: { detail: CaseDetail; now: number }
       <div
         className={cn(
           tile,
-          fr.minutes !== null
+          started
             ? fr.met
               ? "border-success-border bg-success-bg"
               : "border-critical-border bg-critical-bg"
@@ -241,10 +250,10 @@ export function GlanceTiles({ detail, now }: { detail: CaseDetail; now: number }
         <span
           className={cn(
             "text-h2",
-            fr.minutes !== null ? (fr.met ? "text-success-fg" : "text-critical-fg") : dueIn < 0 ? "text-critical-fg" : "text-medium-fg",
+            started ? (fr.met ? "text-success-fg" : "text-critical-fg") : dueIn < 0 ? "text-critical-fg" : "text-medium-fg",
           )}
         >
-          {fr.minutes !== null ? `${fr.met ? "Met" : "Missed"} · ${fr.minutes} min` : dueIn < 0 ? `Late · ${-dueIn} min` : `Due in ${dueIn} min`}
+          {started ? `${fr.met ? "Met" : "Missed"} · ${fr.minutes} min` : dueIn < 0 ? `Late · ${-dueIn} min` : `Due in ${dueIn} min`}
         </span>
         <span className="text-caption font-medium text-text-secondary">SLA {fr.sla_minutes} min</span>
       </div>

@@ -2,11 +2,13 @@
 
 /**
  * FraudDetection App API — types and data hooks for the operator app.
- * Shapes follow the Postman collection; reads go through SWR so screens
- * that show the same data (sidebar counts, queue, alerts) share one request.
+ * Shapes follow API 0.2 (FraudDetection-mock.postman_collection.json):
+ * responses carry data and codes, and the app writes every label, colour and
+ * icon. Reads go through SWR so screens that show the same data (sidebar
+ * counts, queue, alerts) share one request.
  */
 import { useMemo, useSyncExternalStore } from "react";
-import useSWR, { type SWRConfiguration } from "swr";
+import useSWR, { mutate, type SWRConfiguration } from "swr";
 import { apiFetch } from "./client";
 
 export type Severity = "critical" | "high" | "medium" | "low";
@@ -18,6 +20,12 @@ export type SubscriberRef = {
   subscriber_id: string;
 };
 
+export type Money = { amount_minor: number; currency: string };
+export type PersonRef = { id: string; name: string; initials: string };
+/** @deprecated Same shape as PersonRef, the name the API uses. */
+export type Person = PersonRef;
+
+/** AlertSummary in the API. */
 export type Alert = {
   id: string;
   title: string;
@@ -29,6 +37,17 @@ export type Alert = {
   created_at: string;
   case_id: string | null;
   subscriber: SubscriberRef;
+  fraud_type: string;
+  /** Null when no money moved. */
+  money_out: Money | null;
+};
+
+export type AlertPage = Page<Alert> & {
+  summary: {
+    by_severity: Partial<Record<Severity, number>>;
+    by_fraud_type: Record<string, number>;
+    by_region: Record<string, number>;
+  };
 };
 
 export type CaseStatus =
@@ -37,7 +56,8 @@ export type CaseStatus =
   | "escalated"
   | "sent_back"
   | "pending_decision"
-  | "closed";
+  | "closed"
+  | "reopened";
 
 export type CaseSummary = {
   id: string;
@@ -49,58 +69,162 @@ export type CaseSummary = {
   alerts: number;
   sla_due_at: string;
   waiting_since: string;
-  money_at_stake: { amount_minor: number; currency: string };
-  assignee: { id: string; initials: string; name: string } | null;
+  money_at_stake: Money;
+  assignee: PersonRef | null;
   subscriber: SubscriberRef;
+  region: string;
+  /** Decide-stage cases: when the reviewer is due to answer, and who. */
+  decision_due_at?: string;
+  reviewer?: PersonRef;
+};
+
+/** GET /cases?view=mine: the list plus the counts behind the scope switch, status tabs and pick-up room. */
+export type MyCases = Page<CaseSummary> & {
+  counts: { mine: number; team_queue: number; all: number; by_status: Partial<Record<CaseStatus, number>> };
+  closed_this_month: number;
+  capacity: { open_cases: number; limit: number };
+};
+
+/** GET /search: one hit per match, with the data for its kind. */
+export type SearchHit = {
+  kind: "subscriber" | "case" | "alert";
+  id: string;
+  best: boolean;
+  open_cases?: number;
+  subscriber?: SubscriberRef & {
+    area: string;
+    wallet_tier: number | null;
+    status: string;
+    inactive_since?: string;
+  };
+  case?: Pick<CaseSummary, "id" | "title" | "fraud_type" | "risk_score" | "stage" | "status" | "subscriber" | "assignee">;
+  alert?: Pick<Alert, "id" | "title" | "severity" | "risk_score" | "status" | "case_id" | "created_at">;
+};
+export type SearchResult = {
+  detected_type: string;
+  data: SearchHit[];
+  /** No match: the highest case ID, and near misses. */
+  max_case_id?: string;
+  did_you_mean?: SearchHit[];
+  /** No match, and the number belongs to another operator. */
+  other_operator?: { id: string; name: string };
 };
 
 export type Notification = {
   id: string;
-  kind: string;
-  title: string;
-  link: string;
   at: string;
+  kind: string;
+  category: string;
+  actor: PersonRef | null;
+  /** Engine text. */
+  title: string;
+  body: string;
+  link: string;
   read: boolean;
 };
 
-export type Page<T> = { data: T[]; next_cursor?: string | null };
+/** Lists shown with page numbers send `page` instead of `cursor` and get `page` and `total` back. */
+export type Page<T> = { data: T[]; next_cursor?: string | null; page?: number; total?: number };
 
-export type Money = { amount_minor: number; currency: string };
-export type Person = { id: string; name: string; initials: string };
+/** One step of the alert’s story. `label` and `detail` are engine text; `links` are case IDs it mentions. */
+export type AlertStep = { at: string; kind: string; label: string; detail: string; amount?: Money; links?: string[] };
 
 export type AlertDetail = Alert & {
   rules_fired: Array<{ id: string; name: string; points: number }>;
-  what_happened: Array<{ at: string; kind: string; label: string; detail: string; amount?: Money; tone?: "critical" }>;
-  money_out?: Money;
-  /** Proposed: the open case this alert most likely belongs to. */
-  suggested_case?: { id: string; title: string; reason: string } | null;
+  what_happened: AlertStep[];
+  /** The open case this alert most likely belongs to; `why` is engine text. Only sent when the engine found one. */
+  suggested_case?: { case_id: string; why: string } | null;
+  locked_by?: PersonRef | null;
 };
 
-export type AlertLock = { alert_id: string; locked_by: Person; expires_at: string };
+export type AlertLock = { alert_id: string; locked_by: PersonRef; expires_at: string };
 
+/** POST /alerts/{id}/dismiss: the alert, dismissed, and how long undo-dismiss is allowed. */
+export type DismissedAlert = Alert & { undo_until: string };
+
+/** POST /alerts/bulk: each alert succeeds or fails on its own (`locked` comes with `locked_by`). */
+export type BulkTriageResult = {
+  done: string[];
+  failed: Array<{ id: string; code: string; locked_by?: PersonRef | null }>;
+};
+
+/** GET /subscribers/{id}: Subscriber 360. Masked values (`msisdn`, `kyc.date_of_birth`) come masked; POST …/reveal unmasks them. */
 export type Subscriber = {
   id: string;
   name: string;
+  initials: string;
   msisdn: string;
   status: string;
   risk_score: number;
+  /** Date. */
   customer_since: string;
-  kyc: { ghana_card: string; nia_verified: boolean; verified_at: string; branch?: string; dob_matches?: boolean; address?: string };
-  sim: { age_months: number; iccid: string; last_swap_at: string | null; swap_agent: string | null };
-  device: { imei: string; model: string; usual_model: string; first_seen: string };
-  wallet: { tier: number; status: string; balance: Money; daily_limit: Money; usual_monthly_out: Money };
+  plan: "prepaid" | "postpaid";
+  home: string;
+  kyc: {
+    ghana_card: string;
+    nia_verified: boolean;
+    /** Date. */
+    verified_at: string;
+    branch: string;
+    /** Masked (“•• ••• 1987”). */
+    date_of_birth: string;
+    date_of_birth_matches: boolean;
+    address: string;
+  };
+  sim: { iccid: string; age_months: number; last_swap_at: string | null; swap_agent: string | null };
+  device: { model: string; imei: string; first_seen: string; usual_model: string; usual_months: number };
+  wallet: {
+    tier: number;
+    daily_limit: Money;
+    balance: Money;
+    status: string;
+    usual_monthly_out: Money;
+    frozen_at: string | null;
+    frozen_by: PersonRef | null;
+    usual_recipients: number;
+    new_recipients_today: number;
+  };
   contact: { alt_msisdn: string; language: string; last_called_at: string | null };
   cases: CaseSummary[];
+  counts: { activity: number; transactions: number; devices: number; cases: number };
+  /** `text` is engine text. */
+  risk_reasons: Array<{ rule_id: string; text: string; points: number }>;
+  sim_history: Array<{
+    at: string;
+    iccid: string;
+    event: "sim_swap" | "new_sim";
+    place: string;
+    agent: string | null;
+    id_check: { document: string; method: string; matched: boolean };
+  }>;
+  devices_on_wallet: Array<{
+    model: string;
+    imei: string;
+    first_seen: string;
+    last_seen: string;
+    /** Wallets this device was used on in the last 24 hours, this one included. */
+    wallets_24h: number;
+    case_ids: string[];
+    risky: boolean;
+  }>;
+  /** Engine text. */
+  device_warning: { title: string; detail: string } | null;
+  /** Sources that didn’t answer (“wallet” when MoMo is down). */
+  unavailable: string[];
+  /** TODO(api): 0.2 doesn’t say how old the wallet figures are when MoMo is down (C16). */
+  wallet_as_of?: string;
+  wallet_last_try?: string;
 };
 
 export type ActivityEvent = {
   id: string;
   at: string;
   source: string;
-  actor?: Person | null;
-  title: string;
-  detail: string;
+  /** Only on events a person did. */
+  actor?: PersonRef;
   kind: string;
+  /** Engine text. */
+  title: string;
 };
 
 export type DeviceRecord = {
@@ -110,8 +234,6 @@ export type DeviceRecord = {
   last_seen: string;
   eir_status: string;
   sim_iccid: string;
-  kind?: "device" | "sim";
-  note?: string;
 };
 
 export type Transaction = {
@@ -119,11 +241,15 @@ export type Transaction = {
   at: string;
   amount: Money;
   counterparty: string;
-  counterparty_note: string;
+  /** First time this subject paid that counterparty. */
+  counterparty_new: boolean;
+  /** A case the counterparty is already evidence in. */
+  counterparty_case_id: string | null;
   direction: "in" | "out";
   flagged: boolean;
   type: string;
-  where_now?: string;
+  /** Case and subscriber transactions only. */
+  where_now?: "in_wallet" | "cashed_out" | "agent_holds";
 };
 
 export type TransactionPage = {
@@ -132,9 +258,12 @@ export type TransactionPage = {
 };
 
 export type CaseSuggestion = {
-  case: Pick<CaseSummary, "id" | "title" | "assignee" | "fraud_type">;
-  match: string;
+  case: Pick<CaseSummary, "id" | "title" | "fraud_type" | "stage" | "assignee">;
   strength: "suggested" | "possible" | "weak";
+  /** Codes such as `same_recipient_wallet`, `same_region`, `same_time_window`, `same_device_model`. */
+  match_kinds: string[];
+  /** Engine text. */
+  reason: string;
 };
 
 /** POST /alerts/{id}/protect and /cases/{id}/actions both answer with an action. */
@@ -144,9 +273,10 @@ export type ActionPart = {
   targets?: string[];
   days?: number;
   status: "pending" | "applied" | "failed";
-  code?: string;
-  at?: string;
-  reference?: string;
+  /** Why a part failed (`feed_unavailable`, `upstream_timeout`…); null until then. */
+  code?: string | null;
+  at?: string | null;
+  reference?: string | null;
 };
 export type ProtectiveAction = {
   id: string;
@@ -157,13 +287,43 @@ export type ProtectiveAction = {
   parts: ActionPart[];
 };
 
-export type Overview = {
-  period: string;
-  kpis: Array<{ key: string; value: number; unit: string; change: number; spark: number[] }>;
-  fraud_mix: Array<{ fraud_type: string; share_pct: number }>;
-  hotspots: Array<{ area: string; alerts: number }>;
-  right_now: Alert[];
+/** One overview tile. `breakdown` holds counts or Money, by key (`open`, `critical`, `frozen`, `lost`…). */
+export type OverviewKpi = {
+  key: string;
+  unit: "count" | "cases" | "minutes" | "percent" | "money";
+  value: number | null;
+  money: Money | null;
+  /** Against the previous period, in the KPI’s unit. */
+  change: number | null;
+  breakdown: Record<string, number | Money>;
+  /** Today only. */
+  spark?: number[];
+  basis?: string;
+  noisiest_rule?: string;
 };
+
+type OverviewBase = {
+  scope: "me" | "team" | "operator";
+  updated_at: string;
+  kpis: OverviewKpi[];
+  fraud_mix: Array<{ fraud_type: string; share_pct: number }>;
+  /** A widget that failed on its own, by widget. Its data is null. */
+  widget_errors: Partial<Record<"hotspots" | "right_now" | "fraud_mix", { code: string; retry_after_seconds: number }>>;
+};
+
+/** GET /insights/overview. Today is live; a week or month adds the daily series and rule precision. */
+export type Overview =
+  | (OverviewBase & {
+      period: "today";
+      open_alerts: number;
+      hotspots: Array<{ area: string; alerts: number }> | null;
+      right_now: Alert[];
+    })
+  | (OverviewBase & {
+      period: "7d" | "30d";
+      daily: Array<{ date: string; alerts: number; cases: number }>;
+      rules: Array<{ id: string; name: string; hits: number; precision_pct: number; your_fp_feedback: number }>;
+    });
 
 const fetcher = <T>(path: string) => apiFetch<T>("GET", path);
 
@@ -171,15 +331,15 @@ export function useApi<T>(path: string | null, config?: SWRConfiguration<T>) {
   return useSWR<T>(path, fetcher, { revalidateOnFocus: false, ...config });
 }
 
-export const useMyCases = () => useApi<Page<CaseSummary>>("/cases?view=mine");
+export const useMyCases = () => useApi<MyCases>("/cases?view=mine");
 export const useAlert = (id: string | null) => useApi<AlertDetail>(id && `/alerts/${id}`);
 export const useSubscriber = (id: string | null | undefined) => useApi<Subscriber>(id ? `/subscribers/${id}` : null);
 export const useSubscriberActivity = (id: string | null | undefined) =>
   useApi<Page<ActivityEvent>>(id ? `/subscribers/${id}/activity` : null);
 export const useDevices = (id: string | null | undefined) => useApi<Page<DeviceRecord>>(id ? `/subscribers/${id}/devices` : null);
-/** Proposed endpoint (TODO(api)): transfers around the alert. */
+/** The drawer’s Transactions tab, before there is a case. */
 export const useAlertTransactions = (id: string | null) => useApi<TransactionPage>(id && `/alerts/${id}/transactions`);
-/** Proposed endpoint (TODO(api)): open cases this alert could join. */
+/** Open cases this alert could join, for “Add to case”. */
 export const useCaseSuggestions = (id: string | null) => useApi<Page<CaseSuggestion>>(id && `/alerts/${id}/case-suggestions`);
 
 // ─── Alerts list, with this session’s triage decisions applied ────────────
@@ -212,7 +372,7 @@ function useAlertPatchVersion() {
 }
 
 export function useAlerts() {
-  const result = useApi<Page<Alert>>("/alerts", { refreshInterval: 30_000 });
+  const result = useApi<AlertPage>("/alerts", { refreshInterval: 30_000 });
   const version = useAlertPatchVersion();
   const data = useMemo(
     () =>
@@ -226,7 +386,27 @@ export function useAlerts() {
   );
   return { ...result, data };
 }
-export const useNotifications = () => useApi<Page<Notification>>("/notifications");
+export const useNotifications = () => useApi<Page<Notification> & { unread: number }>("/notifications");
+
+/** POST /notifications/read-all, shown as read straight away (the list isn’t fetched again). */
+export async function markAllNotificationsRead(before: number) {
+  await apiFetch("POST", "/notifications/read-all", { before: new Date(before).toISOString().replace(/\.\d{3}Z$/, "Z") });
+  await mutate<Page<Notification> & { unread: number }>(
+    "/notifications",
+    (d) => d && { ...d, unread: 0, data: d.data.map((n) => ({ ...n, read: true })) },
+    { revalidate: false },
+  );
+}
+
+/** GET /insights/me: the queue’s “Resolved today” and “My first response” tiles. */
+export type MyInsights = {
+  period: string;
+  resolved: number;
+  resolved_avg: number;
+  first_response_median_minutes: number;
+  first_response_sla_minutes: number;
+};
+export const useMyInsights = () => useApi<MyInsights>("/insights/me?period=today");
 export const useOverview = (period = "today", scope = "me") =>
   useApi<Overview>(`/insights/overview?period=${period}&scope=${scope}`);
 
@@ -254,15 +434,3 @@ const REGIONS: Record<string, string> = {
 /** Town → administrative region, for the region filter. */
 export const regionOf = (town: string) => REGIONS[town] ?? "Other";
 
-const FRAUD_FROM_RULE: Array<[RegExp, string]> = [
-  [/^R-1/, "sim_swap"], [/^R-2|^R-3/, "momo_fraud"], [/^R-4/, "account_takeover"],
-  [/^R-5/, "sim_box_bypass"], [/^R-6/, "wangiri"], [/^R-7/, "agent_cash_out"], [/^R-9/, "device"],
-];
-/** Fraud family of an alert, from its first rule (rules are numbered by family). */
-export const alertFamily = (a: Pick<Alert, "rule_ids">) =>
-  FRAUD_FROM_RULE.find(([re]) => re.test(a.rule_ids[0] ?? ""))?.[1] ?? "other";
-
-export const FAMILY_LABELS: Record<string, string> = {
-  momo_fraud: "MoMo fraud", sim_swap: "SIM swap", sim_box_bypass: "Bypass / SIM box",
-  account_takeover: "Account takeover", wangiri: "Wangiri", agent_cash_out: "Agent cash-out", device: "Device", other: "Other",
-};

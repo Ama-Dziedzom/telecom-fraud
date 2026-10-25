@@ -2,42 +2,30 @@
 
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
-import { apiFetch } from "@/lib/api/client";
-import { useApi } from "@/lib/api/fd";
+import { markAllNotificationsRead, useNotifications, type Notification } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
 import { formatClockOrDay, useNow } from "@/lib/time";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useSWRConfig } from "swr";
 
-export type Notice = {
-  id: string;
-  kind: string;
-  category: "mentions" | "cases" | "system";
-  actor?: { initials: string; name: string };
-  icon?: "timer" | "file" | "sliders" | "plug";
-  title: string;
-  body?: string;
-  link: string;
-  at: string;
-  read: boolean;
+/** Icon and tile for notifications without a person behind them, by the first part of `kind`. */
+const ICON: Record<string, [string, string]> = {
+  case: ["app/icon-folder-brand-16", "bg-brand-primary-subtle"],
+  sla: ["app/icon-timer-medium-16", "bg-medium-bg"],
+  report: ["app/icon-file-success-16", "bg-success-bg"],
+  rule: ["app/icon-sliders-secondary-16", "bg-surface-sunken"],
+  connector: ["app/icon-plug-secondary-16", "bg-surface-sunken"],
 };
-
-const ICON: Record<NonNullable<Notice["icon"]>, [string, string]> = {
-  timer: ["app/icon-timer-medium-16", "bg-medium-bg"],
-  file: ["app/icon-file-success-16", "bg-success-bg"],
-  sliders: ["app/icon-sliders-secondary-16", "bg-surface-sunken"],
-  plug: ["app/icon-plug-secondary-16", "bg-surface-sunken"],
-};
+const iconFor = (kind: string) => ICON[kind.split(".")[0]] ?? ICON.case;
 
 const ago = (iso: string, now: number) => {
   const m = Math.max(1, Math.round((now - Date.parse(iso)) / 60_000));
   return m < 60 ? `${m}m` : m < 60 * 12 ? `${Math.round(m / 60)}h` : formatClockOrDay(iso, now);
 };
 
-export function NoticeRow({ n, now, onOpen }: { n: Notice; now: number; onOpen: () => void }) {
-  const [icon, tile] = n.icon ? ICON[n.icon] : ["", ""];
+export function NoticeRow({ n, now, onOpen }: { n: Notification; now: number; onOpen: () => void }) {
+  const [icon, tile] = iconFor(n.kind);
   return (
     <button type="button" onClick={onOpen} className={cn("flex w-full items-start gap-3 border-t border-border-subtle px-[18px] py-3 text-left hover:bg-surface-raised", !n.read && "bg-[#fbfaff]")}>
       {n.actor ? (
@@ -61,20 +49,17 @@ export function NoticeRow({ n, now, onOpen }: { n: Notice; now: number; onOpen: 
 export function NotificationsPanel({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const now = useNow();
-  const { mutate } = useSWRConfig();
-  const [tab, setTab] = useState<"all" | Notice["category"]>("all");
-  const { data } = useApi<{ data: Notice[]; unread: number }>("/notifications");
+  const [tab, setTab] = useState<"all" | "mentions" | "cases" | "system">("all");
+  const { data } = useNotifications();
   const list = (data?.data ?? []).filter((n) => tab === "all" || n.category === tab);
   const fresh = list.filter((n) => !n.read);
   const earlier = list.filter((n) => n.read);
   const mentions = data?.data.filter((n) => n.category === "mentions" && !n.read).length ?? 0;
 
   const markAll = async () => {
-    // TODO(api): proposed POST /notifications/read-all.
-    await apiFetch("POST", "/notifications/read-all").catch(() => undefined);
-    await mutate("/notifications");
+    await markAllNotificationsRead(now).catch(() => undefined);
   };
-  const open = (n: Notice) => {
+  const open = (n: Notification) => {
     onClose();
     router.push(n.link);
   };

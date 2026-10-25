@@ -1,14 +1,51 @@
 "use client";
 
+import { caseStatusLabel, riskTone } from "@/components/app/indicators";
 import { Badge } from "@/components/ui/Badge";
 import { Icon } from "@/components/ui/Icon";
-import { useApi } from "@/lib/api/fd";
+import { fraudTypeLabel, useApi, type SearchHit, type SearchResult } from "@/lib/api/fd";
+import { useOperatorName } from "@/lib/auth/session";
 import { cn } from "@/lib/cn";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+/** One row: a search hit written for the palette, or one of the palette’s own actions. */
 type Hit = { id: string; kind: "case" | "subscriber" | "alert" | "action"; title: string; subtitle: string; badge?: string; best?: boolean };
-type Result = { data: Hit[]; empty?: { title: string; detail: string }; did_you_mean?: Hit[]; try_instead?: Hit[] };
+
+const ALERT_STATUS: Record<string, string> = { auto_case: "opened", promoted: "promoted to", attached: "added to" };
+
+function toHit(h: SearchHit): Hit {
+  if (h.case) {
+    const c = h.case;
+    return {
+      id: h.id,
+      kind: "case",
+      title: c.id,
+      subtitle: [fraudTypeLabel(c.fraud_type), c.subscriber.msisdn, caseStatusLabel(c.status)].join(" · "),
+      badge: riskTone(c.risk_score) === "critical" ? "Critical" : undefined,
+      best: h.best,
+    };
+  }
+  if (h.subscriber) {
+    const s = h.subscriber;
+    const cases = h.open_cases ? `${h.open_cases} open ${h.open_cases === 1 ? "case" : "cases"}` : "no cases";
+    return {
+      id: h.id,
+      kind: "subscriber",
+      title: s.msisdn,
+      subtitle: [s.name, s.area.split(",")[0], s.status === "active" ? cases : s.status.replace(/_/g, " ")].join(" · "),
+      best: h.best,
+    };
+  }
+  const a = h.alert;
+  return {
+    id: h.id,
+    kind: "alert",
+    title: h.id,
+    subtitle: a ? [a.title, a.case_id && `${ALERT_STATUS[a.status] ?? "in"} ${a.case_id}`].filter(Boolean).join(" · ") : "",
+    best: h.best,
+  };
+}
 
 const FILTERS = [
   ["all", "All"],
@@ -27,6 +64,7 @@ const ICON: Record<Hit["kind"], string> = {
 /** I1/I2 · ⌘K — cases, subscribers, alerts and actions in one list. */
 export function CommandPalette({ onClose, onHandover }: { onClose: () => void; onHandover: () => void }) {
   const router = useRouter();
+  const operatorName = useOperatorName() ?? "Kasa Mobile";
   const input = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -39,8 +77,20 @@ export function CommandPalette({ onClose, onHandover }: { onClose: () => void; o
     return () => clearTimeout(t);
   }, [q]);
 
-  // TODO(api): GET /search?type=all — adds cases, alerts, best match and “did you mean” to the subscriber search.
-  const { data } = useApi<Result>(debounced.length >= 2 ? `/search?q=${encodeURIComponent(debounced)}&type=all` : null);
+  const { data: result } = useApi<SearchResult>(debounced.length >= 2 ? `/search?q=${encodeURIComponent(debounced)}&type=all` : null);
+  const data = useMemo(() => {
+    if (!result) return undefined;
+    const noCase = result.data.length === 0 && result.max_case_id;
+    const empty = noCase
+      ? { title: `No case ${debounced.toUpperCase()}`, detail: `Case numbers on ${operatorName} currently go up to ${result.max_case_id}.` }
+      : result.data.length === 0 && result.other_operator
+        ? { title: `This number is on ${result.other_operator.name}`, detail: `Search only finds ${operatorName} subscribers.` }
+        : undefined;
+    const tryInstead: Hit[] = noCase
+      ? [{ kind: "action", id: "search_all_cases", title: `Search all cases for “${debounced.replace(/\D/g, "")}”`, subtitle: "Includes closed and other teams’ cases you can see" }]
+      : [];
+    return { data: result.data.map(toHit), empty, did_you_mean: (result.did_you_mean ?? []).map(toHit), try_instead: tryInstead };
+  }, [result, debounced, operatorName]);
 
   const actions: Hit[] = useMemo(
     () => [
@@ -68,7 +118,7 @@ export function CommandPalette({ onClose, onHandover }: { onClose: () => void; o
     onClose();
     if (h.kind === "case") router.push(`/cases/${h.id}`);
     else if (h.kind === "subscriber") router.push(`/subscribers/${h.id}`);
-    else if (h.kind === "alert") router.push(`/alerts?open=${h.id}`);
+    else if (h.kind === "alert") router.push(`/alerts?alert=${h.id}`);
     else if (h.id === "handover") onHandover();
     else if (h.id === "search_all_cases") router.push(`/cases?scope=all&q=${encodeURIComponent(debounced.replace(/\D/g, ""))}`);
     else router.push(`/lookup?q=${encodeURIComponent(debounced)}`);

@@ -126,7 +126,7 @@ export default function AuthScreensIndex() {
           flowId: who.flow_id,
           operator: who.operator,
           method: who.next,
-          redirectUrl: who.redirect_url ?? null,
+          redirectUrl: who.sso?.redirect_url ?? null,
         });
         return;
       }

@@ -43,7 +43,7 @@ export default function SignInPage() {
         flowId: result.flow_id,
         operator: result.operator,
         method: result.next,
-        redirectUrl: result.redirect_url ?? null,
+        redirectUrl: result.sso?.redirect_url ?? null,
       });
       router.push(result.next === "sso" ? "/sign-in/sso" : "/sign-in/password");
     } catch (err) {

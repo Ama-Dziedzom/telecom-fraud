@@ -17,18 +17,18 @@ import { Segmented } from "@/components/ui/Segmented";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
 import {
-  FAMILY_LABELS,
-  alertFamily,
+  fraudTypeLabel,
   isOpenAlert,
   patchAlert,
   regionOf,
   useAlert,
   useAlerts,
   type Alert,
+  type BulkTriageResult,
   type Severity,
 } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
-import { formatAgo, formatClock, formatSpan, useNow } from "@/lib/time";
+import { formatAgo, formatClock, formatMoney, formatSpan, useNow } from "@/lib/time";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -102,7 +102,7 @@ function CriticalBanner({ alertId, caseId, onOpen }: { alertId: string; caseId: 
     >
       {[
         swap && `SIM swapped at ${swap.detail.replace("Agent ", "agent ")} at ${formatClock(swap.at)}.`,
-        payments && `${payments.detail.replace(/ in .*/, "")} sent since ${formatClock(payments.at)}.`,
+        payments?.amount && `${formatMoney(payments.amount.amount_minor, payments.amount.currency)} sent since ${formatClock(payments.at)}.`,
         "First response due within 15 minutes.",
       ]
         .filter(Boolean)
@@ -156,7 +156,10 @@ export default function LiveAlertsPage() {
     else next.delete("alert");
     router.replace(`${pathname}${next.size ? `?${next}` : ""}`, { scroll: false });
   };
-  const drawerAlert = openId ? all.find((a) => a.id === openId) : undefined;
+  // A link can open an alert that isn’t in the live list (older, or from search): the detail stands in for the row.
+  const listed = openId ? all.find((a) => a.id === openId) : undefined;
+  const { data: unlisted } = useAlert(openId && data && !listed ? openId : null);
+  const drawerAlert = listed ?? (unlisted?.id === openId ? unlisted : undefined);
 
   const picked = rows.filter((a) => selected.has(a.id) && isOpenAlert(a));
   const selectable = rows.filter(isOpenAlert);
@@ -170,7 +173,7 @@ export default function LiveAlertsPage() {
     });
   const sameAs = <T,>(get: (a: Alert) => T) => picked.length > 1 && picked.every((a) => get(a) === get(picked[0]));
   const commonality = [
-    sameAs(alertFamily) && `all ${FAMILY_LABELS[alertFamily(picked[0])]}`,
+    sameAs((a) => a.fraud_type) && `all ${fraudTypeLabel(picked[0].fraud_type)}`,
     sameAs((a) => a.rule_ids[0]) && picked[0].rule_ids[0],
     sameAs((a) => a.region) && picked[0].region,
   ].filter(Boolean);
@@ -533,6 +536,13 @@ export default function LiveAlertsPage() {
   );
 }
 
+/** “AL-88195 is being triaged by Kofi Boateng” — the alerts a bulk call left out, and why. */
+function failures(result?: BulkTriageResult) {
+  return (result?.failed ?? [])
+    .map((f) => (f.code === "locked" && f.locked_by ? `${f.id} is being triaged by ${f.locked_by.name}` : `${f.id} couldn’t be changed`))
+    .join(". ");
+}
+
 /** B15 · Bulk triage — one decision for every selected alert. */
 function BulkDialogs({
   action,
@@ -550,6 +560,8 @@ function BulkDialogs({
   const router = useRouter();
   const [first, ...others] = picked;
   const ids = picked.map((a) => a.id);
+  // Everything that didn’t fail went through (the bulk call answers for each alert on its own).
+  const succeeded = (result?: BulkTriageResult) => ids.filter((id) => !result?.failed.some((f) => f.id === id));
 
   if (action === "dismiss") {
     return (
@@ -558,12 +570,13 @@ function BulkDialogs({
         others={others}
         open
         onClose={onClose}
-        onDone={() => {
-          ids.forEach((id) => patchAlert(id, { status: "dismissed" }));
+        onDone={(_reason, _feedback, result) => {
+          const done = succeeded(result);
+          done.forEach((id) => patchAlert(id, { status: "dismissed" }));
           onDone({
-            title: `${ids.length} alerts dismissed`,
-            body: ids.join(", "),
-            action: { label: "Undo", onClick: () => ids.forEach((id) => patchAlert(id, null)) },
+            title: `${done.length} ${done.length === 1 ? "alert" : "alerts"} dismissed`,
+            body: [done.join(", "), failures(result)].filter(Boolean).join(". "),
+            action: { label: "Undo", onClick: () => done.forEach((id) => patchAlert(id, null)) },
           });
         }}
       />
@@ -576,10 +589,12 @@ function BulkDialogs({
         others={others}
         open
         onClose={onClose}
-        onDone={(caseId) => {
-          ids.forEach((id) => patchAlert(id, { status: "attached", case_id: caseId }));
+        onDone={(caseId, result) => {
+          const done = succeeded(result);
+          done.forEach((id) => patchAlert(id, { status: "attached", case_id: caseId }));
           onDone({
-            title: `${ids.length} alerts added to ${caseId}`,
+            title: `${done.length} ${done.length === 1 ? "alert" : "alerts"} added to ${caseId}`,
+            body: failures(result) || undefined,
             action: { label: "Open case", onClick: () => router.push(`/cases/${caseId}`) },
           });
         }}

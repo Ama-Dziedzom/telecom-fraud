@@ -10,11 +10,24 @@ import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { FieldLabel, Select } from "@/components/ui/TextField";
 import { apiFetch } from "@/lib/api/client";
-import { useMyCases } from "@/lib/api/fd";
+import { useMyCases, type SearchHit } from "@/lib/api/fd";
+import { formatDate } from "@/lib/time";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
 type Row = { line: number; value: string; problem?: string };
+
+/** “Kumasi, Ashanti · Tier 2 wallet” — the line under a subscriber search hit. */
+export function hitSubtitle(s: NonNullable<SearchHit["subscriber"]>) {
+  return [s.area, s.wallet_tier ? `Tier ${s.wallet_tier} wallet` : ""].filter(Boolean).join(" · ");
+}
+
+/** “Ported out · inactive since 1 Mar 2024”, or nothing for an active number. */
+export function hitNote(s: NonNullable<SearchHit["subscriber"]>) {
+  if (s.status === "active") return "";
+  const status = s.status === "ported_out" ? "Ported out" : s.status.charAt(0).toUpperCase() + s.status.slice(1).replace(/_/g, " ");
+  return s.inactive_since ? `${status} · inactive since ${formatDate(s.inactive_since)}` : status;
+}
 
 /** Accepts 0XX XXX XXXX, +233 XX XXX XXXX, a 15-digit IMEI, or a wallet ID. */
 export function identifierProblem(raw: string): string | null {
@@ -55,7 +68,7 @@ export function BulkLookupModal({ onClose }: { onClose: () => void }) {
   const { data: cases } = useMyCases();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<{ name: string; rows: Row[] } | null>(null);
-  const [reason, setReason] = useState("");
+  const [caseId, setCaseId] = useState("");
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
   const valid = file?.rows.filter((r) => !r.problem) ?? [];
@@ -70,8 +83,8 @@ export function BulkLookupModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setFailure(null);
     try {
-      // TODO(api): proposed POST /lookups/bulk {identifiers, reason}.
-      const res = await apiFetch<{ id: string }>("POST", "/lookups/bulk", { identifiers: valid.map((r) => r.value), reason, file_name: file?.name });
+      // The case is the reason, for the audit log.
+      const res = await apiFetch<{ id: string }>("POST", "/lookups/bulk", { identifiers: valid.map((r) => r.value), case_id: caseId, file_name: file?.name });
       router.push(`/lookup/bulk/${res.id}`);
     } catch (err) {
       setFailure(err);
@@ -93,7 +106,7 @@ export function BulkLookupModal({ onClose }: { onClose: () => void }) {
           <Button variant="secondary" size="md" onClick={onClose}>
             Cancel
           </Button>
-          <Button size="md" onClick={go} loading={busy} disabled={!valid.length || !reason} iconLeft={<Icon name="app/icon-search-white-18" size={18} />}>
+          <Button size="md" onClick={go} loading={busy} disabled={!valid.length || !caseId} iconLeft={<Icon name="app/icon-search-white-18" size={18} />}>
             Look up {valid.length}
             {bad.length ? ` · skip ${bad.length}` : ""}
           </Button>
@@ -136,7 +149,7 @@ export function BulkLookupModal({ onClose }: { onClose: () => void }) {
           {bad.length > 5 && <p>…and {bad.length - 5} more</p>}
         </div>
       )}
-      <Select label="Reason" required value={reason} onChange={(e) => setReason(e.target.value)}>
+      <Select label="Reason" required value={caseId} onChange={(e) => setCaseId(e.target.value)}>
         <option value="" disabled>
           Choose the case this is for
         </option>
@@ -157,11 +170,17 @@ const NEEDS = [
   ["name", "Registered name"],
 ] as const;
 
+const OPERATORS = [
+  { id: "op_volta", name: "Volta Telecom" },
+  { id: "op_savanna", name: "Savanna Mobile" },
+];
+
 /** G20 · Request subscriber info from another operator, under the inter-operator MoU. */
-export function RequestInfoModal({ identifier, operator, onClose }: { identifier: string; operator: string | null; onClose: () => void }) {
+export function RequestInfoModal({ identifier, operator, onClose }: { identifier: string; operator: { id: string; name: string } | null; onClose: () => void }) {
   const toast = useToast();
   const { data: cases } = useMyCases();
-  const [op, setOp] = useState(operator ?? "Volta Telecom");
+  const [opId, setOpId] = useState(operator?.id ?? OPERATORS[0].id);
+  const op = OPERATORS.find((o) => o.id === opId)?.name ?? operator?.name ?? opId;
   const [caseId, setCaseId] = useState("");
   const [needs, setNeeds] = useState<Set<string>>(new Set(["active", "sim_swaps"]));
   const [busy, setBusy] = useState(false);
@@ -172,8 +191,7 @@ export function RequestInfoModal({ identifier, operator, onClose }: { identifier
     setBusy(true);
     setFailure(null);
     try {
-      // TODO(api): proposed POST /operator-requests.
-      await apiFetch("POST", "/operator-requests", { operator: op, identifier, case_id: linked, needs: Array.from(needs) });
+      await apiFetch("POST", "/operator-requests", { operator_id: opId, identifier, case_id: linked, needs: Array.from(needs) });
       toast({ tone: "success", title: `Request sent to ${op}`, body: `Usually answered within 1 working day. The reply is attached to ${linked}.` });
       onClose();
     } catch (err) {
@@ -190,7 +208,7 @@ export function RequestInfoModal({ identifier, operator, onClose }: { identifier
       icon="app/icon-send-brand-22"
       tone="brand"
       title="Request subscriber info"
-      description={`${identifier}${operator ? ` · looks like a ${operator} number` : ""}`}
+      description={`${identifier}${operator ? ` · looks like a ${operator.name} number` : ""}`}
       actions={
         <>
           <Button variant="secondary" size="md" onClick={onClose}>
@@ -202,9 +220,12 @@ export function RequestInfoModal({ identifier, operator, onClose }: { identifier
         </>
       }
     >
-      <Select label="Operator" required value={op} onChange={(e) => setOp(e.target.value)}>
-        <option value="Volta Telecom">Volta Telecom · fraud desk</option>
-        <option value="Savanna Mobile">Savanna Mobile · fraud desk</option>
+      <Select label="Operator" required value={opId} onChange={(e) => setOpId(e.target.value)}>
+        {[...OPERATORS, ...(operator && !OPERATORS.some((o) => o.id === operator.id) ? [operator] : [])].map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name} · fraud desk
+          </option>
+        ))}
       </Select>
       <Select label="Linked case" required value={linked} onChange={(e) => setCaseId(e.target.value)}>
         {cases?.data.map((c) => (
@@ -243,7 +264,7 @@ export function RequestInfoModal({ identifier, operator, onClose }: { identifier
 
 const WATCH_REASONS = [
   ["victim_repeat", "Recent fraud victim: protect from repeat"],
-  ["suspected_mule", "Suspected mule"],
+  ["mule", "Suspected mule"],
   ["linked_to_case", "Linked to an open case"],
   ["gateway", "Possible bypass gateway"],
 ] as const;
@@ -274,8 +295,8 @@ export function WatchModal({
     setBusy(true);
     setFailure(null);
     try {
-      // TODO(api): GET /watchlist exists; proposed POST /watchlist to add to it.
-      await apiFetch("POST", "/watchlist", { entity_ids: entityIds, reason, days: Number(days), priority: top, shared, case_id: caseId });
+      // Your own watchlist; /watchlist is case monitoring after closing.
+      await apiFetch("POST", "/me/watchlist", { entity_ids: entityIds, reason, days: Number(days), priority: top, shared, case_id: caseId });
       toast({ tone: "success", title: `Watching ${entityIds.length === 1 ? title.replace(/^Watch /, "") : `${entityIds.length} numbers`}`, body: `For ${days} days${top ? " · new alerts go to the top of your queue" : ""}.` });
       onClose();
     } catch (err) {

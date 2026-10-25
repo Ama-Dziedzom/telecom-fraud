@@ -51,16 +51,25 @@ export function StoryStrip({ steps }: { steps: StoryStep[] }) {
 }
 
 const STEP_ICON: Record<NextStepKind, { tile: string; button: string }> = {
+  start: { tile: "app/icon-clock-brand-24", button: "app/icon-play-white-18" },
+  pick_up: { tile: "app/icon-clock-brand-24", button: "app/icon-users-white-18" },
   freeze_wallet: { tile: "app/icon-shield-brand-24", button: "app/icon-shield-white-20" },
   suspend_sim: { tile: "app/icon-shield-brand-24", button: "app/icon-shield-white-20" },
   block_recipients: { tile: "app/icon-shield-brand-24", button: "app/icon-shield-white-20" },
   call_subscriber: { tile: "app/icon-phone-brand-24", button: "app/icon-phone-white-20" },
   request_reversal: { tile: "app/icon-refresh-brand-24", button: "app/icon-refresh-white-20" },
   report_agent: { tile: "app/icon-building-brand-24", button: "app/icon-building-white-20" },
+  agent_suspension: { tile: "app/icon-building-brand-24", button: "app/icon-building-white-20" },
+  link_case: { tile: "app/icon-link-brand-16", button: "app/icon-plus-white-18" },
   add_evidence: { tile: "app/icon-file-brand-24", button: "app/icon-file-white-20" },
-  await_signoff: { tile: "app/icon-clock-brand-24", button: "app/icon-clock-white-20" },
+  wait: { tile: "app/icon-clock-brand-24", button: "app/icon-clock-white-20" },
   watch_repeat: { tile: "app/icon-eye-brand-24", button: "app/icon-eye-white-20" },
+  none: { tile: "app/icon-check-circle-success-18", button: "app/icon-check-white-18" },
 };
+const stepIcon = (kind: NextStepKind) => STEP_ICON[kind] ?? STEP_ICON.add_evidence;
+/** Steps that mean the response is done and the case is waiting on someone else. */
+const AFTER_RESPONSE: NextStepKind[] = ["wait", "watch_repeat", "add_evidence", "none"];
+const label = (kind: NextStepKind) => NEXT_STEP_LABELS[kind] ?? kind.replace(/_/g, " ");
 
 /** Do this next — the recommended step big, the rest as “Then” chips. */
 export function DoThisNext({
@@ -80,7 +89,7 @@ export function DoThisNext({
       icon="app/icon-zap-secondary-18"
       aside={
         <Badge
-          label={rec && ["await_signoff", "watch_repeat", "add_evidence"].includes(rec.kind) ? "Response complete" : `${steps.done.length} of ${total} done`}
+          label={rec && AFTER_RESPONSE.includes(rec.kind) ? "Response complete" : `${steps.done.length} of ${total} done`}
           tone="neutral"
         />
       }
@@ -89,16 +98,23 @@ export function DoThisNext({
       {rec ? (
         <div className="flex items-center gap-4 rounded-xl border border-brand-primary bg-brand-primary-subtle px-5 py-[18px]">
           <span className="flex size-12 shrink-0 items-center justify-center rounded-[10px] bg-brand-primary-subtle">
-            <Icon name={STEP_ICON[rec.kind].tile} size={24} />
+            <Icon name={stepIcon(rec.kind).tile} size={24} />
           </span>
           <span className="flex min-w-0 flex-col gap-0.5">
             <span className="text-h3 text-text-primary">{rec.title}</span>
             <span className="text-body-m text-text-secondary">{rec.detail}</span>
           </span>
           <span className="flex-1" />
-          <Button size="lg" disabled={locked && rec.kind !== "await_signoff" && rec.kind !== "watch_repeat"} onClick={() => onStep(rec.kind)} iconLeft={<Icon name={STEP_ICON[rec.kind].button} size={20} />}>
-            {NEXT_STEP_LABELS[rec.kind]}
-          </Button>
+          {rec.kind !== "none" && (
+            <Button
+              size="lg"
+              disabled={locked && !["wait", "watch_repeat", "start", "pick_up"].includes(rec.kind)}
+              onClick={() => onStep(rec.kind)}
+              iconLeft={<Icon name={stepIcon(rec.kind).button} size={20} />}
+            >
+              {label(rec.kind)}
+            </Button>
+          )}
         </div>
       ) : (
         <p className="flex items-center gap-2 rounded-xl bg-success-bg px-5 py-4 text-label-m text-success-fg">
@@ -118,13 +134,13 @@ export function DoThisNext({
               className="flex items-center gap-2 rounded-full bg-surface-raised px-3 py-2 text-label-s text-text-secondary hover:bg-surface-sunken disabled:cursor-not-allowed"
             >
               <Icon name="app/icon-circle-dashed-14" size={14} />
-              {NEXT_STEP_LABELS[k]}
+              {label(k)}
             </button>
           ))}
           {steps.done.map((k) => (
             <span key={k} className="flex items-center gap-2 rounded-full bg-success-bg px-3 py-2 text-label-s text-success-fg">
               <Icon name="app/icon-check-circle-success-14" size={14} />
-              {NEXT_STEP_LABELS[k]}
+              {label(k)}
             </span>
           ))}
         </div>

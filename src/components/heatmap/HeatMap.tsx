@@ -5,10 +5,11 @@ import { cn } from "@/lib/cn";
 import { useEffect, useRef, useState } from "react";
 import { BUCKETS, LEVELS, type Level, type Pin } from "./geo";
 
+/** What the map draws: how hot each boundary is (0–4), the hotspot pins and the agents. Names come from the page. */
 export type Layers = {
-  shapes: Record<string, number>;
-  pins: Array<{ id: string; name: string; value: number }>;
-  agents?: Array<{ id: string; hot: boolean }>;
+  shapes: Array<{ id: string; intensity: number }>;
+  pins: Array<{ id: string; name: string; alerts: number }>;
+  agents: Array<{ code: string; hot: boolean }>;
 };
 
 const H = 640;
@@ -62,6 +63,7 @@ export function HeatMap({
   }, []);
 
   const pins = new Map(layers.pins.map((p) => [p.id, p]));
+  const intensity = new Map(layers.shapes.map((s) => [s.id, s.intensity]));
   const on = (layer: string) => visible[layer] !== false;
   const scale = fit * zoom;
   const reset = () => {
@@ -103,7 +105,7 @@ export function HeatMap({
           ))}
           {on(geo.layers[0]) &&
             geo.shapes.map((s) => {
-              const bucket = layers.shapes[s.id] ?? 0;
+              const bucket = intensity.get(s.id) ?? 0;
               const focused = focus === s.id;
               return (
                 <div key={s.id} className="absolute" style={{ left: s.x, top: s.y, width: s.w, height: s.h }} title={`${s.name}: ${bucket ? geo.legend[bucket] : "no"} alerts`}>
@@ -153,7 +155,7 @@ export function HeatMap({
 
           {on(geo.layers[2] ?? "") &&
             geo.agents?.map((a) => {
-              const hot = layers.agents?.find((x) => x.id === a.id)?.hot;
+              const hot = layers.agents.find((x) => x.code === a.id)?.hot;
               return (
                 <span
                   key={a.id}
@@ -173,7 +175,7 @@ export function HeatMap({
                 {geo.pins.map((pin) => {
                   const p = pins.get(pin.id);
                   if (!p) return null;
-                  const l = leader(pin, p.name, p.value);
+                  const l = leader(pin, p.name, p.alerts);
                   return <line key={pin.id} x1={l.cx} y1={l.cy} x2={l.tx} y2={l.ty} stroke="#1D1948" strokeWidth={1} />;
                 })}
               </svg>
@@ -185,7 +187,7 @@ export function HeatMap({
                   <span key={pin.id}>
                     <button
                       type="button"
-                      aria-label={`${p.name}: ${p.value} alerts${pin.drill ? ", zoom in" : ""}`}
+                      aria-label={`${p.name}: ${p.alerts} alerts${pin.drill ? ", zoom in" : ""}`}
                       onClick={() => (pin.drill ? onDrill(pin.drill) : onPin(pin.id))}
                       className={cn(
                         "absolute flex items-center justify-center rounded-full text-caption font-medium text-text-inverse",
@@ -193,7 +195,7 @@ export function HeatMap({
                       )}
                       style={{ left: pin.x, top: pin.y, width: pin.size, height: pin.size }}
                     >
-                      {ring ? <span className="size-1.5 rounded-full bg-[#1D1948]" /> : pin.size >= 24 ? p.value : null}
+                      {ring ? <span className="size-1.5 rounded-full bg-[#1D1948]" /> : pin.size >= 24 ? p.alerts : null}
                     </button>
                     <button
                       type="button"
@@ -203,7 +205,7 @@ export function HeatMap({
                       style={{ left: pin.label[0], top: pin.label[1] }}
                     >
                       {p.name}
-                      <span className="font-mono text-mono-s text-critical-fg">{p.value}</span>
+                      <span className="font-mono text-mono-s text-critical-fg">{p.alerts}</span>
                     </button>
                   </span>
                 );

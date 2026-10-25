@@ -9,8 +9,10 @@ import { Segmented } from "@/components/ui/Segmented";
 import { FieldLabel, Select, TextArea } from "@/components/ui/TextField";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
-import { useApi } from "@/lib/api/fd";
+import { useApi, type PersonRef } from "@/lib/api/fd";
+import { roleLabel } from "@/lib/auth/api";
 import { cn } from "@/lib/cn";
+import { formatClock, formatDay } from "@/lib/time";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
@@ -22,6 +24,59 @@ export const TEMPLATES = [
   { id: "rule_performance", label: "Rule performance", detail: "Hits, precision, FP notes", icon: "app/icon-sliders-brand-22", option: "Rule performance" },
 ] as const;
 
+/** A report as GET /reports and GET /reports/{id} send it. */
+export type Report = {
+  id: string;
+  name: string;
+  template: string;
+  schedule: Schedule | null;
+  next_run_at: string | null;
+  status: "ready" | "building" | "failed";
+  progress_pct: number | null;
+  error: { code: string; at: string } | null;
+  last_run_at: string;
+  format: "pdf" | "csv" | "xlsx";
+  owner: PersonRef;
+  shared_with: Array<{ type: "user" | "group"; id: string; name: string; initials?: string }>;
+};
+
+type Schedule = { frequency: "daily" | "weekly" | "monthly"; day_of_week?: string; day_of_month?: number; time: string; paused: boolean };
+
+const TEMPLATE_LABEL: Record<string, string> = { case_list: "Case list", fraud_summary: "Summary", fraud_type: "Fraud type", regulator_return: "Regulatory", rule_performance: "Rules" };
+export const templateLabel = (t: string) => TEMPLATE_LABEL[t] ?? t.replace(/_/g, " ");
+
+export const formatLabel = (f: string) => (f === "xlsx" ? "XLSX" : f.toUpperCase());
+
+const WEEKDAY: Record<string, string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
+const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"}`;
+
+/** Every Mon 07:00 · 1st of month · One-off */
+export function scheduleLabel(s: Schedule | null) {
+  if (!s) return "One-off";
+  if (s.frequency === "weekly") return `Every ${WEEKDAY[s.day_of_week ?? ""] ?? s.day_of_week} ${s.time}`;
+  if (s.frequency === "monthly") return `${ordinal(s.day_of_month ?? 1)} of month`;
+  return `Every day ${s.time}`;
+}
+
+/** “Efua O.-A. +3”, or “Only me”. Groups keep their name. */
+export function sharedLabel(list: Report["shared_with"]) {
+  if (!list.length) return "Only me";
+  const [first, ...rest] = list;
+  const [given, ...family] = first.name.split(" ");
+  const short = first.type === "group" || !family.length ? first.name : `${given} ${family.join(" ").split("-").map((p) => `${p[0]}.`).join("-")}`;
+  return rest.length ? `${short} +${rest.length}` : short;
+}
+
+/** Mon 26 Oct 07:00 */
+export const nextRunLabel = (iso: string) => `${formatDay(Date.parse(iso))} ${formatClock(iso)}`;
+
+/** The schedule a choice in the form stands for. */
+const SCHEDULES: Record<string, Omit<Schedule, "time" | "paused">> = {
+  week_mon: { frequency: "weekly", day_of_week: "mon" },
+  week_fri: { frequency: "weekly", day_of_week: "fri" },
+  month_1: { frequency: "monthly", day_of_month: 1 },
+};
+
 const INCLUDE = [
   ["open", "Open"],
   ["closed_fraud", "Closed · fraud"],
@@ -29,7 +84,8 @@ const INCLUDE = [
   ["inconclusive", "Inconclusive"],
 ] as const;
 
-type Person = { id: string; name: string; initials: string; role: string; can_view_cases: boolean };
+/** GET /people/report-recipients. */
+type Person = PersonRef & { role: string; can_view_cases: boolean };
 
 /** `20 Oct 2026` from `2026-10-20` (no timezone shifts). */
 const day = (iso: string) => {
@@ -76,7 +132,7 @@ export function NewReportModal({ template = "case_list", schedule: startSchedule
   const [repeat, setRepeat] = useState(startScheduled);
   const [every, setEvery] = useState("week_mon");
   const [at, setAt] = useState("07:00");
-  const [recipients, setRecipients] = useState<string[]>(["usr_efua", "usr_kwame"]);
+  const [recipients, setRecipients] = useState<string[]>(["usr_efua", "usr_nana"]);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
   const dateError = to < from ? `End date is before the start date. Pick a date on or after ${day(from)}.` : undefined;
@@ -88,18 +144,18 @@ export function NewReportModal({ template = "case_list", schedule: startSchedule
     setBusy(true);
     setFailure(null);
     try {
-      await apiFetch("POST", "/reports", {
+      const created = await apiFetch<Report>("POST", "/reports", {
         template: type,
         name,
         format,
         filters: { from, to, include: Array.from(include) },
-        schedule: repeat ? `${every === "week_mon" ? "Every Mon" : every === "week_fri" ? "Every Fri" : "1st of month"} ${at}` : undefined,
+        schedule: repeat ? { ...SCHEDULES[every], time: at, paused: false } : undefined,
         share_with: repeat ? recipients : undefined,
       });
       await mutate((k) => typeof k === "string" && k.startsWith("/reports"));
       toast(
         repeat
-          ? { tone: "success", title: "Schedule saved", body: `${name} · next run Mon 26 Oct ${at}` }
+          ? { tone: "success", title: "Schedule saved", body: created.next_run_at ? `${name} · next run ${nextRunLabel(created.next_run_at)}` : name }
           : { title: `Generating “${name}”`, body: "About 1 minute. We’ll notify you when it’s ready.", action: { label: "View", onClick: () => router.push("/reports") } },
       );
       onClose();
@@ -262,7 +318,7 @@ export function ShareReportModal({ id, name, meta, onClose }: { id: string; name
   const { data: people } = useApi<{ data: Person[] }>("/people/report-recipients");
   const [picked, setPicked] = useState<string[]>(["usr_efua", "usr_kofi", "usr_esi"]);
   const [q, setQ] = useState("");
-  const [expires, setExpires] = useState<"24h" | "7d" | "30d">("7d");
+  const [expires, setExpires] = useState<"1" | "7" | "30">("7");
   const [message, setMessage] = useState("For Thursday’s review.");
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -274,9 +330,8 @@ export function ShareReportModal({ id, name, meta, onClose }: { id: string; name
     setBusy(true);
     setFailure(null);
     try {
-      // TODO(api): proposed POST /reports/{id}/share {user_ids, expires, message}.
-      await apiFetch("POST", `/reports/${id}/share`, { user_ids: picked, expires, message });
-      toast({ tone: "success", title: `Shared with ${picked.length}`, body: `Link expires in ${expires === "24h" ? "24 hours" : expires === "7d" ? "7 days" : "30 days"} · logged to the audit trail.` });
+      await apiFetch<{ shared_with: number; expires_at: string }>("POST", `/reports/${id}/share`, { user_ids: picked, expires_in_days: Number(expires), message });
+      toast({ tone: "success", title: `Shared with ${picked.length}`, body: `Link expires in ${expires === "1" ? "24 hours" : `${expires} days`} · logged to the audit trail.` });
       onClose();
     } catch (err) {
       setFailure(err);
@@ -324,7 +379,7 @@ export function ShareReportModal({ id, name, meta, onClose }: { id: string; name
                 >
                   <Avatar initials={p.initials} />
                   {p.name}
-                  <span className="text-caption text-text-tertiary">{p.role}</span>
+                  <span className="text-caption text-text-tertiary">{roleLabel(p.role)}</span>
                 </button>
               </li>
             ))}
@@ -337,7 +392,7 @@ export function ShareReportModal({ id, name, meta, onClose }: { id: string; name
             <Avatar initials={p.initials} />
             <span className="flex flex-1 flex-col">
               <span className="text-label-m text-text-primary">{p.name}</span>
-              <span className={cn("text-caption", p.can_view_cases ? "text-text-secondary" : "text-critical-fg")}>{p.can_view_cases ? p.role : `${p.role} · can’t see case data`}</span>
+              <span className={cn("text-caption", p.can_view_cases ? "text-text-secondary" : "text-critical-fg")}>{p.can_view_cases ? roleLabel(p.role) : `${roleLabel(p.role)} · can’t see case data`}</span>
             </span>
             {p.can_view_cases ? (
               <button type="button" aria-label={`Remove ${p.name}`} onClick={() => setPicked((x) => x.filter((y) => y !== p.id))} className="flex rounded">
@@ -359,9 +414,9 @@ export function ShareReportModal({ id, name, meta, onClose }: { id: string; name
             value={expires}
             onChange={setExpires}
             options={[
-              { id: "24h", label: "24 hours" },
-              { id: "7d", label: "7 days" },
-              { id: "30d", label: "30 days" },
+              { id: "1", label: "24 hours" },
+              { id: "7", label: "7 days" },
+              { id: "30", label: "30 days" },
             ]}
           />
         </div>

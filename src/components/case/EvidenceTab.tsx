@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
-import { useEvidence, type Evidence } from "@/lib/api/cases";
+import { useToast } from "@/components/ui/Toast";
+import { apiFetch } from "@/lib/api/client";
+import { useEvidence, type Evidence, type EvidenceDownload, type EvidenceView } from "@/lib/api/cases";
 import { useApi } from "@/lib/api/fd";
 import { formatClock } from "@/lib/time";
 import { useRef, useState } from "react";
@@ -29,6 +31,7 @@ type Upload = { key: number; file: File; progress: number; error?: string; xhr?:
 export function EvidenceTab({ caseId }: { caseId: string }) {
   const { data } = useEvidence(caseId);
   const { mutate } = useSWRConfig();
+  const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -37,6 +40,21 @@ export function EvidenceTab({ caseId }: { caseId: string }) {
 
   const update = (key: number, patch: Partial<Upload>) => setUploads((u) => u.map((x) => (x.key === key ? { ...x, ...patch } : x)));
   const remove = (key: number) => setUploads((u) => u.filter((x) => x.key !== key));
+
+  // A short-lived signed link to a watermarked copy; the download is logged.
+  const download = async (ev: Evidence) => {
+    // Open the tab now, while it still counts as the click, and point it at the link once it arrives.
+    const tab = window.open("about:blank", "_blank");
+    if (tab) tab.opener = null;
+    try {
+      const d = await apiFetch<EvidenceDownload>("GET", `/evidence/${ev.id}/download`);
+      if (tab) tab.location.href = d.url;
+      else window.location.assign(d.url);
+    } catch {
+      tab?.close();
+      toast({ title: "Couldn’t download the file", body: "Try again." });
+    }
+  };
 
   const start = (files: FileList | File[]) => {
     for (const file of Array.from(files)) {
@@ -119,7 +137,7 @@ export function EvidenceTab({ caseId }: { caseId: string }) {
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="truncate text-label-m text-text-primary">{ev.title}</span>
               <span className="text-caption text-text-secondary">
-                {[ev.summary ?? size(ev.size_bytes), ev.attached_by?.name ?? "System", formatClock(ev.attached_at)].join(" · ")}
+                {[ev.item_count ? `${ev.item_count} transactions` : size(ev.size_bytes), ev.attached_by?.name ?? "System", formatClock(ev.attached_at)].join(" · ")}
               </span>
             </span>
             <Badge label={KIND_BADGE[ev.kind] ?? ev.kind} tone="neutral" />
@@ -131,14 +149,14 @@ export function EvidenceTab({ caseId }: { caseId: string }) {
             >
               <Icon name="app/icon-eye-primary-20" size={20} />
             </button>
-            {/* TODO(api): proposed GET /evidence/{id}/download — a watermarked copy, logged like a view. */}
-            <a
-              href={`/api/fd/evidence/${ev.id}/download`}
+            <button
+              type="button"
+              onClick={() => download(ev)}
               aria-label={`Download ${ev.title}`}
               className="flex size-8 items-center justify-center rounded-lg border border-border-default hover:bg-surface-raised"
             >
               <Icon name="app/icon-download-primary-20" size={20} />
-            </a>
+            </button>
           </li>
         ))}
         {uploads.map((u) =>
@@ -198,22 +216,16 @@ export function EvidenceTab({ caseId }: { caseId: string }) {
   );
 }
 
-type View = {
-  integrity: { unchanged_since_upload: boolean; sha256: string };
-  watermark: string;
-  pages: Array<{ number: number; image_url: string }>;
-};
-
 /** GET /evidence/{id}/view — logged as an audit event; pages are watermarked images, never the raw file. */
 function EvidenceViewer({ evidence, onClose }: { evidence: Evidence; onClose: () => void }) {
-  const { data } = useApi<View>(`/evidence/${evidence.id}/view`);
+  const { data } = useApi<EvidenceView>(`/evidence/${evidence.id}/view`);
   return (
     <Modal
       open
       onClose={onClose}
       width={640}
       title={evidence.title}
-      description={data ? data.watermark : "Opening… this view is recorded in the audit log."}
+      description={data ? data.watermark.text : "Opening… this view is recorded in the audit log."}
       actions={
         <Button variant="secondary" size="md" onClick={onClose}>
           Close

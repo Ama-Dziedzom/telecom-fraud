@@ -9,9 +9,9 @@ import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
 import { Select, TextArea } from "@/components/ui/TextField";
 import { useToast } from "@/components/ui/Toast";
-import { ApiError, apiFetch } from "@/lib/api/client";
+import { apiFetch, isProblem } from "@/lib/api/client";
 import { useCaseTransactions, type CaseDetail } from "@/lib/api/cases";
-import { useApi, type ActionPart, type ProtectiveAction } from "@/lib/api/fd";
+import { useApi, type ActionPart, type PersonRef, type ProtectiveAction } from "@/lib/api/fd";
 import { formatMoney } from "@/lib/time";
 import { useEffect, useState } from "react";
 import { useSWRConfig } from "swr";
@@ -39,6 +39,13 @@ export const partLabel = (p: ActionPart, state: "doing" | "done" | "waiting" | "
   const label = (PART_LABEL[p.kind]?.[state] ?? p.kind.replace(/_/g, " ")).replace("{n}", p.targets?.length ? `${p.targets.length} ` : "");
   return label[0].toUpperCase() + label.slice(1);
 };
+
+const PART_ERROR: Record<string, string> = {
+  feed_unavailable: "Network provisioning (HLR) didn’t respond",
+  upstream_timeout: "The operator’s system timed out",
+};
+/** Why a part failed, from its code. */
+export const partError = (code?: string | null) => (code && PART_ERROR[code]) || "It didn’t go through";
 
 /** D2 · Protect · confirm — what happens, why, and what the subscriber loses. */
 export function ProtectCaseModal({
@@ -70,7 +77,8 @@ export function ProtectCaseModal({
   const [failure, setFailure] = useState<unknown>(null);
 
   const recipients =
-    targets ?? Array.from(new Set(txs?.data.filter((t) => t.flagged && t.counterparty_note.startsWith("New") && t.where_now !== "agent_holds").map((t) => t.counterparty)));
+    // TODO(api): transactions name the counterparty but not its entity ID (wal_8812), so the masked number is sent.
+    targets ?? Array.from(new Set(txs?.data.filter((t) => t.flagged && t.counterparty_new && t.where_now !== "agent_holds").map((t) => t.counterparty)));
   const flaggedOut = txs?.data.filter((t) => t.flagged) ?? [];
   const reversible = flaggedOut.reduce((s, t) => s + t.amount.amount_minor, 0);
   const first = detail.subject.name.split(" ")[0];
@@ -281,12 +289,12 @@ export function ApplyingModal({
                 {(p.status !== "pending" || current) && (
                   <span className={p.status === "failed" ? "text-caption text-critical-fg" : "text-caption text-text-secondary"}>
                     {p.status === "failed"
-                      ? `${(p as ActionPart & { detail?: string }).detail ?? "It didn’t go through"} · ${p.code ?? ""}`
+                      ? partError(p.code)
                       : current
                         ? p.kind === "suspend_sim"
                           ? "Waiting for the network provisioning system (HLR)"
                           : "Waiting for the operator’s systems"
-                        : (p as ActionPart & { detail?: string }).detail}
+                        : p.reference}
                   </span>
                 )}
               </span>
@@ -311,7 +319,7 @@ export function BarSimsModal({
   onApplying: (action: ProtectiveAction) => void;
 }) {
   const stepUp = useStepUp();
-  const [limit, setLimit] = useState<{ limit: number; requested: number; approver: string } | null>(null);
+  const [limit, setLimit] = useState<{ limit: number; requested: number; approver: PersonRef } | null>(null);
   const [choice, setChoice] = useState<"escalate" | "partial">("escalate");
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -321,16 +329,16 @@ export function BarSimsModal({
     apiFetch("POST", `/cases/${detail.id}/actions`, { parts: [{ kind: "bar_sims_on_id", target: detail.subject.subscriber_id, count: 14 }], reason: "mule_activity", note: "Bar all SIMs on this Ghana Card" })
       .then((a) => onApplying(a as ProtectiveAction))
       .catch((err) => {
-        if (err instanceof ApiError && err.code === "over_limit") {
-          const p = err.problem as unknown as { limit: number; requested: number; approver?: { name: string } };
-          setLimit({ limit: p.limit, requested: p.requested, approver: p.approver?.name ?? "your supervisor" });
+        if (isProblem(err, "limit_exceeded")) {
+          const p = err.problem as unknown as { limit: number; requested: number; approver: PersonRef };
+          setLimit({ limit: p.limit, requested: p.requested, approver: p.approver });
         } else setFailure(err);
       });
     // Once, when opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const approver = limit?.approver.split(" ")[0] ?? "your supervisor";
+  const approver = limit?.approver.name.split(" ")[0] ?? "your supervisor";
   const go = async () => {
     if (!limit) return;
     if (choice === "escalate") {

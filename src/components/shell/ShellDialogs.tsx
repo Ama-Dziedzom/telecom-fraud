@@ -12,14 +12,12 @@ import { Segmented } from "@/components/ui/Segmented";
 import { TextArea } from "@/components/ui/TextField";
 import { apiFetch } from "@/lib/api/client";
 import { useApi } from "@/lib/api/fd";
-import type { User } from "@/lib/auth/api";
+import { roleLabel, type User } from "@/lib/auth/api";
 import { cn } from "@/lib/cn";
 import { formatClock, formatDay, useNow } from "@/lib/time";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-
-const ROLE: Record<string, string> = { fraud_analyst: "Fraud Analyst", fraud_supervisor: "Fraud Supervisor" };
 
 /** “08:00-16:00” → minutes left until the end, or null when off shift. */
 function shiftLeft(shift: string | undefined, now: number) {
@@ -64,7 +62,7 @@ export function ProfileMenu({
           </span>
         </span>
         <span className="flex gap-1.5">
-          <Badge label={ROLE[user?.role ?? ""] ?? "Analyst"} tone="neutral" />
+          <Badge label={user ? roleLabel(user.role) : "Analyst"} tone="neutral" />
           <Badge label={operator} tone="neutral" />
         </span>
       </div>
@@ -192,33 +190,57 @@ export function ShortcutsModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-type Help = {
-  status: { state: string; summary: string };
-  guides: Array<{ id: string; title: string; detail: string; icon: string }>;
-  contacts: Array<{ id: string; title: string; detail: string; icon: string }>;
-};
+type Guide = { id: string; title: string; detail: string; read_minutes: number | null; url: string | null };
+type Contact = { id: string; kind: "phone" | "ticket" | "feedback"; title: string; value: string | null; hours?: string; reply_within_hours?: number };
+type Help = { guides: Guide[]; contacts: Contact[] };
+/** GET /status/integrations. */
+type Integration = { id: string; name: string; state: "operational" | "degraded" | "down"; since: string | null; lag_seconds: number | null };
+
+/** Icons by guide or contact id. */
 const HELP_ICON: Record<string, string> = {
-  alert: "app/icon-alert-triangle-brand-16",
-  folder: "app/icon-folder-brand-16",
-  refresh: "app/icon-refresh-brand-16",
-  activity: "app/icon-activity-brand-16",
-  command: "app/icon-command-brand-16",
-  bell: "app/icon-bell-brand-16",
-  lock: "app/icon-lock-brand-16",
-  message: "app/icon-message-brand-16",
+  triage: "app/icon-alert-triangle-brand-16",
+  close: "app/icon-folder-brand-16",
+  reversal: "app/icon-refresh-brand-16",
+  playbooks: "app/icon-activity-brand-16",
+  shortcuts: "app/icon-command-brand-16",
+  oncall: "app/icon-bell-brand-16",
+  it: "app/icon-lock-brand-16",
+  feedback: "app/icon-message-brand-16",
 };
+const KIND_ICON: Record<Contact["kind"], string> = { phone: "app/icon-bell-brand-16", ticket: "app/icon-lock-brand-16", feedback: "app/icon-message-brand-16" };
+
+/** The line under a contact, in the app’s words. */
+function contactDetail(c: Contact) {
+  if (c.kind === "phone") return `Live incident? Call ${c.value}${c.hours ? ` · ${c.hours}` : ""}`;
+  if (c.kind === "ticket") return `Access, sign-in or system problems${c.reply_within_hours ? ` · replies within ${c.reply_within_hours} h` : ""}`;
+  return "Ideas or something that got in your way";
+}
+
+const STATE: Record<Integration["state"], string> = { operational: "operational", degraded: "slow", down: "down" };
+
+/** “All systems operational · MoMo connector, CDR feed, NCA lookup”, or what isn’t. */
+function statusSummary(list: Integration[]) {
+  const bad = list.filter((i) => i.state !== "operational");
+  if (!bad.length) return `All systems operational · ${list.map((i) => i.name).join(", ")}`;
+  const lines = bad.map((i) => `${i.name} ${STATE[i.state] ?? i.state}${i.since ? ` since ${formatClock(i.since)}` : ""}`);
+  const fine = list.length - bad.length;
+  return fine ? `${lines.join(" · ")} · everything else operational` : lines.join(" · ");
+}
 
 /** I12 · Help & support — guides for your role, system status and who to contact. */
 export function HelpDrawer({ onClose, onShortcuts, onFeedback }: { onClose: () => void; onShortcuts: () => void; onFeedback: () => void }) {
-  // TODO(api): proposed GET /help (guides for the role + integration status).
   const { data } = useApi<Help>("/help");
+  const { data: status } = useApi<{ data: Integration[] }>("/status/integrations");
   const [q, setQ] = useState("");
+  const guides = data?.guides.map((g) => ({ ...g, detail: g.read_minutes ? `${g.detail} · ${g.read_minutes} min read` : g.detail }));
+  const contacts = data?.contacts.map((c) => ({ ...c, detail: contactDetail(c) }));
   const match = (t: { title: string; detail: string }) => !q || `${t.title} ${t.detail}`.toLowerCase().includes(q.toLowerCase());
-  const link = (t: Help["guides"][number]) => {
+  const operational = status?.data.every((i) => i.state === "operational");
+  const link = (t: { id: string; title: string; detail: string; icon: string; href: string | null; onClick?: () => void }) => {
     const body = (
       <>
         <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-primary-subtle">
-          <Icon name={HELP_ICON[t.icon]} size={16} />
+          <Icon name={t.icon} size={16} />
         </span>
         <span className="flex flex-1 flex-col">
           <span className="text-label-m text-text-primary">{t.title}</span>
@@ -228,11 +250,9 @@ export function HelpDrawer({ onClose, onShortcuts, onFeedback }: { onClose: () =
       </>
     );
     const cls = "flex w-full items-center gap-3 rounded-[10px] border border-border-subtle px-3.5 py-3 text-left hover:border-border-default";
-    if (t.id === "shortcuts") return <button key={t.id} type="button" onClick={onShortcuts} className={cls}>{body}</button>;
-    if (t.id === "feedback") return <button key={t.id} type="button" onClick={onFeedback} className={cls}>{body}</button>;
-    if (t.id === "oncall") return <a key={t.id} href="tel:0302555900" className={cls}>{body}</a>;
-    // TODO(api): guide content and the IT ticket form live outside this app.
-    return <a key={t.id} href={`https://help.frauddetection.example/${t.id}`} target="_blank" rel="noreferrer" className={cls}>{body}</a>;
+    if (t.onClick || !t.href) return <button key={t.id} type="button" onClick={t.onClick} className={cls}>{body}</button>;
+    const external = t.href.startsWith("http");
+    return <a key={t.id} href={t.href} target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined} className={cls}>{body}</a>;
   };
   return (
     <Drawer open onClose={onClose} width={480} title="Help & support" subtitle="Guides for your role, system status and who to contact." footer={<span className="text-caption text-text-tertiary">Version 2.0 · Kasa Mobile workspace</span>}>
@@ -245,19 +265,30 @@ export function HelpDrawer({ onClose, onShortcuts, onFeedback }: { onClose: () =
           placeholder="Search help"
           className="h-10 rounded-lg border border-border-default px-3.5 text-body-m outline-none focus:border-border-focus focus:shadow-focus"
         />
-        {data && (
-          <p className={cn("flex items-center gap-2.5 rounded-[10px] px-3.5 py-3 text-label-s", data.status.state === "operational" ? "bg-success-bg text-success-fg" : "bg-medium-bg text-medium-fg")}>
-            <span className={cn("size-2 shrink-0 rounded-full", data.status.state === "operational" ? "bg-success-fg" : "bg-medium-fg")} />
-            {data.status.summary}
+        {status && (
+          <p className={cn("flex items-center gap-2.5 rounded-[10px] px-3.5 py-3 text-label-s", operational ? "bg-success-bg text-success-fg" : "bg-medium-bg text-medium-fg")}>
+            <span className={cn("size-2 shrink-0 rounded-full", operational ? "bg-success-fg" : "bg-medium-fg")} />
+            {statusSummary(status.data)}
           </p>
         )}
         <div className="flex flex-col gap-2">
           <p className="text-overline text-text-tertiary uppercase">Guides for your work</p>
-          {data?.guides.filter(match).map(link)}
+          {guides
+            ?.filter(match)
+            .map((g) => link({ ...g, icon: HELP_ICON[g.id] ?? "app/icon-folder-brand-16", href: g.url, onClick: g.id === "shortcuts" ? onShortcuts : undefined }))}
         </div>
         <div className="flex flex-col gap-2">
           <p className="text-overline text-text-tertiary uppercase">Get a person</p>
-          {data?.contacts.filter(match).map(link)}
+          {contacts
+            ?.filter(match)
+            .map((c) =>
+              link({
+                ...c,
+                icon: HELP_ICON[c.id] ?? KIND_ICON[c.kind],
+                href: c.kind === "phone" && c.value ? `tel:${c.value.replace(/\s/g, "")}` : c.value,
+                onClick: c.kind === "feedback" ? onFeedback : undefined,
+              }),
+            )}
         </div>
       </div>
     </Drawer>
@@ -286,8 +317,13 @@ export function FeedbackModal({ user, onClose }: { user: User | null; onClose: (
     setBusy(true);
     setFailure(null);
     try {
-      // TODO(api): proposed POST /feedback {kind, body, screenshot, context}.
-      const res = await apiFetch<{ reference: string }>("POST", "/feedback", { kind, body, screenshot: shot, context: { page: pathname, browser } });
+      const caseId = pathname.match(/^\/cases\/([^/]+)/)?.[1];
+      const res = await apiFetch<{ reference: string; received_at: string }>("POST", "/feedback", {
+        kind,
+        body,
+        screenshot: shot,
+        context: { page: pathname, ...(caseId && { case_id: caseId }), browser },
+      });
       setSent(res.reference);
     } catch (err) {
       setFailure(err);

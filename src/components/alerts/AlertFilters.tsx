@@ -3,24 +3,24 @@
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Choice";
 import { Icon } from "@/components/ui/Icon";
-import { FAMILY_LABELS, alertFamily, regionOf, type Alert } from "@/lib/api/fd";
+import { fraudTypeLabel, regionOf, type Alert } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
 import { useEffect, useRef, useState } from "react";
 
 export type AlertFilter = {
-  families: string[];
+  fraudTypes: string[];
   regions: string[];
-  /** Minimum amount at risk in cedis (server-side: amount_min_minor). */
+  /** Money out, in cedis. */
   amountMin: number | null;
   amountMax: number | null;
 };
 
-export const NO_FILTER: AlertFilter = { families: [], regions: [], amountMin: null, amountMax: null };
+export const NO_FILTER: AlertFilter = { fraudTypes: [], regions: [], amountMin: null, amountMax: null };
 
 export const filterCount = (f: AlertFilter) =>
-  (f.families.length ? 1 : 0) + (f.regions.length ? 1 : 0) + (f.amountMin !== null || f.amountMax !== null ? 1 : 0);
+  (f.fraudTypes.length ? 1 : 0) + (f.regions.length ? 1 : 0) + (f.amountMin !== null || f.amountMax !== null ? 1 : 0);
 
-const FAMILIES = ["momo_fraud", "sim_swap", "sim_box_bypass", "account_takeover", "wangiri"];
+const FRAUD_TYPES = ["momo_velocity", "sim_swap_to_momo", "sim_box_bypass", "account_takeover", "wangiri"];
 const REGIONS = ["Greater Accra", "Ashanti", "Central", "Volta & others"];
 const AMOUNTS: Array<[string, number | null]> = [["Any", null], ["1,000+", 1000], ["5,000+", 5000], ["10,000+", 10000]];
 
@@ -31,8 +31,13 @@ export const regionBucket = (a: Alert) => {
 };
 
 export function matchesFilter(a: Alert, f: AlertFilter) {
-  if (f.families.length && !f.families.includes(alertFamily(a))) return false;
+  if (f.fraudTypes.length && !f.fraudTypes.includes(a.fraud_type)) return false;
   if (f.regions.length && !f.regions.includes(regionBucket(a))) return false;
+  if (f.amountMin !== null || f.amountMax !== null) {
+    const out = (a.money_out?.amount_minor ?? 0) / 100;
+    if (f.amountMin !== null && out < f.amountMin) return false;
+    if (f.amountMax !== null && out > f.amountMax) return false;
+  }
   return true;
 }
 
@@ -67,10 +72,10 @@ export function AlertFilterButton({
   }, [open]);
 
   const count = filterCount(value);
-  const draftCount = draft.families.length + draft.regions.length + (draft.amountMin !== null || draft.amountMax !== null ? 1 : 0);
+  const draftCount = draft.fraudTypes.length + draft.regions.length + (draft.amountMin !== null || draft.amountMax !== null ? 1 : 0);
   const shown = alerts.filter((a) => matchesFilter(a, draft)).length;
 
-  const toggle = (key: "families" | "regions", id: string, on: boolean) =>
+  const toggle = (key: "fraudTypes" | "regions", id: string, on: boolean) =>
     setDraft((d) => ({ ...d, [key]: on ? [...d[key], id] : d[key].filter((x) => x !== id) }));
 
   return (
@@ -100,15 +105,15 @@ export function AlertFilterButton({
           <div className="flex flex-col gap-4 px-4 py-3">
             <fieldset className="flex flex-col gap-2">
               <legend className="mb-2 text-overline text-text-tertiary uppercase">Fraud type</legend>
-              {FAMILIES.map((f) => (
+              {FRAUD_TYPES.map((f) => (
                 <div key={f} className="flex items-center justify-between">
                   <Checkbox
-                    label={FAMILY_LABELS[f]}
+                    label={fraudTypeLabel(f)}
                     className="text-body-s"
-                    checked={draft.families.includes(f)}
-                    onChange={(e) => toggle("families", f, e.target.checked)}
+                    checked={draft.fraudTypes.includes(f)}
+                    onChange={(e) => toggle("fraudTypes", f, e.target.checked)}
                   />
-                  <span className="text-caption text-text-tertiary">{alerts.filter((a) => alertFamily(a) === f).length}</span>
+                  <span className="text-caption text-text-tertiary">{alerts.filter((a) => a.fraud_type === f).length}</span>
                 </div>
               ))}
             </fieldset>

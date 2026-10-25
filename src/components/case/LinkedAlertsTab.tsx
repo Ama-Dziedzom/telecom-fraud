@@ -18,9 +18,9 @@ import { useState } from "react";
 import { useSWRConfig } from "swr";
 
 function howLinked(a: LinkedAlert, meId?: string) {
-  if (a.link?.kind === "opened") return { label: "Opened case", tone: "brand" as const };
-  if (a.link?.kind === "auto") return { label: "Auto-linked", tone: "neutral" as const };
-  const by = a.link?.by;
+  if (a.link.kind === "opened") return { label: "Opened case", tone: "brand" as const };
+  if (a.link.kind === "auto") return { label: "Auto-linked", tone: "neutral" as const };
+  const by = a.link.by;
   return { label: by ? `Added by ${by.id === meId ? by.name.split(" ")[0] : by.name}` : "Added", tone: "neutral" as const };
 }
 
@@ -38,7 +38,6 @@ export function LinkedAlertsTab({ caseId, meId, now }: { caseId: string; meId?: 
   const rows = (data?.data ?? []).filter((a) => !unlinked.includes(a.id));
 
   const unlink = async (a: LinkedAlert) => {
-    // TODO(api): proposed DELETE /cases/{id}/linked-alerts/{alert_id}.
     await apiFetch("DELETE", `/cases/${caseId}/linked-alerts/${a.id}`).catch(() => undefined);
     setUnlinked((u) => [...u, a.id]);
     toast({
@@ -121,7 +120,7 @@ export function LinkedAlertsTab({ caseId, meId, now }: { caseId: string; meId?: 
                       <Link href={`/alerts?alert=${a.id}`} className="rounded-lg px-3 py-1.5 text-label-s text-text-brand hover:bg-brand-primary-subtle">
                         View
                       </Link>
-                      {a.link?.kind !== "opened" && (
+                      {a.link.kind !== "opened" && (
                         <button type="button" onClick={() => unlink(a)} className="rounded-lg px-3 py-1.5 text-label-s text-text-brand hover:bg-brand-primary-subtle">
                           Unlink
                         </button>

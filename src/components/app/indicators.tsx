@@ -50,6 +50,7 @@ const CASE_STATUS: Record<CaseStatus, { label: string; tone: BadgeTone }> = {
   sent_back: { label: "Sent back", tone: "high" },
   pending_decision: { label: "Pending decision", tone: "medium" },
   closed: { label: "Closed", tone: "neutral" },
+  reopened: { label: "Reopened", tone: "high" },
 };
 
 export const caseStatusLabel = (s: CaseStatus) => CASE_STATUS[s]?.label ?? s;

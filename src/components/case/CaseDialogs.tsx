@@ -33,7 +33,11 @@ export function CaseDialogs({
   onOpen: (dialog: CaseDialog) => void;
 }) {
   const [applying, setApplying] = useState<ProtectiveAction | null>(null);
-  const agent = detail.what_happened.find((s) => s.kind === "sim_swap")?.detail?.match(/AG-\d+/)?.[0] ?? "AG-2231";
+  // The swap agent (“Agent AG-2231, Adum”), or the agent the recommended step names (“Ask to suspend agent 557210”).
+  const agent =
+    detail.what_happened.find((s) => s.kind === "sim_swap")?.detail?.match(/AG-\d+/)?.[0] ??
+    detail.next_steps.recommended?.title.match(/agent ([A-Z]{2}-\d+|\d{6})/i)?.[1] ??
+    "AG-2231";
 
   if (applying) return <ApplyingModal action={applying} caseId={detail.id} onClose={onClose} />;
 

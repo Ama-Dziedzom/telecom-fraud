@@ -5,12 +5,12 @@ import { PageBody, PageHead } from "@/components/app/AppShell";
 import { Card, Skeleton } from "@/components/app/Card";
 import { EmptyState } from "@/components/app/EmptyState";
 import { RiskScore } from "@/components/app/indicators";
-import { BulkLookupModal, identifierProblem, RequestInfoModal } from "@/components/lookup/LookupModals";
+import { BulkLookupModal, hitNote, hitSubtitle, identifierProblem, RequestInfoModal } from "@/components/lookup/LookupModals";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { apiFetch } from "@/lib/api/client";
-import { useApi } from "@/lib/api/fd";
+import { useApi, type SearchHit, type SearchResult } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
 import { formatClockOrDay, useNow } from "@/lib/time";
 import Link from "next/link";
@@ -18,10 +18,20 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useSWRConfig } from "swr";
 
-type Hit = { id: string; kind: string; title: string; subtitle: string; note?: string; open_cases: number };
-type SearchResult = { data: Hit[]; detected_type: string; other_operator?: string | null };
-type Recent = { identifier: string; name: string; type: string; subscriber_id: string; case_id: string | null; risk_score: number; at: string };
-type Watch = { id: string; identifier: string; detail: string; status: "watching" | "active" };
+type Hit = SearchHit & { subscriber: NonNullable<SearchHit["subscriber"]> };
+type Recent = { identifier: string; name: string; type: "msisdn" | "imei" | "wallet"; entity_id: string; case_id: string | null; risk_score: number; at: string };
+type Watch = {
+  id: string;
+  entity_id: string;
+  entity_type: string;
+  identifier: string;
+  case_id: string | null;
+  reason: string;
+  until: string;
+  status: "watching" | "hit";
+  hits: number;
+  last_hit_at?: string;
+};
 
 const TYPES = [
   ["auto", "Auto-detect"],
@@ -32,18 +42,37 @@ const TYPES = [
 ] as const;
 const DETECTED: Record<string, string> = { msisdn: "Phone number detected", imei: "IMEI detected", ghana_card: "Ghana Card detected", wallet: "Wallet ID detected" };
 const TRY = ["+233 54 *** 3457", "IMEI 356938…4417", "GHA-7231…-4"];
+const RECENT_TYPE: Record<Recent["type"], string> = { msisdn: "Phone", imei: "Device", wallet: "Wallet" };
+const WATCH_REASON: Record<string, string> = {
+  victim_repeat: "Repeat victim",
+  suspect_agent: "Suspected agent",
+  linked_to_case: "Linked to a case",
+  gateway: "Possible gateway",
+};
+const WATCH_ENTITY: Record<string, string> = { subscriber: "Number", wallet: "Wallet", agent: "Agent", device: "Device" };
+/** “Mule wallet · FD-2998” / “Suspected agent · 3 hits · FD-3050” */
+const watchDetail = (w: Watch) =>
+  [
+    w.reason === "mule" ? `Mule ${(WATCH_ENTITY[w.entity_type] ?? w.entity_type).toLowerCase()}` : (WATCH_REASON[w.reason] ?? WATCH_ENTITY[w.entity_type] ?? w.entity_type),
+    w.hits ? `${w.hits} ${w.hits === 1 ? "hit" : "hits"}` : "",
+    w.case_id ?? "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
-/** “054 3457” → “+233 54 *** 3457 Kojo M.” with the number in mono and the name after it. */
-function HitTitle({ title }: { title: string }) {
-  const m = title.match(/^(\+[\d *]+?\d{4})\s*(.*)$/);
-  if (!m) return <span className="text-label-m text-text-primary">{title}</span>;
+/** “+233 54 *** 3457 Kojo M.” with the number in mono and the name after it. */
+function HitTitle({ hit }: { hit: Hit }) {
   return (
     <span className="flex items-center gap-2">
-      <span className="font-mono text-mono-m text-text-primary">{m[1]}</span>
-      <span className="text-label-m text-text-primary">{m[2]}</span>
+      <span className="font-mono text-mono-m text-text-primary">{hit.subscriber.msisdn}</span>
+      <span className="text-label-m text-text-primary">{hit.subscriber.name}</span>
     </span>
   );
 }
+
+/** Auto-detect is the API’s default, so it isn’t sent. */
+const searchPath = (q: string, type: string) => `/search?q=${encodeURIComponent(q)}${type === "auto" ? "" : `&type=${type}`}`;
+const subscriberHits = (r: SearchResult | undefined) => (r?.data ?? []).filter((h): h is Hit => h.kind === "subscriber" && Boolean(h.subscriber));
 
 /** G14–G17 · Subscriber lookup — search by phone, wallet, IMEI or Ghana Card; every lookup is logged. */
 export default function LookupPage() {
@@ -65,13 +94,14 @@ export default function LookupPage() {
   }, [q]);
 
   const searching = debounced.replace(/\D/g, "").length >= 4 || /^gha|^imei/i.test(debounced);
-  const { data: matches } = useApi<SearchResult>(searching ? `/search?q=${encodeURIComponent(debounced)}&type=${type}` : null);
-  const { data: result, isLoading: resultLoading } = useApi<SearchResult>(submitted ? `/search?q=${encodeURIComponent(submitted)}&type=${type}` : null);
+  const { data: matches } = useApi<SearchResult>(searching ? searchPath(debounced, type) : null);
+  const { data: result, isLoading: resultLoading } = useApi<SearchResult>(submitted ? searchPath(submitted, type) : null);
   const { data: recent } = useApi<{ data: Recent[] }>("/lookups/recent");
-  const { data: watch } = useApi<{ data: Watch[] }>("/watchlist/mine");
-  const hits = matches?.data ?? [];
+  const { data: watch } = useApi<{ data: Watch[] }>("/me/watchlist");
+  const hits = subscriberHits(matches);
+  const found = subscriberHits(result);
   const showSuggest = open && searching && hits.length > 0 && !invalid;
-  const noMatch = submitted && result && result.data.length === 0;
+  const noMatch = submitted && result && found.length === 0;
 
   const openHit = (h: Hit, newTab = false) => {
     const href = `/subscribers/${h.id}`;
@@ -191,10 +221,10 @@ export default function LookupPage() {
                         </span>
                         <span className="flex flex-1 flex-col">
                           <span className="flex items-center gap-2">
-                            <HitTitle title={h.title} />
-                            {h.note && <span className="text-body-s text-text-secondary">{h.note}</span>}
+                            <HitTitle hit={h} />
+                            {hitNote(h.subscriber) && <span className="text-body-s text-text-secondary">{hitNote(h.subscriber)}</span>}
                           </span>
-                          <span className="text-caption text-text-secondary">{h.subtitle}</span>
+                          <span className="text-caption text-text-secondary">{hitSubtitle(h.subscriber)}</span>
                         </span>
                         {h.open_cases ? (
                           <Badge label={`${h.open_cases} open ${h.open_cases === 1 ? "case" : "cases"}`} tone="critical" dot />
@@ -288,15 +318,15 @@ export default function LookupPage() {
           </EmptyState>
         ) : submitted && resultLoading ? (
           <Skeleton className="h-[300px] w-full rounded-xl" />
-        ) : submitted && result && result.data.length > 1 ? (
-          <Card title={`${result.data.length} matches for “${submitted}”`} icon="app/icon-search-18">
+        ) : submitted && result && found.length > 1 ? (
+          <Card title={`${found.length} matches for “${submitted}”`} icon="app/icon-search-18">
             <ul className="flex flex-col">
-              {result.data.map((h) => (
+              {found.map((h) => (
                 <li key={h.id} className="border-b border-border-subtle last:border-b-0">
                   <Link href={`/subscribers/${h.id}`} className="flex items-center gap-3 py-3">
                     <span className="flex flex-1 flex-col">
-                      <HitTitle title={h.title} />
-                      <span className="text-caption text-text-secondary">{h.subtitle}</span>
+                      <HitTitle hit={h} />
+                      <span className="text-caption text-text-secondary">{hitSubtitle(h.subscriber)}</span>
                     </span>
                     <Icon name="app/icon-chevron-right-16" size={16} />
                   </Link>
@@ -315,7 +345,7 @@ export default function LookupPage() {
                   <button
                     type="button"
                     onClick={async () => {
-                      // TODO(api): proposed DELETE /lookups/recent (clears your list, not the audit log).
+                      // Clears your list, not the audit log.
                       await apiFetch("DELETE", "/lookups/recent").catch(() => undefined);
                       await mutate("/lookups/recent");
                     }}
@@ -344,11 +374,14 @@ export default function LookupPage() {
                     </thead>
                     <tbody>
                       {recent.data.map((r) => (
-                        <tr key={r.identifier} onClick={() => router.push(`/subscribers/${r.subscriber_id}`)} className="cursor-pointer border-t border-border-subtle hover:bg-[#fbfaff]">
-                          <td className="py-3 pl-3.5 font-mono text-mono-m text-text-primary">{r.identifier}</td>
+                        <tr key={r.entity_id} onClick={() => router.push(`/subscribers/${r.entity_id}`)} className="cursor-pointer border-t border-border-subtle hover:bg-[#fbfaff]">
+                          <td className="py-3 pl-3.5 font-mono text-mono-m text-text-primary">
+                            {r.type === "imei" ? "IMEI " : ""}
+                            {r.identifier}
+                          </td>
                           <td className="py-3 text-body-s text-text-primary">{r.name}</td>
                           <td className="py-3">
-                            <Badge label={r.type.charAt(0).toUpperCase() + r.type.slice(1)} tone="neutral" />
+                            <Badge label={RECENT_TYPE[r.type] ?? r.type} tone="neutral" />
                           </td>
                           <td className="py-3">
                             {r.case_id ? (
@@ -385,9 +418,9 @@ export default function LookupPage() {
                   <li key={w.id} className="flex items-center gap-3 border-b border-border-subtle py-3 last:border-b-0">
                     <span className="flex flex-1 flex-col">
                       <span className="font-mono text-mono-m text-text-primary">{w.identifier}</span>
-                      <span className="text-caption text-text-secondary">{w.detail}</span>
+                      <span className="text-caption text-text-secondary">{watchDetail(w)}</span>
                     </span>
-                    <Badge label={w.status === "active" ? "Active" : "Watching"} tone={w.status === "active" ? "critical" : "high"} dot />
+                    <Badge label={w.status === "hit" ? "Active" : "Watching"} tone={w.status === "hit" ? "critical" : "high"} dot />
                   </li>
                 ))}
               </ul>

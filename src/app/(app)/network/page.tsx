@@ -4,8 +4,8 @@ import { AppHeader } from "@/components/app/AppHeader";
 import { PageBody, PageHead } from "@/components/app/AppShell";
 import { Skeleton } from "@/components/app/Card";
 import { RequestError } from "@/components/auth/RequestError";
-import { Legend, NetworkGraph, TYPE_COLOR } from "@/components/network/NetworkGraph";
-import type { NodeDetail } from "@/components/network/NodePanel";
+import { Legend, NetworkGraph, TYPE_COLOR, nodeRole } from "@/components/network/NetworkGraph";
+import { NODE_TYPE, nodeFacts, nodeFlags, type NodeDetail } from "@/components/network/NodePanel";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { CheckCard } from "@/components/ui/Choice";
@@ -19,10 +19,21 @@ import { apiFetch } from "@/lib/api/client";
 import { useNetwork, type Network, type NetworkNode } from "@/lib/api/cases";
 import { useApi, useMyCases } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
+import { formatClock, formatMoney } from "@/lib/time";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
-type Explore = NodeDetail & { subtitle?: string; type?: NetworkNode["type"]; add_to_case?: { suggested: string[] } };
+/** Query parameters a suggested filter can set on GET /network. */
+const FILTER_PARAMS = ["became_fraud", "since", "has_outflow"];
+type Filter = Network["suggested_filters"][number];
+const FILTER_LABEL: Record<string, (f: Filter) => string> = {
+  became_fraud: () => "Only SIM swaps that became fraud",
+  today: (f) => `Only today (since ${typeof f.params.since === "string" ? formatClock(f.params.since) : "00:00"})`,
+  has_outflow: () => "Hide wallets with no outflow",
+};
+const filterLabel = (f: Filter) => FILTER_LABEL[f.id]?.(f) ?? f.id.replace(/_/g, " ");
+/** “MoMo wallet · Yaw D. (masked)” */
+const nodeSubtitle = (n: NodeDetail) => [n.type === "wallet" ? "MoMo wallet" : NODE_TYPE[n.type], n.owner_name && `${n.owner_name} (masked)`].filter(Boolean).join(" · ");
 const TYPES: Array<[NetworkNode["type"], string]> = [
   ["subscriber", "Subscribers"],
   ["wallet", "Wallets"],
@@ -83,9 +94,10 @@ function AddToCaseModal({ network, initial, onClose, onAdded }: { network: Netwo
   const detail = (id: string) => {
     const into = network.edges.find((e) => e.to === id && e.amount);
     const from = into && label(into.from);
-    const amount = into?.amount ? `GHS ${(into.amount.amount_minor / 100).toLocaleString("en-GB")}` : "";
+    const amount = into?.amount ? formatMoney(into.amount.amount_minor, into.amount.currency) : "";
     const inCase = network.edges.find((e) => e.from === id && e.kind === "in_case")?.to;
-    if (!into) return label(id)?.role ?? "";
+    const node = label(id);
+    if (!into) return node ? nodeRole(node) : "";
     return `${label(id)?.type === "wallet" ? "Wallet" : "Entity"} · ${from?.type === "subscriber" ? `received ${amount} from the victim` : `got ${amount} from ${from?.label}`}${inCase ? ` · in ${inCase}` : ""}`;
   };
 
@@ -93,7 +105,6 @@ function AddToCaseModal({ network, initial, onClose, onAdded }: { network: Netwo
     setBusy(true);
     setFailure(null);
     try {
-      // TODO(api): proposed POST /cases/{id}/entities {entity_ids, note, snapshot}.
       await apiFetch("POST", `/cases/${target}/entities`, { entity_ids: Array.from(picked), note: why, snapshot: true });
       onAdded(target, Array.from(picked));
     } catch (err) {
@@ -170,8 +181,9 @@ export default function NetworkPage() {
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState<{ caseId: string; ids: string[] } | null>(null);
   const [drawAnyway, setDrawAnyway] = useState(false);
-  const { data } = useNetwork(seed, Number(hops));
-  const { data: node } = useApi<Explore>(selected ? `/network/nodes/${selected}?context=explore` : null);
+  const filters = Object.fromEntries(FILTER_PARAMS.flatMap((k) => (params.get(k) ? [[k, params.get(k)!]] : [])));
+  const { data } = useNetwork(seed, Number(hops), filters);
+  const { data: node } = useApi<NodeDetail>(selected ? `/network/nodes/${selected}?context=explore` : null);
 
   const seedNode = data?.nodes.find((n) => n.id === seed);
   const view: Network | undefined = data && {
@@ -184,7 +196,9 @@ export default function NetworkPage() {
   };
   const counts = (t: NetworkNode["type"]) => view?.nodes.filter((n) => n.type === t).length ?? 0;
   const cases = view?.nodes.filter((n) => n.type === "case").map((n) => n.id) ?? [];
+  const seedCase = seedNode?.case_ids?.[0];
   const tooLarge = data?.truncated && !drawAnyway;
+  const nameOf = (id: string) => data?.nodes.find((n) => n.id === id)?.label ?? id;
 
   const setSeed = (next: string) => {
     setSelected(null);
@@ -203,15 +217,21 @@ export default function NetworkPage() {
 
   const exportTable = () => {
     if (!data) return;
-    const body = ["id,label,type,risk,role", ...data.nodes.map((n) => [n.id, n.label, n.type, n.risk, n.role ?? ""].join(","))].join("\n");
+    const body = ["id,label,type,risk,relation", ...data.nodes.map((n) => [n.id, n.label, n.type, n.risk, n.relation ?? ""].join(","))].join("\n");
     const url = URL.createObjectURL(new Blob([body], { type: "text/csv" }));
     Object.assign(document.createElement("a"), { href: url, download: `network-${seed}.csv` }).click();
     URL.revokeObjectURL(url);
   };
 
-  const snapshot = (kind: "png" | "pdf") =>
-    // TODO(api): proposed POST /network/snapshots {seed, hops, filters, format} — masked and watermarked server-side.
-    toast({ tone: "success", title: `Snapshot saved · ${kind.toUpperCase()}`, body: "Masked numbers and a watermark were added. Logged to the audit trail." });
+  // Masked and watermarked by the server.
+  const snapshot = async (format: "png" | "pdf") => {
+    try {
+      await apiFetch("POST", "/network/snapshots", { seed, hops: Number(hops), format });
+      toast({ tone: "success", title: `Snapshot saved · ${format.toUpperCase()}`, body: "Masked numbers and a watermark were added. Logged to the audit trail." });
+    } catch {
+      toast({ title: "Snapshot not saved", body: "Try again in a moment." });
+    }
+  };
 
   return (
     <>
@@ -238,7 +258,7 @@ export default function NetworkPage() {
                   <MenuItem
                     icon="app/icon-folder-brand-20"
                     title="Add to case as evidence"
-                    description={`Saves a snapshot to ${seedNode?.role?.match(/FD-\d+/)?.[0] ?? "a case"}`}
+                    description={`Saves a snapshot to ${seedCase ?? "a case"}`}
                     onSelect={() => {
                       close();
                       setAdding(true);
@@ -350,19 +370,17 @@ export default function NetworkPage() {
                     <p className="text-overline text-text-tertiary uppercase">Narrow it down</p>
                     {data.suggested_filters.map((f) => (
                       <button
-                        key={f.label}
+                        key={f.id}
                         type="button"
                         onClick={() => {
-                          // TODO(api): suggested_filters.params map onto GET /network query params.
                           const qs = new URLSearchParams({ seed, ...Object.fromEntries(Object.entries(f.params).map(([k, v]) => [k, String(v)])) });
                           router.push(`/network?${qs}`, { scroll: false });
-                          setHops("1");
                         }}
                         className="flex items-center gap-3 rounded-[10px] border border-border-default px-3.5 py-2.5 text-left hover:border-brand-primary"
                       >
                         <span className="flex flex-1 flex-col">
-                          <span className="text-label-m text-text-primary">{f.label}</span>
-                          <span className="text-caption text-text-secondary">{f.detail ?? `${f.estimate} entities`}</span>
+                          <span className="text-label-m text-text-primary">{filterLabel(f)}</span>
+                          <span className="text-caption text-text-secondary">{f.estimate.toLocaleString("en-GB")} entities</span>
                         </span>
                         <Icon name="app/icon-arrow-right-brand-16" size={16} />
                       </button>
@@ -400,17 +418,17 @@ export default function NetworkPage() {
                   <Icon name="app/icon-wallet-18" size={18} />
                 </span>
                 <span className="flex flex-col">
-                  <span className="font-mono text-mono-m font-semibold text-text-primary">{node.title}</span>
-                  {node.subtitle && <span className="text-caption text-text-secondary">{node.subtitle}</span>}
+                  <span className="font-mono text-mono-m font-semibold text-text-primary">{node.identifier}</span>
+                  <span className="text-caption text-text-secondary">{nodeSubtitle(node)}</span>
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {node.badges.map((b) => (
+                {nodeFlags(node).map((b) => (
                   <Badge key={b.label} label={b.label} tone={b.tone} dot={b.tone === "critical"} />
                 ))}
                 {added?.ids.includes(selected) && <Badge label={`In ${added.caseId}`} tone="brand" dot />}
               </div>
-              <KeyValueList rows={node.facts.map(([k, v, tone]) => [k, <span key={k} className={cn(tone === "critical" && "text-critical-fg")}>{v}</span>])} />
+              <KeyValueList rows={nodeFacts(node, nameOf)} />
               <div className="flex gap-2">
                 <Button variant="secondary" size="sm" onClick={() => setSeed(selected)} iconLeft={<Icon name="app/icon-plus-primary-18" size={16} />}>
                   Expand
@@ -438,7 +456,19 @@ export default function NetworkPage() {
               {!data ? (
                 <Skeleton className="h-[200px] w-full" />
               ) : data.summary ? (
-                <KeyValueList rows={data.summary.map(([k, v, tone]) => [k, <span key={k} className={cn(tone === "critical" && "text-critical-fg")}>{v}</span>])} />
+                <KeyValueList
+                  rows={[
+                    ["Seed", `${seed} · ${data.summary.seed_type}`],
+                    ["Showing", `${data.returned_hops} hop${data.returned_hops === 1 ? "" : "s"} · ${data.shown_entities ?? data.nodes.length} entities`],
+                    ["Subscribers swapped", `${data.summary.subscribers_swapped_30d} in 30 days`],
+                    [
+                      "Became fraud",
+                      <span key="f" className={cn(data.summary.became_fraud_case_ids.length > 0 && "text-critical-fg")}>
+                        {[String(data.summary.became_fraud_case_ids.length), data.summary.became_fraud_case_ids.join(", ")].filter(Boolean).join(" · ")}
+                      </span>,
+                    ],
+                  ]}
+                />
               ) : (
                 <>
                   <KeyValueList
@@ -456,7 +486,7 @@ export default function NetworkPage() {
                       [
                         "Linked cases",
                         <span key="c" className="flex gap-1">
-                          {[...cases, ...(seedNode?.role?.match(/FD-\d+/) ?? [])]
+                          {[...cases, ...(seedNode?.case_ids ?? [])]
                             .filter((v, i, a) => a.indexOf(v) === i)
                             .map((c, i) => (
                               <span key={c}>

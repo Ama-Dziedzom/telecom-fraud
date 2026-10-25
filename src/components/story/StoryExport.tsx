@@ -61,8 +61,8 @@ export function StoryExport({
     setBusy(true);
     setFailure(null);
     try {
-      // TODO(api): proposed POST /cases/{id}/brief/export; GET …/brief?format=pdf exists but has no options.
-      const res = await apiFetch<{ file_name: string | null; url: string; pages: number; size_bytes: number }>("POST", `/cases/${caseId}/brief/export`, {
+      // `url` is absolute: a signed file link, or the view-only page for `link`.
+      const res = await apiFetch<{ file_name: string | null; url: string; pages: number; size_bytes: number; expires_at: string | null }>("POST", `/cases/${caseId}/brief/export`, {
         format,
         include_thumbnails: thumbs,
         mask_numbers: true,
@@ -115,7 +115,14 @@ export function StoryExport({
       }
     >
       {failure && (
-        <Banner tone="error" title={failure.problem.title ?? "Export failed"}>
+        <Banner
+          tone="error"
+          title={
+            failure.code === "export_too_large"
+              ? `Export failed: the file was over ${Math.round(Number(failure.problem.limit_bytes) / 1024 / 1024)} MB`
+              : (failure.problem.title ?? "Export failed")
+          }
+        >
           {failure.problem.detail}
         </Banner>
       )}

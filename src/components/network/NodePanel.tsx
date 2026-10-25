@@ -5,22 +5,80 @@ import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { KeyValueList } from "@/components/ui/Drawer";
 import { Icon } from "@/components/ui/Icon";
-import { useApi } from "@/lib/api/fd";
+import type { NetworkNode } from "@/lib/api/cases";
+import { useApi, type Money } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
+import { formatMoney, now } from "@/lib/time";
+import type { ReactNode } from "react";
 
-/** Proposed (TODO(api)): GET /network/nodes/{id} — facts and actions for one entity. */
+/** GET /network/nodes/{id}: one entity. `facts` are typed by entity; the app writes the rows. */
 export type NodeDetail = {
   id: string;
-  title: string;
-  badges: Array<{ label: string; tone: BadgeTone }>;
-  facts: Array<[string, string, ("critical" | undefined)?]>;
-  actions: string[];
+  type: NetworkNode["type"];
+  identifier: string;
+  owner_name: string | null;
+  risk: NetworkNode["risk"];
+  flags: string[];
+  facts: Partial<{
+    opened_at: string;
+    opened_where: string;
+    received_today: Money;
+    received_today_from_victims: number;
+    sent_on_today: Money;
+    sent_on_minutes: number;
+    forwarded_to: string[];
+    case_ids: string[];
+  }>;
+  /** Entities worth adding to a case with this one. */
+  add_to_case?: { suggested: string[] };
 };
+
+export const NODE_TYPE: Record<NetworkNode["type"], string> = {
+  subscriber: "Subscriber",
+  wallet: "Wallet",
+  device: "Device",
+  agent: "Agent",
+  case: "Case",
+};
+
+const FLAGS: Record<string, { label: string; tone: BadgeTone }> = {
+  recipient: { label: "Recipient", tone: "neutral" },
+  mule_pattern: { label: "Mule pattern", tone: "critical" },
+};
+/** Badges for a node’s flags. */
+export const nodeFlags = (node: NodeDetail) => node.flags.map((f) => FLAGS[f] ?? { label: f[0].toUpperCase() + f.slice(1).replace(/_/g, " "), tone: "neutral" as const });
+
+const money = (m: Money) => formatMoney(m.amount_minor, m.currency);
+
+/** Fact rows: “Opened · 11 days ago · Kejetia”. `name` turns forwarded-to IDs into what the graph shows. */
+export function nodeFacts(node: NodeDetail, name: (id: string) => string = (id) => id): Array<[string, ReactNode]> {
+  const f = node.facts;
+  const rows: Array<[string, string, boolean?]> = [];
+  if (f.opened_at) {
+    const days = Math.round((now() - Date.parse(f.opened_at)) / 86_400_000);
+    rows.push(["Opened", [days < 1 ? "today" : `${days} day${days === 1 ? "" : "s"} ago`, f.opened_where?.split(", ")[0]].filter(Boolean).join(" · ")]);
+  }
+  if (f.received_today) {
+    const victims = f.received_today_from_victims;
+    rows.push(["Received today", `${money(f.received_today)}${victims ? ` from ${victims} victim${victims === 1 ? "" : "s"}` : ""}`, true]);
+  }
+  if (f.sent_on_today) rows.push(["Sent on", `${money(f.sent_on_today)}${f.sent_on_minutes ? ` in ${f.sent_on_minutes} min` : ""}`, true]);
+  if (f.forwarded_to?.length) rows.push(["Forwarded to", f.forwarded_to.map(name).join(" · ")]);
+  if (f.case_ids?.length) rows.push(["Cases", `${f.case_ids.join(" · ")} (linked)`]);
+  return rows.map(([k, v, critical]) => [k, <span key={k} className={cn(critical && "text-critical-fg")}>{v}</span>]);
+}
 
 const ACTIONS: Record<string, { label: string; icon: string; tone?: "critical" }> = {
   add_to_evidence: { label: "Add to evidence", icon: "app/icon-file-plus-16" },
   block: { label: "Block wallet", icon: "app/icon-ban-critical-16", tone: "critical" },
 };
+
+/** What the case tab offers for a node: evidence always, blocking for wallets, linking the cases it’s in. */
+const actionsFor = (node: NodeDetail) => [
+  "add_to_evidence",
+  ...(node.type === "wallet" ? ["block"] : []),
+  ...(node.facts.case_ids ?? []).map((c) => `link_case:${c}`),
+];
 
 /** Side panel for the selected entity (C8, G29). */
 export function NodePanel({
@@ -40,22 +98,23 @@ export function NodePanel({
       </Card>
     );
   }
+  const badges = nodeFlags(data);
   return (
     <section className="flex w-[400px] shrink-0 flex-col gap-3 rounded-xl border border-border-subtle bg-surface-base px-[18px] py-4">
       <h3 className="flex items-center gap-2 text-title text-text-primary">
         <Icon name="app/icon-wallet-18" size={18} />
-        {data.title}
+        {NODE_TYPE[data.type]} {data.identifier}
       </h3>
-      {data.badges.length > 0 && (
+      {badges.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {data.badges.map((b) => (
+          {badges.map((b) => (
             <Badge key={b.label} label={b.label} tone={b.tone} />
           ))}
         </div>
       )}
-      <KeyValueList rows={data.facts.map(([k, v, tone]) => [k, <span key={k} className={cn(tone === "critical" && "text-critical-fg")}>{v}</span>])} />
+      <KeyValueList rows={nodeFacts(data)} />
       <div className="flex flex-col gap-2">
-        {data.actions.map((a) => {
+        {actionsFor(data).map((a) => {
           const linkCase = a.startsWith("link_case:") ? a.split(":")[1] : null;
           const spec = linkCase ? { label: `Link ${linkCase} to this case`, icon: "app/icon-link-16" } : ACTIONS[a];
           if (!spec) return null;

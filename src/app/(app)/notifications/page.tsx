@@ -4,20 +4,17 @@ import { AppHeader } from "@/components/app/AppHeader";
 import { PageBody, PageHead } from "@/components/app/AppShell";
 import { Skeleton } from "@/components/app/Card";
 import { EmptyState } from "@/components/app/EmptyState";
-import { NoticeRow, type Notice } from "@/components/shell/NotificationsPanel";
+import { NoticeRow } from "@/components/shell/NotificationsPanel";
 import { Button } from "@/components/ui/Button";
-import { apiFetch } from "@/lib/api/client";
-import { useApi } from "@/lib/api/fd";
+import { markAllNotificationsRead, useNotifications } from "@/lib/api/fd";
 import { useNow } from "@/lib/time";
 import { useRouter } from "next/navigation";
-import { useSWRConfig } from "swr";
 
 /** All notifications — the same rows as the bell panel, without the cap. */
 export default function NotificationsPage() {
   const router = useRouter();
   const now = useNow();
-  const { mutate } = useSWRConfig();
-  const { data } = useApi<{ data: Notice[]; unread: number }>("/notifications");
+  const { data } = useNotifications();
   return (
     <>
       <AppHeader section="Account" title="Notifications" />
@@ -30,10 +27,7 @@ export default function NotificationsPage() {
               <Button
                 variant="secondary"
                 size="md"
-                onClick={async () => {
-                  await apiFetch("POST", "/notifications/read-all").catch(() => undefined);
-                  await mutate("/notifications");
-                }}
+                onClick={() => void markAllNotificationsRead(now).catch(() => undefined)}
               >
                 Mark all read
               </Button>

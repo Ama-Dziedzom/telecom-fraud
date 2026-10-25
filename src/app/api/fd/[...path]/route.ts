@@ -1,5 +1,5 @@
 import { mockFixture } from "@/lib/api/mock-fixtures";
-import { mockResponseCode, mockSuccessCode, mockSyntheticResponse, mockUpstreamPath } from "@/lib/api/mock-scenarios";
+import { mockRoute, mockSyntheticResponse, mockWant } from "@/lib/api/mock-scenarios";
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
@@ -155,17 +155,18 @@ async function handle(req: NextRequest, ctx: RouteContext<"/api/fd/[...path]">) 
     status = synthetic.status;
     data = synthetic.body as Record<string, unknown>;
   } else {
-    const mockCode = MOCK
-      ? (mockResponseCode(method, path, parsedBody) ?? mockSuccessCode(method, mockUpstreamPath(path)))
-      : undefined;
+    const route = MOCK ? mockRoute(method, path, req.nextUrl.searchParams, mockWant(method, path, parsedBody)) : undefined;
+    const mockHeaders: Record<string, string> = {};
+    if (route?.code) mockHeaders["x-mock-response-code"] = String(route.code);
+    if (route?.name) mockHeaders["x-mock-response-name"] = route.name;
     let res: Response;
     try {
-      res = await upstream(method, MOCK ? mockUpstreamPath(path) : path, {
+      res = await upstream(method, route?.path ?? path, {
         body,
         contentType: multipart ? contentType : undefined,
         token: access,
-        search: req.nextUrl.search,
-        extra: mockCode ? { "x-mock-response-code": String(mockCode) } : undefined,
+        search: route?.search ?? req.nextUrl.search,
+        extra: mockHeaders,
       });
     } catch {
       return NextResponse.json(

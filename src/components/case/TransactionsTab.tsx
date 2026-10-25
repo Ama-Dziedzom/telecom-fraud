@@ -24,6 +24,9 @@ const TYPE_LABEL: Record<string, string> = {
 /** Already gone: cashed out at an agent or onwards — a red edge on the row. */
 const lost = (t: Transaction) => t.where_now === "cashed_out" || t.where_now === "agent_holds";
 const money = (minor: number, currency = "GHS") => formatMoney(minor, currency);
+/** “New · in FD-2998” */
+const recipientNote = (t: Transaction) =>
+  [t.counterparty_new && "New", t.counterparty_case_id && `${t.counterparty_new ? "in" : "In"} ${t.counterparty_case_id}`].filter(Boolean).join(" · ");
 
 /** C5 · Transactions — pick transfers to save as evidence, reverse or copy. */
 export function TransactionsTab({
@@ -57,7 +60,9 @@ export function TransactionsTab({
   const rows = data.data;
   const chosen = rows.filter((t) => picked.has(t.id));
   const total = chosen.reduce((sum, t) => sum + t.amount.amount_minor, 0);
-  const toRing = rows.filter((t) => /in FD-2998/.test(t.counterparty_note)).length;
+  // The case most of the money went to (FD-2998 for Kojo), and how many payments reached it.
+  const ringCounts = rows.reduce<Record<string, number>>((m, t) => (t.counterparty_case_id ? { ...m, [t.counterparty_case_id]: (m[t.counterparty_case_id] ?? 0) + 1 } : m), {});
+  const ring = Object.entries(ringCounts).sort((a, b) => b[1] - a[1])[0];
   const toggle = (id: string, on: boolean) =>
     setPicked((p) => {
       const next = new Set(p);
@@ -75,7 +80,6 @@ export function TransactionsTab({
     setSaving(true);
     const title = `MoMo transfers ${range()}`;
     try {
-      // TODO(api): proposed JSON form of POST /cases/{id}/evidence for transactions (files stay multipart).
       await apiFetch("POST", `/cases/${caseId}/evidence`, { title, transaction_ids: chosen.map((t) => t.id) });
       await mutate(`/cases/${caseId}/evidence`);
       await mutate(`/cases/${caseId}`);
@@ -99,7 +103,7 @@ export function TransactionsTab({
   const tiles = [
     { value: money(data.totals.out_since_swap?.amount_minor ?? 0), label: "out since SIM swap", tone: "critical" },
     { value: `${data.totals.flagged} of ${data.totals.total}`, label: "flagged by rules" },
-    { value: String(toRing), label: "go to ring FD-2998" },
+    { value: String(ring?.[1] ?? 0), label: ring ? `go to ring ${ring[0]}` : "go to a known ring" },
     { value: formatMoney(data.totals.balance.amount_minor, data.totals.balance.currency, { decimals: true }), label: "balance left" },
   ];
 
@@ -187,8 +191,8 @@ export function TransactionsTab({
                   <td className="py-3 text-body-s text-text-primary">{TYPE_LABEL[t.type] ?? t.type}</td>
                   <td className={cn("py-3 font-mono text-mono-m", t.flagged ? "text-critical-fg" : "text-text-primary")}>{t.counterparty}</td>
                   <td className="py-3">
-                    {t.counterparty_note ? (
-                      <Badge label={t.counterparty_note.replace(", in ", " · in ")} tone={t.flagged ? "critical" : "neutral"} />
+                    {t.counterparty_new || t.counterparty_case_id ? (
+                      <Badge label={recipientNote(t)} tone={t.flagged ? "critical" : "neutral"} />
                     ) : (
                       <span className="text-text-tertiary">—</span>
                     )}

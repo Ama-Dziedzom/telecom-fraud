@@ -12,6 +12,7 @@ import {
   useSubscriber,
   useSubscriberActivity,
   type AlertDetail,
+  type AlertStep,
   type Money,
 } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
@@ -58,20 +59,26 @@ function TabSkeleton({ rows = 5 }: { rows?: number }) {
 
 // ─── Summary ──────────────────────────────────────────────────────────────
 
-const STEP_STYLE: Record<string, { icon: string; tile: string }> = {
+/** Icon and tile per step kind; `critical` kinds are where the money or the evidence is. */
+const STEP_STYLE: Record<string, { icon: string; tile: string; critical?: true }> = {
   new_device: { icon: "app/icon-phone-high-18", tile: "bg-high-bg" },
   payments_out: { icon: "app/icon-send-brand-18", tile: "bg-brand-primary-subtle" },
-  recipients: { icon: "app/icon-users-critical-18", tile: "bg-critical-bg" },
-  network: { icon: "app/icon-network-critical-18", tile: "bg-critical-bg" },
+  wallets_paid: { icon: "app/icon-users-critical-18", tile: "bg-critical-bg", critical: true },
+  recipients: { icon: "app/icon-users-critical-18", tile: "bg-critical-bg", critical: true },
+  network: { icon: "app/icon-network-critical-18", tile: "bg-critical-bg", critical: true },
   calls: { icon: "app/icon-phone-high-18", tile: "bg-high-bg" },
-  pin: { icon: "app/icon-shield-critical-18", tile: "bg-critical-bg" },
+  pin: { icon: "app/icon-shield-critical-18", tile: "bg-critical-bg", critical: true },
   sim_swap: { icon: "app/icon-sim-18", tile: "bg-surface-sunken" },
   sim: { icon: "app/icon-sim-18", tile: "bg-surface-sunken" },
   crm: { icon: "app/icon-message-18", tile: "bg-surface-sunken" },
 };
 
+/** A step is shown in red when its kind is, or when it carries all the money that left. */
+const isCritical = (step: AlertStep, moneyOut: Money | null) =>
+  Boolean(STEP_STYLE[step.kind]?.critical) || (!!moneyOut && step.amount?.amount_minor === moneyOut.amount_minor);
+
 /** Vertical story: icon tile on a rail, time + label, detail below. */
-export function WhatHappened({ steps, now }: { steps: AlertDetail["what_happened"]; now: number }) {
+export function WhatHappened({ steps, moneyOut, now }: { steps: AlertStep[]; moneyOut: Money | null; now: number }) {
   return (
     <section className="flex flex-col gap-3">
       <h3 className="flex items-center gap-2 text-title text-text-primary">
@@ -81,7 +88,7 @@ export function WhatHappened({ steps, now }: { steps: AlertDetail["what_happened
       <ol className="flex flex-col">
         {steps.map((step, i) => {
           const style = STEP_STYLE[step.kind] ?? STEP_STYLE.crm;
-          const critical = step.tone === "critical";
+          const critical = isCritical(step, moneyOut);
           return (
             <li key={i} className="flex gap-3">
               <div className="flex flex-col items-center">
@@ -139,14 +146,14 @@ export function Recommendation({
           <Icon name="app/icon-folder-brand-20" size={20} />
         </span>
         <div className="flex flex-col gap-0.5">
-          <p className="text-h3 text-text-primary">Add to {suggestion.id}</p>
-          <p className="text-body-s text-text-secondary">{suggestion.reason}</p>
+          <p className="text-h3 text-text-primary">Add to {suggestion.case_id}</p>
+          <p className="text-body-s text-text-secondary">{suggestion.why}</p>
         </div>
       </div>
       {!locked && (
         <div className="flex gap-2">
           <Button size="md" onClick={onAttach} loading={busy} iconLeft={<Icon name="app/icon-plus-white-18" size={18} />}>
-            Add to {suggestion.id}
+            Add to {suggestion.case_id}
           </Button>
           <Button variant="secondary" size="md" onClick={onProtect} iconLeft={<Icon name="app/icon-shield-primary-18" size={18} />}>
             Protect wallet first
@@ -159,10 +166,11 @@ export function Recommendation({
 
 // ─── Activity ─────────────────────────────────────────────────────────────
 
-const SOURCE_LABEL: Record<string, string> = { momo: "MoMo", network: "Network", crm: "CRM", person: "Analyst" };
+const SOURCE_LABEL: Record<string, string> = { momo: "MoMo", network: "Network", crm: "CRM", person: "Analyst", system: "System" };
 const KIND_DOT: Record<string, string> = {
-  alert: "bg-critical-fg",
+  opened: "bg-critical-fg",
   device: "bg-medium-fg",
+  sim_swap: "bg-medium-fg",
   kyc: "bg-success-fg",
 };
 
@@ -183,10 +191,9 @@ export function ActivityTab({ subscriberId, now }: { subscriberId: string; now: 
           />
           <p className="flex items-center gap-2">
             <span className="font-mono text-mono-s text-text-tertiary">{formatWhen(e.at, now)}</span>
-            <Badge label={SOURCE_LABEL[e.source] ?? e.source} tone={e.kind === "alert" ? "critical" : "neutral"} />
+            <Badge label={SOURCE_LABEL[e.source] ?? e.source} tone={e.kind === "opened" ? "critical" : "neutral"} />
           </p>
           <p className="text-body-m text-text-primary">{e.title}</p>
-          {e.detail && <p className="text-caption text-text-secondary">{e.detail}</p>}
         </li>
       ))}
     </ol>
@@ -200,6 +207,7 @@ export function TransactionsTab({ alertId }: { alertId: string }) {
   if (isLoading || !data) return <TabSkeleton rows={6} />;
   const { totals } = data;
   const first = data.data.at(-1);
+  const toNew = data.data.filter((t) => t.counterparty_new).length;
   return (
     <>
       <div className="flex gap-2">
@@ -211,7 +219,7 @@ export function TransactionsTab({ alertId }: { alertId: string }) {
         </div>
         <div className="flex flex-1 flex-col gap-0.5 rounded-xl border border-border-default px-4 py-3">
           <span className="text-h3 text-text-primary">
-            {totals.flagged} of {totals.total}
+            {toNew} of {totals.total}
           </span>
           <span className="text-caption text-text-secondary">to new recipients</span>
         </div>
@@ -234,20 +242,20 @@ export function TransactionsTab({ alertId }: { alertId: string }) {
           </thead>
           <tbody>
             {data.data.map((t) => {
-              const isNew = t.counterparty_note.startsWith("New");
+              const recipient = t.counterparty_new ? "New recipient" : t.counterparty_case_id ? `In ${t.counterparty_case_id}` : "Known";
               return (
                 <tr key={t.id} className="border-b border-border-subtle last:border-b-0">
                   <td className="py-2.5 pl-[18px] font-mono text-mono-s text-text-primary">{formatClock(t.at)}</td>
-                  <td className={cn("py-2.5 pl-4 font-mono text-mono-s", isNew ? "text-critical-fg" : "text-text-secondary")}>
+                  <td className={cn("py-2.5 pl-4 font-mono text-mono-s", t.flagged ? "text-critical-fg" : "text-text-secondary")}>
                     {t.counterparty}
                   </td>
                   <td className="py-2.5 pl-4">
-                    <Badge label={isNew ? "New recipient" : "Known"} tone={isNew ? "critical" : "neutral"} />
+                    <Badge label={recipient} tone={t.flagged ? "critical" : "neutral"} />
                   </td>
                   <td
                     className={cn(
                       "py-2.5 pr-[18px] pl-4 text-right font-mono text-mono-m",
-                      isNew ? "text-critical-fg" : "text-text-primary",
+                      t.flagged ? "text-critical-fg" : "text-text-primary",
                     )}
                   >
                     {t.direction === "out" ? "-" : "+"}
@@ -278,7 +286,7 @@ export function KycTab({ subscriberId, now }: { subscriberId: string; now: numbe
 
   const day = 86_400_000;
   const swappedRecently = sub.sim.last_swap_at && now - Date.parse(sub.sim.last_swap_at) < 7 * day;
-  const newDevice = devices?.data.find((d) => d.kind !== "sim" && now - Date.parse(d.first_seen) < day);
+  const newDevice = devices?.data.find((d) => now - Date.parse(d.first_seen) < day);
 
   return (
     <>
@@ -307,10 +315,8 @@ export function KycTab({ subscriberId, now }: { subscriberId: string; now: numbe
                 ? `${formatDate(sub.kyc.verified_at)}${sub.kyc.branch ? ` · ${sub.kyc.branch}` : ""}`
                 : "Not verified",
             ],
-            ...(sub.kyc.dob_matches !== undefined
-              ? [["Date of birth", sub.kyc.dob_matches ? "Matches ID" : "Doesn’t match ID"] as [string, string]]
-              : []),
-            ...(sub.kyc.address ? [["Registered address", sub.kyc.address] as [string, string]] : []),
+            ["Date of birth", sub.kyc.date_of_birth_matches ? "Matches ID" : "Doesn’t match ID"],
+            ["Registered address", sub.kyc.address],
             ["Wallet", `Tier ${sub.wallet.tier} · customer since ${formatDate(sub.customer_since)}`],
           ]}
         />
@@ -325,22 +331,28 @@ export function KycTab({ subscriberId, now }: { subscriberId: string; now: numbe
           <span aria-hidden className="absolute top-2 bottom-2 left-[4px] w-0.5 bg-border-default" />
           {(devices?.data ?? []).map((d, i) => {
             const isNew = now - Date.parse(d.first_seen) < day;
-            const isSim = d.kind === "sim";
+            const months = Math.max(1, Math.round((Date.parse(d.last_seen) - Date.parse(d.first_seen)) / (30 * day)));
+            const note = [
+              isNew ? "New: never used on this wallet before" : `Used for ${months} ${months === 1 ? "month" : "months"}`,
+              d.eir_status !== "ok" && `IMEI check: ${d.eir_status.replace(/_/g, " ")}`,
+            ]
+              .filter(Boolean)
+              .join(" · ");
             return (
               <li key={i} className="relative flex flex-col gap-1">
                 <span
                   aria-hidden
                   className={cn(
                     "absolute top-1.5 -left-6 size-2.5 rounded-full",
-                    isNew ? "bg-medium-fg" : isSim ? "bg-success-fg" : "bg-border-strong",
+                    isNew ? "bg-medium-fg" : "bg-border-strong",
                   )}
                 />
                 <p className="flex items-center gap-2">
                   <span className="font-mono text-mono-s text-text-tertiary">{formatWhen(d.first_seen, now, { withTime: true })}</span>
-                  <Badge label={isSim ? "SIM" : "Device"} tone="neutral" />
+                  <Badge label="Device" tone="neutral" />
                 </p>
-                <p className="text-body-m text-text-primary">{isSim ? d.model : `${d.model} · IMEI ${d.imei}`}</p>
-                {d.note && <p className="text-caption text-text-secondary">{d.note}</p>}
+                <p className="text-body-m text-text-primary">{`${d.model} · IMEI ${d.imei}`}</p>
+                <p className="text-caption text-text-secondary">{note}</p>
               </li>
             );
           })}

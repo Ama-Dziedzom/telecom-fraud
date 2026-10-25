@@ -5,10 +5,10 @@ import { join } from "node:path";
 /**
  * Demo triggers for the Postman mock (FD_API_MOCK=1 only).
  *
- * Every example in the collection uses the same request body, so the mock
- * always answers with the success example. These rules pick the matching
- * error example with Postman’s `x-mock-response-code` header, so every
- * screen can be reached. They never run against the real API.
+ * Examples on the same path share one request body, so the mock can’t tell
+ * a wrong password from a right one. These rules pick the matching error
+ * example by status code, so every screen can be reached. They never run
+ * against the real API.
  *
  *   Email @kasamobile.com.gh        → password sign-in
  *   Email @voltatelecom.com.gh      → company SSO (synthesised, see below)
@@ -24,6 +24,11 @@ import { join } from "node:path";
  *   Reset token “expired”           → 410 link_expired (D4)
  *   Invite token “expired” / “used” → 410 / 409 (C7)
  *   Forgot password @voltatelecom   → 409 sso_managed
+ *   Case action barring over 10 SIMs → 403 limit_exceeded (D6); any other action → 202
+ *   Note on FD-3051                 → 409 case_changed (I15, its own example); `force: true` → 201
+ *   Brief export with thumbnails    → 413 export_too_large (E23); without → 200
+ *   Alert lock with `take_over: true` → 200 (B20 “Take over” on AL-88195, whose own example is 423)
+ *   Pick up more than 2 cases       → 409 capacity_exceeded (G3; My cases has 7 of 9)
  */
 
 type Body = Record<string, unknown> | null;
@@ -32,7 +37,15 @@ const domainOf = (email: unknown) => String(email ?? "").split("@")[1]?.toLowerC
 const localOf = (email: unknown) => String(email ?? "").split("@")[0]?.toLowerCase() ?? "";
 const KNOWN_DOMAINS = ["kasamobile.com.gh", "voltatelecom.com.gh"];
 
-export function mockResponseCode(method: string, path: string, body: Body): number | undefined {
+/** Which example a demo trigger asks for: by status code, or by name when several share one. */
+export type MockWant = { code?: number; name?: string };
+
+export function mockWant(method: string, path: string, body: Body): MockWant | undefined {
+  const code = demoCode(method, path, body);
+  return code ? { code } : undefined;
+}
+
+function demoCode(method: string, path: string, body: Body): number | undefined {
   if (method === "POST" && path === "auth/identify") {
     if (localOf(body?.email).startsWith("deactivated.")) return 403;
     if (!KNOWN_DOMAINS.includes(domainOf(body?.email))) return 404;
@@ -50,43 +63,105 @@ export function mockResponseCode(method: string, path: string, body: Body): numb
     return 409;
   if (method === "GET" && path === "auth/invites/expired") return 410;
   if (method === "GET" && path === "auth/invites/used") return 409;
+  if (method === "POST" && /^cases\/[^/]+\/actions$/.test(path)) {
+    const parts = (body?.parts as Array<{ kind?: string; count?: number }> | undefined) ?? [];
+    return parts.some((p) => p.kind === "bar_sims_on_id" && (p.count ?? 0) > 10) ? 403 : 202;
+  }
+  if (method === "POST" && /^cases\/[^/]+\/notes$/.test(path) && body?.force) return 201;
+  if (method === "POST" && /^cases\/[^/]+\/brief\/export$/.test(path)) return body?.include_thumbnails ? 413 : 200;
+  if (method === "POST" && /^alerts\/[^/]+\/lock$/.test(path) && body?.take_over) return 200;
+  if (method === "POST" && path === "cases/pick-up" && ((body?.case_ids as unknown[] | undefined)?.length ?? 0) > 2) return 409;
   return undefined;
 }
 
 /**
- * The mock only reliably answers for the collection’s example IDs, so route
- * every ID in the path to that example (after mockResponseCode has looked at
- * the original). Screens still show the IDs they asked for where it matters.
+ * The mock answers each saved example on its exact path and query only
+ * (/cases/FD-3047 returns FD-3047). Requests for anything else — IDs the
+ * collection has no example for, or extra query parameters — are sent to the
+ * closest example on the same endpoint, and the example is named with
+ * `x-mock-response-code` (plus `x-mock-response-name` when several share a
+ * path and code), so the mock never has to guess.
  */
-const EXAMPLE_IDS: Array<[RegExp, string]> = [
-  [/^(auth\/invites\/)[^/]+/, "$1inv_demo"],
-  [/^(cases\/)(?!pick-up)[^/]+/, "$1FD-3050"],
-  [/^(alerts\/)(?!stream)[^/]+/, "$1AL-88213"],
-  [/^(subscribers\/)[^/]+/, "$1sub_8KQ2"],
-  [/^(agents\/)[^/]+/, "$1AG-2231"],
-  [/^(actions\/)[^/]+/, "$1act_5Rk1"],
-  [/^(reversals\/)[^/]+/, "$1RV-0921"],
-  [/^(handovers\/)[^/]+\/[^/]+/, "$1string/decline"],
-  [/^(evidence\/)[^/]+/, "$1string"],
-  [/^(escalations\/)[^/]+/, "$1string"],
-  [/^(reports\/)[^/]+(?=\/)/, "$1string"],
-  [/^(samples\/)[^/]+/, "$1string"],
-  [/^(jobs\/)[^/]+/, "$1string"],
-  [/^(admin\/users\/)[^/]+/, "$1string"],
-  [/^(admin\/rules\/)[^/]+\/versions\/[^/]+\/[^/]+/, "$1R-104/versions/3/backtest"],
-];
+type Example = { name: string; code: number; path: string; search: string };
+type Endpoint = { method: string; pattern: RegExp; params: number; examples: Example[] };
+type Item = {
+  item?: Item[];
+  request?: { method: string; url: { path?: string[] } };
+  response?: Array<{ name: string; code?: number; originalRequest?: { url?: { raw?: string } } }>;
+};
 
-export function mockUpstreamPath(path: string) {
-  for (const [pattern, example] of EXAMPLE_IDS) {
-    if (pattern.test(path)) return path.replace(pattern, example);
+const COLLECTION = "FraudDetection-mock.postman_collection.json";
+let endpoints: Endpoint[] | null = null;
+
+function loadEndpoints() {
+  const out: Endpoint[] = [];
+  try {
+    const walk = (items: Item[]) => {
+      for (const it of items) {
+        if (it.item) walk(it.item);
+        const req = it.request;
+        if (!req?.url.path) continue;
+        const segments = req.url.path.filter((seg) => seg !== "app" && seg !== "v1");
+        const pattern = new RegExp(`^${segments.map((seg) => (seg.startsWith(":") ? "[^/]+" : seg)).join("/")}$`);
+        const examples = (it.response ?? []).flatMap((r) => {
+          const url = new URL(r.originalRequest?.url?.raw ?? "", "https://mock.invalid");
+          const path = url.pathname.replace(/^\/app\/v1\//, "");
+          return r.code ? [{ name: r.name, code: r.code, path, search: url.search }] : [];
+        });
+        out.push({ method: req.method, pattern, params: segments.filter((seg) => seg.startsWith(":")).length, examples });
+      }
+    };
+    walk((JSON.parse(readFileSync(join(process.cwd(), COLLECTION), "utf8")) as Item).item ?? []);
+  } catch {
+    // No collection next to the app: forward requests as they are.
   }
-  return path;
+  // Literal paths before parameterised ones (alerts/stream before alerts/:id).
+  return out.sort((a, b) => a.params - b.params);
+}
+
+const ok = (code: number) => code >= 200 && code < 300;
+
+/**
+ * How well an example's query fits the request. Keys are weighted by how rare
+ * they are among the endpoint's examples, so a filter only one example has
+ * (`fraud_type`, `became_fraud`) outweighs keys they all share (`area`).
+ */
+function queryScore(want: URLSearchParams, have: string, examples: Example[]) {
+  let score = 0;
+  for (const [key, value] of new URLSearchParams(have)) {
+    const weight = examples.length / examples.filter((e) => new URLSearchParams(e.search).has(key)).length;
+    score += want.get(key) === value ? weight : -weight;
+  }
+  return score;
+}
+
+export type MockRoute = { path: string; search: string; code?: number; name?: string };
+
+export function mockRoute(method: string, path: string, search: URLSearchParams, want?: MockWant): MockRoute {
+  endpoints ??= loadEndpoints();
+  const endpoint = endpoints.find((e) => e.method === method && e.pattern.test(path));
+  // Without a demo trigger, an example saved on this exact path can win whatever
+  // its status (FD-3043 answers 404 case_merged; layers for Kumasi answer 504);
+  // otherwise a success example.
+  const pool = endpoint?.examples.filter((e) => (want?.name ? e.name === want.name : want?.code ? e.code === want.code : true));
+  const onPath = want ? [] : (pool ?? []).filter((e) => e.path === path);
+  const examples = onPath.length ? onPath : pool?.filter((e) => want || ok(e.code));
+  if (!examples?.length) return { path, search: search.size ? `?${search}` : "", code: want?.code };
+
+  const best = examples
+    // Path, then query; a success example wins a tie (/auth/identify).
+    .map((e, i) => ({ e, score: (e.path === path ? 1000 : 0) + queryScore(search, e.search, endpoint!.examples) + (ok(e.code) ? 0.1 : 0), i }))
+    .sort((a, b) => b.score - a.score || a.i - b.i)[0].e;
+  const shared = endpoint!.examples.filter((e) => e.path === best.path && e.search === best.search && e.code === best.code);
+  // Header values must be plain ASCII; every name that needs sending is.
+  const name = shared.length > 1 && /^[\x20-\x7e]*$/.test(best.name) ? best.name : undefined;
+  return { path: best.path, search: best.search, code: best.code, name };
 }
 
 /**
- * The collection names an “SSO sign-in” example for /auth/identify but has no
- * body for it, so the mock can’t return one. Until it does, answer here with
- * the shape the app expects. TODO: confirm `next: "sso"` + `redirect_url`.
+ * The collection’s “SSO sign-in” example sends people to the real identity
+ * provider. The demo company answers here instead, with a redirect that skips
+ * straight to the app’s return page.
  */
 export function mockSyntheticResponse(
   method: string,
@@ -102,46 +177,13 @@ export function mockSyntheticResponse(
         next: "sso",
         operator: { id: "op_volta", name: "Volta Telecom", logo_url: null },
         email: body?.email,
-        // A real IdP URL; here it skips straight to the app’s return page.
-        redirect_url: `/sign-in/sso/callback?code=${code}&state=flw_sso_01`,
+        sso: {
+          provider: "Microsoft Entra ID",
+          protocol: "oidc",
+          redirect_url: `/sign-in/sso/callback?code=${code}&state=flw_sso_01`,
+        },
       },
     };
   }
   return undefined;
-}
-
-/**
- * Some collection examples have no status code; the mock serves those (a
- * Problem body with HTTP 200) when no code is asked for. Ask for each
- * request’s own success example instead, read from the collection itself.
- */
-type Item = { item?: Item[]; request?: { method: string; url: { path?: string[] } }; response?: Array<{ code?: number }> };
-let successCodes: Array<{ method: string; pattern: RegExp; code: number; params: number }> | null = null;
-
-function loadSuccessCodes() {
-  const out: NonNullable<typeof successCodes> = [];
-  try {
-    const file = join(process.cwd(), "FraudDetection App API.postman_collection.json");
-    const walk = (items: Item[]) => {
-      for (const it of items) {
-        if (it.item) walk(it.item);
-        const req = it.request;
-        const code = it.response?.find((r) => r.code && r.code >= 200 && r.code < 300)?.code;
-        if (!req || !code || !req.url.path) continue;
-        const segments = req.url.path.filter((seg) => seg !== "app" && seg !== "v1" && !seg.startsWith("{{"));
-        const pattern = new RegExp(`^${segments.map((seg) => (seg.startsWith(":") ? "[^/]+" : seg)).join("/")}$`);
-        out.push({ method: req.method, pattern, code, params: segments.filter((seg) => seg.startsWith(":")).length });
-      }
-    };
-    walk((JSON.parse(readFileSync(file, "utf8")) as Item).item ?? []);
-  } catch {
-    // No collection next to the app: let the mock choose.
-  }
-  // Literal paths before parameterised ones (alerts/stream before alerts/:id).
-  return out.sort((a, b) => a.params - b.params);
-}
-
-export function mockSuccessCode(method: string, path: string) {
-  successCodes ??= loadSuccessCodes();
-  return successCodes.find((r) => r.method === method && r.pattern.test(path))?.code;
 }

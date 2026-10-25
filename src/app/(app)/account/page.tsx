@@ -7,21 +7,35 @@ import { Icon } from "@/components/ui/Icon";
 import { TextField } from "@/components/ui/TextField";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
-import { useApi } from "@/lib/api/fd";
+import { useApi, type PersonRef } from "@/lib/api/fd";
+import { roleLabel } from "@/lib/auth/api";
 import { useRef, useState } from "react";
 
-type Profile = { display_name: string; callback_phone: string; managed: Array<[string, string]>; it_admin: string };
+type Profile = {
+  display_name: string;
+  callback_phone: string;
+  /** Set by IT; read-only here. */
+  managed: { email: string; role: string; team: { id: string; name: string }; supervisor: PersonRef; it_admin: PersonRef };
+};
 
 /** I6 · Account · profile. */
 export default function ProfilePage() {
   const toast = useToast();
-  // TODO(api): proposed GET/PATCH /me/profile (display name, call-back phone, photo).
+  // TODO(api): no photo upload endpoint yet; the photo stays on this page.
   const { data } = useApi<Profile>("/me/profile");
   const [name, setName] = useState<string | null>(null);
   const [phone, setPhone] = useState<string | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const file = useRef<HTMLInputElement>(null);
+  const managed = data
+    ? [
+        ["Work email", data.managed.email],
+        ["Role", roleLabel(data.managed.role)],
+        ["Team", data.managed.team.name],
+        ["Supervisor", data.managed.supervisor.name],
+      ]
+    : [];
   const initials = (name ?? data?.display_name ?? "")
     .split(" ")
     .map((p) => p[0])
@@ -77,7 +91,7 @@ export default function ProfilePage() {
         </Card>
         <Card title="Managed by IT" icon="icon-lock-secondary-16" className="w-[460px] shrink-0">
           <dl className="flex flex-col">
-            {data?.managed.map(([k, v]) => (
+            {managed.map(([k, v]) => (
               <div key={k} className="flex items-center justify-between border-b border-border-subtle py-3 text-body-s last:border-b-0">
                 <dt className="text-text-secondary">{k}</dt>
                 <dd className="flex items-center gap-1.5 text-text-primary">
@@ -87,7 +101,7 @@ export default function ProfilePage() {
               </div>
             ))}
           </dl>
-          <p className="text-caption text-text-tertiary">To change these, ask {data?.it_admin}.</p>
+          <p className="text-caption text-text-tertiary">To change these, ask {data ? `${data.managed.it_admin.name} (IT admin)` : "your IT admin"}.</p>
         </Card>
       </div>
       <div className="flex justify-end">

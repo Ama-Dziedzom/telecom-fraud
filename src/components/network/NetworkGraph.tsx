@@ -20,7 +20,26 @@ const GLYPH: Record<NetworkNode["type"], string> = {
   agent: "app/glyph-building",
   case: "app/glyph-folder",
 };
-const MONEY = new Set(["paid", "cash_out", "transfer"]);
+const MONEY = new Set(["paid", "cashed_out_at"]);
+
+const RELATION: Record<string, string> = {
+  subject: "Subscriber",
+  swap_agent: "Swap agent",
+  new_device: "New device",
+  same_device: "Same device",
+  other_swap: "Other swap",
+  recipient: "Recipient",
+  cash_out_agent: "Cash-out",
+  mule: "Mule",
+};
+
+/** Caption under a node: “Recipient”, “Subscriber · FD-3050”, “Confirmed ring”. */
+export function nodeRole(n: NetworkNode) {
+  if (!n.relation) return "";
+  if (n.type === "case") return n.risk === "confirmed" ? "Confirmed ring" : "Linked case";
+  const role = RELATION[n.relation] ?? n.relation.replace(/_/g, " ");
+  return [role, ...(n.case_ids ?? [])].join(" · ");
+}
 
 export function Legend() {
   return (
@@ -217,7 +236,7 @@ export function NetworkGraph({
                     style={compact && !n.seed && n.col > 0 ? { left: size / 2 + 8, top: 0 } : { top: size / 2 + 4 }}
                   >
                     <span className={cn("font-mono text-mono-s", isSelected ? "text-text-brand" : "text-text-primary")}>{n.label}</span>
-                    {!compact && n.role && <span className="text-text-tertiary">{n.role}</span>}
+                    {!compact && n.relation && <span className="text-text-tertiary">{nodeRole(n)}</span>}
                   </span>
                 </div>
               );

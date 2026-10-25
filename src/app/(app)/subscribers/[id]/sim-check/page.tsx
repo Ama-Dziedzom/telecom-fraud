@@ -5,12 +5,19 @@ import { CheckLayout, LinkedNumbers, Verdict } from "@/components/subscriber/Che
 import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { useSimCheck, type SimCheck } from "@/lib/api/subscribers";
+import { useSubscriber } from "@/lib/api/fd";
+import { phoneLabel, useSimCheck, type SimCheck } from "@/lib/api/subscribers";
 import { cn } from "@/lib/cn";
-import { formatClock } from "@/lib/time";
+import { formatClock, formatWhen, useNow } from "@/lib/time";
 import { useParams, useRouter } from "next/navigation";
 
-function Phone({ p }: { p: SimCheck["phones"][number] }) {
+/** “His usual phone · 2 yrs” · “Never seen before today” */
+function phoneNote(p: SimCheck["phones"][number], now: number) {
+  if (p.usual) return `His usual phone · ${p.used_months >= 12 ? `${Math.floor(p.used_months / 12)} yrs` : `${p.used_months} months`}`;
+  return formatWhen(p.first_seen_at, now, { withTime: true }).startsWith("Today") ? "Never seen before today" : `First seen ${formatClock(p.first_seen_at)}`;
+}
+
+function Phone({ p, now }: { p: SimCheck["phones"][number]; now: number }) {
   return (
     <div className={cn("flex min-w-0 flex-1 flex-col gap-3 rounded-xl border bg-surface-base px-5 py-[18px]", p.usual ? "border-border-subtle" : "border-critical-border")}>
       <div className="flex items-center gap-2.5">
@@ -18,7 +25,7 @@ function Phone({ p }: { p: SimCheck["phones"][number] }) {
           <Icon name={p.usual ? "app/icon-phone-neutral-20" : "app/icon-phone-critical-20"} size={20} />
         </span>
         <span className="flex flex-col gap-0.5">
-          <span className="text-overline text-text-tertiary uppercase">{p.label}</span>
+          <span className="text-overline text-text-tertiary uppercase">{phoneLabel(p.index)}</span>
           <span className="text-title text-text-primary">{p.model}</span>
         </span>
       </div>
@@ -28,8 +35,8 @@ function Phone({ p }: { p: SimCheck["phones"][number] }) {
           {p.place}
         </li>
         {[
-          ["app/icon-wifi-off-tertiary-16", p.cell && `Cell ${p.cell}`],
-          ["app/icon-clock-tertiary-16", p.seen],
+          ["app/icon-wifi-off-tertiary-16", `Cell ${p.cell_id}`],
+          ["app/icon-clock-tertiary-16", p.usual ? `Last seen ${formatClock(p.last_seen_at)}` : `First seen ${formatClock(p.first_seen_at)}`],
           ["app/icon-fingerprint-tertiary-16", p.imei && `IMEI ${p.imei}`],
         ].map(([icon, text]) =>
           text ? (
@@ -40,7 +47,7 @@ function Phone({ p }: { p: SimCheck["phones"][number] }) {
           ) : null,
         )}
       </ul>
-      {p.note && <Badge label={p.note} tone={p.usual ? "neutral" : "critical"} dot />}
+      <Badge label={phoneNote(p, now)} tone={p.usual ? "neutral" : "critical"} dot />
     </div>
   );
 }
@@ -72,7 +79,8 @@ function Lanes({ check }: { check: SimCheck }) {
             </span>
           </span>
         )}
-        {check.phones.map((p, lane) => {
+        {check.phones.map((p) => {
+          const lane = p.index;
           const regs = check.registrations.filter((r) => r.phone === lane);
           if (!regs.length) return null;
           const first = Math.min(...regs.map((r) => x(r.at)));
@@ -83,7 +91,7 @@ function Lanes({ check }: { check: SimCheck }) {
           return (
             <div key={lane}>
               <span className="absolute -left-[140px] text-label-s text-text-secondary" style={{ top: top - 2 }}>
-                {p.label} · {p.place.split(", ").pop()}
+                {phoneLabel(p.index)} · {p.place.split(", ").pop()}
               </span>
               <span className={cn("absolute h-2.5 rounded-[5px]", color)} style={{ top, left: `${first}%`, width: `${Math.max(1, (lane === 0 ? last : 100) - first)}%` }} />
               {regs.map((r) => (
@@ -106,8 +114,12 @@ function Lanes({ check }: { check: SimCheck }) {
 export default function SimCheckPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const now = useNow();
   const { data, isLoading } = useSimCheck(id);
+  const { data: sub } = useSubscriber(id);
   const dup = data?.status === "duplicate";
+  const [first, second] = [...(data?.phones ?? [])].sort((a, b) => a.index - b.index);
+  const swaps90 = sub?.sim_history.filter((h) => h.event === "sim_swap" && now - Date.parse(h.at) < 90 * 86_400_000).length;
 
   return (
     <CheckLayout
@@ -115,7 +127,7 @@ export default function SimCheckPage() {
       section="SIM duplication check"
       title="SIM duplication check"
       status={data ? (dup ? { label: "Duplicate detected", tone: "critical" } : { label: "No duplicate", tone: "success" }) : undefined}
-      subtitle={data ? `SIM ${data.sim} · checked against network registrations for the last ${data.window_hours} hours` : undefined}
+      subtitle={data ? `SIM ${data.iccid} · checked against network registrations for the last ${data.window_hours} hours` : undefined}
       evidenceTitle="SIM duplication check"
       loading={isLoading || !data}
     >
@@ -133,27 +145,27 @@ export default function SimCheckPage() {
                 </Button>
               }
             >
-              The SIM was live in {data.phones[0].place.split(", ").pop()} and {data.phones[1].place.split(", ").pop()} {data.minutes_apart} minutes apart. Nobody travels{" "}
+              The SIM was live in {first.place.split(", ").pop()} and {second.place.split(", ").pop()} {data.minutes_apart} minutes apart. Nobody travels{" "}
               {data.distance_km} km that fast, so the SIM has been cloned or re-issued.
             </Verdict>
             <Card title="Where the SIM was" icon="app/icon-map-pin-secondary-18">
               <div className="flex items-center gap-4">
-                <Phone p={data.phones[0]} />
+                <Phone p={first} now={now} />
                 <div className="flex flex-col items-center gap-1.5 px-2">
                   <span className="text-h2 text-critical-fg">{data.distance_km} km</span>
                   <span className="h-0.5 w-40 bg-critical-border" />
                   <span className="text-label-s text-critical-fg">in {data.minutes_apart} minutes</span>
                   <Badge label="Impossible travel" tone="critical" />
                 </div>
-                <Phone p={data.phones[1]} />
+                <Phone p={second} now={now} />
               </div>
             </Card>
             <Card title="Network registrations today" icon="app/icon-activity-secondary-18" aside={<Badge label={`${data.registrations.length} registrations`} tone="neutral" />}>
               <Lanes check={data} />
             </Card>
-            {data.also_used && (
+            {data.also_used.length > 0 && (
               <Card
-                title="Phone B has also used"
+                title={`${phoneLabel(second.index)} has also used`}
                 icon="app/icon-sim-18"
                 aside={
                   <ButtonLink href={`/network?seed=${id}`} variant="ghost" size="sm" iconLeft={<Icon name="app/icon-network-brand-16" size={16} />}>
@@ -188,7 +200,11 @@ export default function SimCheckPage() {
             </Card>
             <Card title="What we checked" icon="app/icon-check-circle-secondary-18">
               <ul className="flex flex-col gap-2">
-                {data.checked?.map(([k, v]) => (
+                {[
+                  ["Phones this SIM was in", String(data.phones.length)],
+                  ...(data.distance_km !== null ? [["Furthest move", `${data.distance_km} km`]] : []),
+                  ...(swaps90 !== undefined ? [["SIM swaps in 90 days", swaps90 ? String(swaps90) : "None"]] : []),
+                ].map(([k, v]) => (
                   <li key={k} className="flex items-center gap-2 text-body-s">
                     <span className="text-text-secondary">{k}</span>
                     <span className="text-label-m text-text-primary">{v}</span>

@@ -5,13 +5,39 @@ import { CheckLayout, LinkedNumbers, Verdict } from "@/components/subscriber/Che
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { useDeviceCheck } from "@/lib/api/subscribers";
+import { phoneLabel, useDeviceCheck, type DeviceCheck } from "@/lib/api/subscribers";
 import { cn } from "@/lib/cn";
-import { formatClock } from "@/lib/time";
+import { formatClock, formatWhen, useNow } from "@/lib/time";
 import { useParams, useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
 
-const spaced = (imei: string) => `${imei.slice(0, 2)} ${imei.slice(2, 8)} ${imei.slice(8, 14)} ${imei.slice(14)}`;
+/** Full IMEIs are grouped TAC · serial · check digit; masked ones (“3569…4417”) are shown as sent. */
+const spaced = (imei: string) => (/^\d{15}$/.test(imei) ? `${imei.slice(0, 2)} ${imei.slice(2, 8)} ${imei.slice(8, 14)} ${imei.slice(14)}` : imei);
+
+/** The 15 digit tiles; masked digits show as dots so the check digit stays last. */
+function digitsOf(imei: string) {
+  const [head, tail = ""] = imei.replace(/\s/g, "").split(/…|\*+/);
+  if (!tail) return head.split("");
+  return [...head.split(""), ...Array.from({ length: Math.max(0, 15 - head.length - tail.length) }, () => "•"), ...tail.split("")];
+}
+
+/** “IMEI from Phone B · first seen on this SIM today at 08:39” */
+function source(d: DeviceCheck, now: number) {
+  const from = d.from_phone !== null ? `IMEI from ${phoneLabel(d.from_phone)}` : "IMEI from the phone";
+  const when = formatWhen(d.first_seen_on_sim_at, now, { withTime: true });
+  return when.startsWith("Today")
+    ? `${from} · first seen on this SIM today at ${formatClock(d.first_seen_on_sim_at)}`
+    : `${from} · in use on this SIM since ${new Date(d.first_seen_on_sim_at).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}`;
+}
+
+/** What the TAC (first 8 digits) says about the phone. */
+function tacNote(d: DeviceCheck) {
+  if (!d.tac) return "";
+  const { brand, model, year, matches_reported_model } = d.tac;
+  if (matches_reported_model) return `${brand} ${model}, as reported by the phone`;
+  const reported = d.model?.replace(new RegExp(`^${brand}\\s*`, "i"), "");
+  return `Number belongs to ${brand}${reported ? `: the phone says ${reported} but the TAC is for a ${year} model` : ""}`;
+}
 
 function Check({ state, title, detail }: { state: "pass" | "fail" | "warn" | "pending"; title: string; detail: string }) {
   const tile = { pass: "bg-success-bg", fail: "bg-critical-bg", warn: "bg-medium-bg", pending: "bg-neutral-bg" }[state];
@@ -39,12 +65,14 @@ export default function DeviceCheckPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { mutate } = useSWRConfig();
+  const now = useNow();
   const { data, isLoading } = useDeviceCheck(id);
   const partial = data?.registry === "unavailable";
   const invalid = data && !data.luhn.valid;
   const lastTry = data?.registry_last_try ? formatClock(data.registry_last_try) : "";
 
-  const digits = data?.imei.split("") ?? [];
+  const digits = data ? digitsOf(data.imei) : [];
+  const others = data?.other_sims.data ?? [];
   return (
     <CheckLayout
       subscriberId={id}
@@ -59,7 +87,7 @@ export default function DeviceCheckPage() {
               : { label: "IMEI valid", tone: "success" }
           : undefined
       }
-      subtitle={data?.source}
+      subtitle={data ? source(data, now) : undefined}
       evidenceTitle="Device check"
       loading={isLoading || !data}
     >
@@ -134,12 +162,12 @@ export default function DeviceCheckPage() {
               <Icon name="app/icon-info-secondary-16" size={16} />
               {data.luhn.valid ? (
                 <>
-                  Check digit is <span className="font-mono text-mono-m text-success-fg">{data.luhn.actual}</span> it matches the Luhn check on the first 14 digits.
+                  Check digit is <span className="font-mono text-mono-m text-success-fg">{data.luhn.actual_digit}</span> it matches the Luhn check on the first 14 digits.
                 </>
               ) : (
                 <>
-                  The check digit should be <span className="font-mono text-mono-m text-success-fg">{data.luhn.expected}</span> (Luhn check on the first 14 digits). This phone
-                  reports <span className="font-mono text-mono-m text-critical-fg">{data.luhn.actual}</span>.
+                  The check digit should be <span className="font-mono text-mono-m text-success-fg">{data.luhn.expected_digit}</span> (Luhn check on the first 14 digits). This phone
+                  reports <span className="font-mono text-mono-m text-critical-fg">{data.luhn.actual_digit}</span>.
                 </>
               )}
             </p>
@@ -151,19 +179,19 @@ export default function DeviceCheckPage() {
                 <Check
                   state={data.luhn.valid ? "pass" : "fail"}
                   title="Number is valid (Luhn check)"
-                  detail={data.luhn.valid ? `Passed · check digit ${data.luhn.actual}` : `Failed · check digit is ${data.luhn.actual}, should be ${data.luhn.expected}`}
+                  detail={data.luhn.valid ? `Passed · check digit ${data.luhn.actual_digit}` : `Failed · check digit is ${data.luhn.actual_digit}, should be ${data.luhn.expected_digit}`}
                 />
                 <Check
-                  state={partial ? "pending" : data.tac?.matches ? "pass" : "warn"}
+                  state={partial ? "pending" : data.tac?.matches_reported_model ? "pass" : "warn"}
                   title="Model matches the number"
-                  detail={partial ? `Couldn’t reach the GSMA registry · last try ${lastTry}` : data.tac?.note ?? ""}
+                  detail={partial ? `Couldn’t reach the GSMA registry${lastTry ? ` · last try ${lastTry}` : ""}` : tacNote(data)}
                 />
                 <Check
                   state={partial ? "pending" : data.stolen?.listed ? "fail" : "pass"}
                   title="Not on the GSMA stolen list"
                   detail={
                     partial
-                      ? `Couldn’t reach the GSMA registry · last try ${lastTry}`
+                      ? `Couldn’t reach the GSMA registry${lastTry ? ` · last try ${lastTry}` : ""}`
                       : data.stolen?.listed
                         ? "Listed as stolen"
                         : `Not listed · checked ${data.stolen ? formatClock(data.stolen.checked_at) : ""}`
@@ -174,15 +202,15 @@ export default function DeviceCheckPage() {
             <Card
               title={invalid ? "Same IMEI on other SIMs" : "Other SIMs on this phone"}
               icon="app/icon-sim-18"
-              aside={<Badge label={data.other_window} tone={data.other_sims.length ? "high" : "success"} />}
+              aside={<Badge label={`${others.length || 1} SIM${others.length > 1 ? "s" : ""} · ${data.other_sims.window_days} days`} tone={others.length ? "high" : "success"} />}
               className="min-w-0 flex-1"
             >
-              {data.other_sims.length ? (
-                <LinkedNumbers rows={data.other_sims} />
+              {others.length ? (
+                <LinkedNumbers rows={others} />
               ) : (
                 <p className="flex items-center gap-2.5 py-3 text-body-m text-text-secondary">
                   <Icon name="app/icon-check-circle-success-18" size={18} />
-                  None in 90 days: only her SIM has been in this phone.
+                  None in {data.other_sims.window_days} days: only her SIM has been in this phone.
                 </p>
               )}
             </Card>

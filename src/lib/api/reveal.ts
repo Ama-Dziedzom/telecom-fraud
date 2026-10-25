@@ -9,10 +9,13 @@ import { now } from "@/lib/time";
  * reason, is audited, and the values expire — here they live in memory only,
  * never in storage, and disappear at `expires_at` or when hidden.
  */
+export type RevealReason = "investigating_case" | "call_subscriber_back" | "regulator_request";
 export type Revealed = {
-  values: Partial<Record<"msisdn" | "name" | "dob" | "ghana_card" | "alt_msisdn", string>>;
+  /** `date_of_birth` is a date. Without `fields` the API reveals all of them. */
+  values: Partial<Record<"msisdn" | "name" | "date_of_birth" | "ghana_card" | "alt_msisdn" | "address", string>>;
   expires_at: string;
-  reason: string;
+  audit_event_id: string;
+  reason: RevealReason;
   case_id?: string;
 };
 
@@ -24,12 +27,9 @@ const emit = () => {
   listeners.forEach((l) => l());
 };
 
-export async function reveal(subscriberId: string, request: { reason: string; case_id?: string; note?: string }) {
-  const res = await apiFetch<Revealed>("POST", `/subscribers/${subscriberId}/reveal`, {
-    fields: ["msisdn", "name", "dob", "ghana_card", "alt_msisdn"],
-    ...request,
-  });
-  // The mock’s expiry is a placeholder date; 15 minutes is the rule.
+export async function reveal(subscriberId: string, request: { reason: RevealReason; case_id?: string; note?: string }) {
+  const res = await apiFetch<Omit<Revealed, "reason" | "case_id">>("POST", `/subscribers/${subscriberId}/reveal`, request);
+  // The mock’s expiry is fixed in time; 15 minutes is the rule.
   const expires = Date.parse(res.expires_at);
   const entry = {
     ...res,

@@ -99,7 +99,7 @@ export function SubscriberDrawer({
         </>
       }
       title={`${revealed?.values.name ?? sub.name} · ${revealed?.values.msisdn ?? sub.msisdn}`}
-      subtitle={`Prepaid · Tier ${sub.wallet.tier} MoMo wallet · ${sub.contact.language.includes("Twi") ? "Kumasi, Ashanti" : "Ghana"}`}
+      subtitle={`${sub.plan === "postpaid" ? "Postpaid" : "Prepaid"} · Tier ${sub.wallet.tier} MoMo wallet · ${sub.home}`}
       headerActions={
         <button
           type="button"
@@ -118,7 +118,7 @@ export function SubscriberDrawer({
           tabs={[
             { id: "overview", label: "Overview" },
             { id: "wallet", label: "Wallet", count: 9 },
-            { id: "sim", label: "SIM & devices", count: 4 },
+            { id: "sim", label: "SIM & devices", count: sub.counts.devices },
             { id: "cases", label: "Cases", count: sub.cases.length },
             { id: "contact", label: "Contact" },
           ]}
@@ -163,7 +163,7 @@ export function SubscriberDrawer({
               rows={[
                 ["Name", revealed?.values.name ?? `${sub.name} (masked)`],
                 ["Ghana Card", `${revealed?.values.ghana_card ?? sub.kyc.ghana_card} · verified ${formatDate(sub.kyc.verified_at).replace(/^\d+ /, "")}`],
-                ["Address", sub.kyc.address ?? "Bantama, Kumasi"],
+                ["Address", revealed?.values.address ?? sub.kyc.address],
               ]}
             />
           </Section>

@@ -16,7 +16,7 @@ import { useSWRConfig } from "swr";
 export function NetworkTab({ caseId, seed, onBlock }: { caseId: string; seed: string; onBlock: (node: NodeDetail) => void }) {
   const [hops, setHops] = useState<"1" | "2" | "3">("2");
   const { data } = useNetwork(seed, Number(hops));
-  const [selected, setSelected] = useState<string | null>("w_8812");
+  const [selected, setSelected] = useState<string | null>("wal_8812");
   const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
   const { mutate } = useSWRConfig();
@@ -26,12 +26,12 @@ export function NetworkTab({ caseId, seed, onBlock }: { caseId: string; seed: st
     setBusy(action);
     try {
       if (action === "add_to_evidence") {
-        await apiFetch("POST", `/cases/${caseId}/evidence`, { title: node.title, entity_id: node.id });
+        // Adds the entity to the case and saves the graph around it as evidence.
+        await apiFetch("POST", `/cases/${caseId}/entities`, { entity_ids: [node.id], snapshot: true });
         await mutate(`/cases/${caseId}/evidence`);
-        toast({ tone: "success", title: `${node.title} added to evidence` });
+        toast({ tone: "success", title: `${node.identifier} added to evidence` });
       } else if (action.startsWith("link_case:")) {
         const other = action.split(":")[1];
-        // TODO(api): proposed POST /cases/{id}/links {case_id}.
         await apiFetch("POST", `/cases/${caseId}/links`, { case_id: other }).catch(() => undefined);
         await mutate(`/cases/${caseId}`);
         toast({ tone: "success", title: `${other} linked to ${caseId}` });

@@ -4,9 +4,9 @@ import { ChapterVisual, type Visual } from "@/components/story/ChapterVisual";
 import { StoryExport } from "@/components/story/StoryExport";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { ApiError } from "@/lib/api/client";
-import { useCase } from "@/lib/api/cases";
-import { useApi } from "@/lib/api/fd";
+import { isProblem } from "@/lib/api/client";
+import { useCase, type Outcome } from "@/lib/api/cases";
+import { useApi, type Severity } from "@/lib/api/fd";
 import type { User } from "@/lib/auth/api";
 import { cn } from "@/lib/cn";
 import { formatClock, useNow } from "@/lib/time";
@@ -14,20 +14,23 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+/** One chapter of GET /cases/{id}/brief. Its text, stat values and labels are engine text. */
 type Chapter = {
   number: number;
+  /** Null for “Where it stands”. */
   at: string | null;
   short: string;
   title: string;
   summary: string;
-  stats: Array<[string, string, string?]>;
+  stats: Array<{ value: string; label: string; severity: Severity | null }>;
   visual: Visual;
 };
+/** 202 while it is still being written, 200 once ready. */
 type Brief =
-  | { status: "building"; events_found: number; chapters_ready: number; chapters_total: number }
-  | { status: "ready"; outcome: string; chapters: Chapter[] };
+  | { case_id: string; status: "building"; events_found: number; chapters_ready: number; chapters_total: number }
+  | { case_id: string; status: "ready"; outcome: Outcome; outcome_state: string; generated_at: string; chapters: Chapter[] };
 
-const STAT_TONE: Record<string, string> = { high: "text-[#f4a77c]", critical: "text-[#f2a3a3]", success: "text-[#9fd8a3]" };
+const STAT_TONE: Partial<Record<Severity, string>> = { high: "text-[#f4a77c]", critical: "text-[#f2a3a3]", low: "text-[#9fd8a3]" };
 const PLACEHOLDER = ["The SIM swap", "A new phone", "The money moves", "Where it went", "What we did", "Where it stands"];
 
 function Logo() {
@@ -78,9 +81,9 @@ export default function StoryPage() {
   }, [chapters.length, building, exporting, router, caseId]);
 
   // E22 · not enough to tell yet.
-  if (error instanceof ApiError && error.code === "not_enough_events") {
-    const p = error.problem as unknown as { events: number; needed: number; opened_at: string };
-    const mins = Math.max(1, Math.round((now - Date.parse(p.opened_at)) / 60_000));
+  if (isProblem(error, "not_enough_events")) {
+    const p = error.problem as unknown as { events: number; needed: number };
+    const mins = detail ? Math.max(1, Math.round((now - Date.parse(detail.opened.at)) / 60_000)) : null;
     return (
       <div className="relative flex min-h-dvh items-center justify-center bg-brand-ink-deep p-8">
         <div className="absolute top-8 left-12">
@@ -92,7 +95,7 @@ export default function StoryPage() {
           </span>
           <h1 className="text-h3 text-text-inverse">Not much of a story yet</h1>
           <p className="max-w-[480px] text-body-m text-[#c9c6e6]">
-            {caseId} was opened {mins} minutes ago and has {p.events} {p.events === 1 ? "event" : "events"}. Story mode needs at least {p.needed}. Add notes, evidence or actions and
+            {caseId} was opened {mins === null ? "recently" : `${mins} minutes ago`} and has {p.events} {p.events === 1 ? "event" : "events"}. Story mode needs at least {p.needed}. Add notes, evidence or actions and
             come back.
           </p>
           <ButtonLink href={`/cases/${caseId}`} size="md" iconLeft={<Icon name="app/icon-arrow-left-white-16" size={16} />}>
@@ -141,13 +144,13 @@ export default function StoryPage() {
           <div className="flex gap-2.5">
             {(building
               ? [
-                  [String(data?.status === "building" ? data.events_found : "…"), "Events found"],
-                  [`${data?.status === "building" ? data.chapters_ready : 0} of ${data?.status === "building" ? data.chapters_total : 6}`, "Chapters ready"],
+                  { value: String(data?.status === "building" ? data.events_found : "…"), label: "Events found", severity: null },
+                  { value: `${data?.status === "building" ? data.chapters_ready : 0} of ${data?.status === "building" ? data.chapters_total : 6}`, label: "Chapters ready", severity: null },
                 ]
               : chapter.stats
-            ).map(([value, label, tone]) => (
+            ).map(({ value, label, severity }) => (
               <div key={label} className="flex flex-col gap-0.5 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                <span className={cn("text-title", tone ? STAT_TONE[tone] : "text-text-inverse")}>{value}</span>
+                <span className={cn("text-title", (severity && STAT_TONE[severity]) || "text-text-inverse")}>{value}</span>
                 <span className="text-caption text-[#9893c4]">{label}</span>
               </div>
             ))}
@@ -170,7 +173,7 @@ export default function StoryPage() {
                 <span className="h-3 w-1/2 animate-pulse rounded bg-surface-sunken" />
               </div>
             ) : (
-              <ChapterVisual key={chapter.number} visual={chapter.visual} />
+              <ChapterVisual key={chapter.number} visual={chapter.visual} now={now} subjectName={detail?.subject.name} />
             )}
           </div>
         </section>
