@@ -233,3 +233,15 @@
     cursor: pointer;
   }
 }
+
+/*
+ * Figma icons keep their exported colours (set inline by <Icon>). Inside
+ * .icon-tint (a disabled button) the same SVG becomes a mask, so the icon
+ * takes the text colour; !important beats the inline background.
+ */
+@layer components {
+  .icon-tint .icon {
+    background: currentColor !important;
+    mask: var(--icon) center / contain no-repeat;
+  }
+}

@@ -11,6 +11,7 @@ import "server-only";
  *   GET /cases/FD-5000              → 500 internal (I18)
  *   GET /audit/events?object=sub_…  → a subscriber’s audit trail; the collection’s
  *                                     example is still a generated Auditor placeholder
+ *   GET /alerts/stream              → the 0.1 collection’s SSE example; 0.2 saved none
  */
 
 type Body = Record<string, unknown> | null;
@@ -50,4 +51,10 @@ export function mockFixture(method: string, path: string, _body: Body, search: U
   if (caseId && CASE_PROBLEMS[caseId]) return CASE_PROBLEMS[caseId];
   if (path === "audit/events" && search.get("object")?.startsWith("sub_")) return { status: 200, body: SUBSCRIBER_AUDIT };
   return undefined;
+}
+
+/** Events the live alert stream sends on connect (server-sent event text). */
+export function mockAlertStream(method: string, path: string): string | undefined {
+  if (method !== "GET" || path !== "alerts/stream") return undefined;
+  return 'id: 88213\nevent: alert.created\ndata: {"id":"AL-88213","severity":"critical","risk_score":97,"status":"auto_case","case_id":"FD-3050"}\n\n';
 }

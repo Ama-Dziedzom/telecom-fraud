@@ -1,4 +1,4 @@
-import { mockFixture } from "@/lib/api/mock-fixtures";
+import { mockAlertStream, mockFixture } from "@/lib/api/mock-fixtures";
 import { mockRoute, mockSyntheticResponse, mockWant } from "@/lib/api/mock-scenarios";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -85,7 +85,7 @@ function upstream(
 }
 
 /**
- * Mock only: the Postman mock sends its example events and closes, which
+ * Mock only: the mock stream sends its example events and closes, which
  * would make EventSource reconnect every few seconds (and hit the mock’s rate
  * limit). Relay the events, then keep the connection open with heartbeats.
  */
@@ -145,6 +145,13 @@ async function handle(req: NextRequest, ctx: RouteContext<"/api/fd/[...path]">) 
     } else {
       cookieOps.push(clearTokens);
     }
+  }
+
+  const mockStream = MOCK ? mockAlertStream(method, path) : undefined;
+  if (mockStream !== undefined) {
+    return new NextResponse(holdOpenAfter(new Response(mockStream).body!, req.signal), {
+      headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform" },
+    });
   }
 
   let status: number;

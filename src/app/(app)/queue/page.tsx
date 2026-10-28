@@ -2,7 +2,7 @@
 
 import { AppHeader } from "@/components/app/AppHeader";
 import { PageBody, PageHead, useFeed, useShell } from "@/components/app/AppShell";
-import { Card, CardLink, KpiCard, Skeleton, Tabs } from "@/components/app/Card";
+import { Card, CardLink, Skeleton, Tabs } from "@/components/app/Card";
 import { CaseStatusBadge, RiskScore, riskTone, SeverityBadge, SlaLabel } from "@/components/app/indicators";
 import { FirstDay } from "@/components/queue/FirstDay";
 import { HandoverModal } from "@/components/queue/HandoverModal";
@@ -76,7 +76,7 @@ function NeedsYouNow({ cases, now }: { cases: CaseSummary[]; now: number }) {
                   {sentBack ? (
                     <span className="flex items-center gap-1.5 text-label-s text-high-fg">
                       <Icon name="app/icon-refresh-high-14" size={14} />
-                      Sent back · changes requested
+                      {c.reviewer ? `Sent back by ${c.reviewer.name.split(" ")[0]}` : "Sent back · changes requested"}
                     </span>
                   ) : (
                     <SlaLabel dueAt={c.sla_due_at} now={now} prefix={c.status === "new" ? "New · not yet opened · " : "SLA · "} />
@@ -110,7 +110,7 @@ function CasesTable({ cases, now }: { cases: CaseSummary[]; now: number }) {
       <table className="w-full table-fixed text-left">
         <thead className="border-b border-border-subtle bg-surface-raised">
           <tr className="text-overline text-text-tertiary uppercase">
-            <th className="w-[124px] py-[11px] pl-5 font-bold">Case</th>
+            <th className="w-[104px] py-[11px] pl-5 font-bold">Case</th>
             <th className="w-[166px] py-[11px] pl-4 font-bold">Subscriber</th>
             <th className="py-[11px] pl-4 font-bold">Type</th>
             <th className="w-[96px] py-[11px] pl-4 font-bold">Risk</th>
@@ -216,11 +216,6 @@ export default function MyQueuePage() {
     const left = Date.parse(c.sla_due_at) - now;
     return left >= 0 && left < SOON_MS;
   }).length;
-  const critical = openAlerts.filter((a) => a.severity === "critical").length;
-  const newAlerts = openAlerts.filter((a) => a.status === "new").length;
-  const shiftStart = user?.shift?.split("-")[0];
-  const vsAverage = mine ? mine.resolved - mine.resolved_avg : 0;
-  const slowResponse = mine ? mine.first_response_median_minutes > mine.first_response_sla_minutes : false;
   const firstName = user?.name.split(" ")[0] ?? "";
 
   const subtitle = loading
@@ -266,63 +261,6 @@ export default function MyQueuePage() {
           <Banner tone="success" title={`Handover submitted ${formatClock(submitted.at)}`}>
             {submitted.to.name} takes over at {formatClock(submitted.starts_at)}. You can edit it until they open it.
           </Banner>
-        )}
-
-        {!firstDay && (
-          <div className="flex gap-4">
-            {loading ? (
-              Array.from({ length: 4 }, (_, i) => (
-                <div key={i} className="flex flex-1 flex-col gap-3 rounded-xl border border-border-subtle bg-surface-base px-5 py-[18px]" aria-hidden>
-                  <Skeleton className="h-3 w-28" />
-                  <Skeleton className="h-6 w-14" />
-                  <Skeleton className="h-3 w-36" />
-                </div>
-              ))
-            ) : (
-              <>
-                <KpiCard
-                  label="Assigned to me"
-                  icon="app/icon-inbox-tertiary-18"
-                  value={cases.length}
-                  sub={dueSoon ? `${dueSoon} due within 30 min` : "Nothing due in the next 30 min"}
-                  subTone={dueSoon ? "medium" : "secondary"}
-                />
-                <KpiCard
-                  label="Live alerts"
-                  icon="app/icon-alert-triangle-critical-18"
-                  value={openAlerts.length}
-                  sub={`${critical} critical · ${newAlerts} new${shiftStart ? ` since ${shiftStart}` : ""}`}
-                  subTone={critical ? "critical" : "secondary"}
-                />
-                <KpiCard
-                  label="Resolved today"
-                  icon="app/icon-check-circle-tertiary-18"
-                  value={mine?.resolved ?? "–"}
-                  sub={
-                    !mine
-                      ? undefined
-                      : vsAverage > 0
-                        ? `▲ ${vsAverage} vs your average`
-                        : vsAverage < 0
-                          ? `▼ ${-vsAverage} vs your average`
-                          : "In line with your average"
-                  }
-                  subTone={vsAverage < 0 ? "secondary" : "success"}
-                />
-                <KpiCard
-                  label="My first response"
-                  icon="app/icon-timer-tertiary-18"
-                  value={mine ? `${mine.first_response_median_minutes}m` : "–"}
-                  sub={
-                    mine
-                      ? `${slowResponse ? "Over" : "Within"} the ${mine.first_response_sla_minutes} min SLA`
-                      : undefined
-                  }
-                  subTone={slowResponse ? "critical" : "success"}
-                />
-              </>
-            )}
-          </div>
         )}
 
         <div className="flex items-start gap-4">
@@ -374,7 +312,7 @@ export default function MyQueuePage() {
                     {(notifications?.data ?? []).map((n) => (
                       <li key={n.id} className="border-b border-border-subtle last:border-b-0">
                         <Link href={n.link} className="flex items-center justify-between gap-3 py-[9px]">
-                          <span className={cn("text-body-s", n.read ? "text-text-secondary" : "text-text-primary")}>{n.title}</span>
+                          <span className="text-body-s text-text-secondary">{n.title}</span>
                           <span className="shrink-0 text-caption text-text-tertiary">{formatClockOrDay(n.at, now)}</span>
                         </Link>
                       </li>

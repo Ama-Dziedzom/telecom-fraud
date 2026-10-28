@@ -48,7 +48,7 @@ function buttonClasses({
   return cn(
     "inline-flex shrink-0 items-center justify-center rounded-lg whitespace-nowrap transition-colors",
     sizes[size],
-    disabled ? "cursor-not-allowed bg-surface-sunken text-text-disabled" : variants[variant],
+    disabled ? "icon-tint cursor-not-allowed bg-surface-sunken text-text-disabled" : variants[variant],
     fullWidth && "w-full",
     className,
   );
