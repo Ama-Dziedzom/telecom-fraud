@@ -131,7 +131,7 @@ export const table = {
   wrap: "overflow-hidden rounded-lg border border-border-default bg-surface-base",
   head: "h-10 border-b border-border-default bg-surface-raised text-left text-caption text-text-secondary",
   row: "h-14 border-b border-border-default last:border-b-0 hover:bg-surface-sunken",
-  foot: "flex h-14 items-center border-t border-border-default px-4 text-caption text-text-secondary",
+  foot: "flex h-14 items-center border-t border-border-default px-4 text-body-s text-text-secondary",
 };
 
 export type StepState = "done" | "current" | "todo" | "failed";

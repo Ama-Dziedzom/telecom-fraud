@@ -20,6 +20,7 @@ import { SubscriberDrawer } from "@/components/subscriber/SubscriberDrawer";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Menu, MenuDivider, MenuItem } from "@/components/ui/Menu";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { useToast } from "@/components/ui/Toast";
 import { ApiError, apiFetch } from "@/lib/api/client";
 import { useCase, type CaseDetail, type CaseStarted, type NextStepKind } from "@/lib/api/cases";
@@ -253,15 +254,17 @@ export default function CasePage() {
                           </>
                         )}
                       </Menu>
-                      <Button
-                        variant="secondary"
-                        size="md"
-                        disabled={locked || escalated}
-                        title={escalated ? "Waiting on your escalation" : locked ? "Waiting for sign-off" : undefined}
-                        onClick={() => setDialog({ kind: sentBack ? "resubmit" : "resolve" })}
-                      >
-                        Resolve
-                      </Button>
+                      {locked || escalated ? (
+                        <Tooltip title={escalated ? "Waiting on your escalation" : "Waiting for sign-off"} placement="top-end">
+                          <Button variant="secondary" size="md" disabled>
+                            Resolve
+                          </Button>
+                        </Tooltip>
+                      ) : (
+                        <Button variant="secondary" size="md" onClick={() => setDialog({ kind: sentBack ? "resubmit" : "resolve" })}>
+                          Resolve
+                        </Button>
+                      )}
                     </>
                   )
                 }
@@ -327,7 +330,8 @@ export default function CasePage() {
                         <DoThisNext
                           detail={detail}
                           onStep={onStep}
-                          locked={isNew || locked || closed}
+                          // C1 · a new case can act straight away; only sign-off and closed lock the steps.
+                          locked={locked || closed}
                           retry={
                             retry && !locked && !closed
                               ? {

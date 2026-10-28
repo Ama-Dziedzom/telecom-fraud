@@ -194,7 +194,8 @@ export function Select({
           required={required}
           aria-invalid={Boolean(error) || undefined}
           aria-describedby={error ? errorId : undefined}
-          className="min-w-0 flex-1 cursor-pointer appearance-none bg-transparent text-body-s text-text-primary outline-none focus-visible:shadow-none"
+          // A disabled first option is the placeholder (“Choose a reason”): tertiary until something is picked.
+          className="min-w-0 flex-1 cursor-pointer appearance-none bg-transparent text-body-s text-text-primary outline-none focus-visible:shadow-none has-[option:checked:disabled]:text-text-tertiary"
           {...props}
         >
           {children}

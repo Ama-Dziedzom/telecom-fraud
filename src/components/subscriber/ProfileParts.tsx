@@ -9,7 +9,7 @@ import type { Revealed } from "@/lib/api/reveal";
 import { useOutflow, useRecent, type RecentEvent } from "@/lib/api/subscribers";
 import { cn } from "@/lib/cn";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { formatClock, formatDate, formatMoney, formatSpan, formatWhen, TZ } from "@/lib/time";
+import { formatClock, formatDate, formatMoney, formatWhen, TZ } from "@/lib/time";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -209,14 +209,15 @@ export function OutflowChart({ id }: { id: string }) {
         </p>
       </div>
       <div className="flex gap-2" role="img" aria-label={`Money out per day for the last ${days.length} days`}>
-        <div className="flex h-60 w-12 shrink-0 flex-col items-end justify-between text-caption text-text-secondary">
-          <span>
+        {/* Axis labels sit on their gridlines. */}
+        <div className="relative h-60 w-14 shrink-0 text-caption whitespace-nowrap text-text-secondary">
+          <span className="absolute top-0 right-0 -translate-y-1/2">
             {currency} {short(top / 100)}
           </span>
-          <span>
+          <span className="absolute top-1/2 right-0 -translate-y-1/2">
             {currency} {short(top / 200)}
           </span>
-          <span>0</span>
+          <span className="absolute top-full right-0 -translate-y-1/2">0</span>
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="relative flex h-60 items-end justify-between border-b border-border-default">
@@ -226,7 +227,7 @@ export function OutflowChart({ id }: { id: string }) {
               const today = i === days.length - 1;
               return (
                 <span key={d.date} className="relative flex w-8 justify-center">
-                  {/* C12 · each day's amount shows on hover; today's bar sits by the right edge, so its tooltip right-aligns. */}
+                  {/* C12 · each day's amount shows on hover only (user request); today's bar sits by the right edge, so its tooltip right-aligns. */}
                   <Tooltip title={today ? "Today" : formatDate(d.date)} body={`${money(d.amount)} out`} placement={today ? "top-end" : "top"}>
                     <span
                       className={cn("w-8 rounded-t", today ? "bg-critical-solid" : "bg-border-strong")}
@@ -322,7 +323,7 @@ export function IdentityCard({
       aside={
         revealed ? (
           <span className="flex items-center gap-3">
-            <CardMeta>Shown · {formatSpan(Date.parse(revealed.expires_at) - now)} left</CardMeta>
+            <CardMeta>Shown · {Math.max(1, Math.ceil((Date.parse(revealed.expires_at) - now) / 60_000))} min left</CardMeta>
             <CardAction onClick={onHide}>Hide now</CardAction>
           </span>
         ) : kycDown ? (
@@ -387,7 +388,7 @@ export function MobileMoneyCard({ sub }: { sub: Subscriber }) {
 /* ───────────────────────── C13 · SIM & devices ───────────────────────── */
 
 const DEVICE_STATUS: Record<"new" | "usual" | "retired", { label: string; tone: BadgeTone }> = {
-  new: { label: "New", tone: "critical" },
+  new: { label: "New", tone: "high" },
   usual: { label: "Usual", tone: "neutral" },
   retired: { label: "Retired", tone: "neutral" },
 };

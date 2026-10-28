@@ -28,7 +28,7 @@ const money = (minor: number, currency = "GHS") => formatMoney(minor, currency);
 /** Recipient pill: in another case, new, or known. Airtime to self has none. */
 function recipient(t: Transaction) {
   if (t.counterparty_case_id) return { label: `In ${t.counterparty_case_id}`, tone: "critical" as const };
-  if (t.counterparty_new) return { label: "New", tone: "critical" as const };
+  if (t.counterparty_new) return { label: "New", tone: "high" as const };
   if (t.type === "airtime") return null;
   return { label: "Known", tone: "neutral" as const };
 }
@@ -127,15 +127,12 @@ export function TransactionsTab({
       </div>
 
       {caseId && chosen.length > 0 && (
-        <div role="toolbar" aria-label="Selected transfers" className="flex h-12 items-center gap-3 rounded-lg border border-brand-primary bg-brand-primary-subtle px-4">
+        <div role="toolbar" aria-label="Selected transfers" className="flex h-14 items-center gap-2 rounded-lg border border-brand-primary bg-brand-primary-subtle pr-2 pl-4">
           <Checkbox label="Clear selection" hideLabel checked indeterminate={chosen.length < outs.length} onChange={() => setPicked(new Set())} />
-          <p className="flex items-baseline gap-2">
-            <span className="text-label-s text-text-primary">
-              {chosen.length} {chosen.length === 1 ? "transfer" : "transfers"} selected
-            </span>
-            <span className="text-caption text-text-secondary">{money(total)}</span>
-          </p>
-          <span className="flex-1" />
+          <span className="text-label-s text-text-primary">
+            {chosen.length} {chosen.length === 1 ? "transfer" : "transfers"} selected
+          </span>
+          <span className="min-w-0 flex-1 text-body-s text-text-secondary">{money(total)}</span>
           <Button variant="secondary" size="sm" loading={saving} onClick={saveEvidence}>
             Save as evidence
           </Button>
@@ -156,7 +153,7 @@ export function TransactionsTab({
           <thead>
             <tr className={table.head}>
               {caseId && (
-                <th className="w-12 pl-4">
+                <th className="w-12 pr-2 pl-4">
                   <Checkbox
                     label="Select all transfers out"
                     hideLabel
@@ -166,17 +163,17 @@ export function TransactionsTab({
                   />
                 </th>
               )}
-              <th className={cn("w-[110px] font-medium text-text-primary", !caseId && "pl-4")} aria-sort="descending">
+              <th className="w-[110px] px-4 font-medium text-text-primary" aria-sort="descending">
                 <span className="flex items-center gap-1">
                   Time
                   <Icon name="app/icon-chevron-down-16" size={14} />
                 </span>
               </th>
-              <th className="w-[150px] font-normal">Reference</th>
-              <th className="w-[150px] font-normal">Type</th>
-              <th className="font-normal">Counterparty</th>
-              <th className="w-[180px] font-normal">Recipient</th>
-              <th className="w-[140px] pr-4 text-right font-normal">{data.totals.balance.currency}</th>
+              <th className="w-[150px] px-4 font-normal">Reference</th>
+              <th className="w-[150px] px-4 font-normal">Type</th>
+              <th className="px-4 font-normal">Counterparty</th>
+              <th className="w-[200px] px-4 font-normal">Recipient</th>
+              <th className="w-[130px] px-4 text-right font-normal">{data.totals.balance.currency}</th>
             </tr>
           </thead>
           <tbody>
@@ -186,16 +183,16 @@ export function TransactionsTab({
               return (
                 <tr key={t.id} className={cn(table.row, "text-body-s text-text-primary", checked && "bg-brand-primary-subtle-hover hover:bg-brand-primary-subtle-hover")}>
                   {caseId && (
-                    <td className="pl-4">
+                    <td className="pr-2 pl-4">
                       <Checkbox label={`Select ${t.id}`} hideLabel checked={checked} disabled={t.direction === "in"} onChange={(e) => toggle(t.id, e.target.checked)} />
                     </td>
                   )}
-                  <td className={cn(!caseId && "pl-4")}>{when(t)}</td>
-                  <td>{t.id}</td>
-                  <td>{TYPE_LABEL[t.type] ?? t.type}</td>
-                  <td className="truncate pr-4">{t.counterparty}</td>
-                  <td>{pill ? <Badge label={pill.label} tone={pill.tone} /> : <span className="text-text-tertiary">—</span>}</td>
-                  <td className="pr-4 text-right tabular-nums">
+                  <td className="px-4">{when(t)}</td>
+                  <td className="px-4">{t.id}</td>
+                  <td className="px-4">{TYPE_LABEL[t.type] ?? t.type}</td>
+                  <td className="truncate px-4">{t.counterparty}</td>
+                  <td className="px-4">{pill ? <Badge label={pill.label} tone={pill.tone} /> : <span className="text-text-tertiary">—</span>}</td>
+                  <td className="px-4 text-right tabular-nums">
                     {t.direction === "out" ? "-" : "+"}
                     {(t.amount.amount_minor / 100).toLocaleString("en-GB", { minimumFractionDigits: 2 })}
                   </td>

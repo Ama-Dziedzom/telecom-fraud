@@ -45,7 +45,8 @@ export function NetworkTab({
 }) {
   const [hops, setHops] = useState<1 | 2 | 3>(2);
   const { data, isLoading, mutate: reload } = useNetwork(seed, hops);
-  const [selected, setSelected] = useState<string | null>("wal_8812");
+  // Nothing is focused in the graph until a node is clicked (C8); the panel opens on the most telling node.
+  const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
   const { mutate } = useSWRConfig();
@@ -115,7 +116,7 @@ export function NetworkTab({
           }
           className="min-w-0 flex-1"
         >
-          <div className="relative h-[460px]">
+          <div className="relative h-[540px]">
             {loading ? (
               <div aria-busy aria-label="Loading the network" className="absolute inset-0">
                 {GHOSTS.map(([x, y], i) => (
@@ -126,7 +127,7 @@ export function NetworkTab({
                 ))}
               </div>
             ) : (
-              <NetworkGraph network={data} seed={seed} selected={focus} onSelect={setSelected} height={460} />
+              <NetworkGraph network={data} seed={seed} selected={selected} onSelect={setSelected} height={540} colWidth={158} controls={false} />
             )}
           </div>
         </Card>

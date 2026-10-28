@@ -1,10 +1,8 @@
 "use client";
 
-import { ActivityTab } from "@/components/alerts/AlertTabs";
 import { AppHeader } from "@/components/app/AppHeader";
 import { PageBody, PageHead } from "@/components/app/AppShell";
 import { Card, CardMeta, Tabs } from "@/components/app/Card";
-import { TransactionsTab } from "@/components/case/TransactionsTab";
 import {
   CardSkeleton,
   CaseHistoryRows,
@@ -21,6 +19,11 @@ import {
   WhyHighRisk,
 } from "@/components/subscriber/ProfileParts";
 import { WatchModal } from "@/components/lookup/LookupModals";
+import { GuideRow } from "@/components/help/GuideRow";
+import { BehaviourView } from "@/components/subscriber/BehaviourView";
+import { CallsTab } from "@/components/subscriber/CallsTab";
+import { useAddCheckToCase } from "@/components/subscriber/CheckLayout";
+import { PatternsView } from "@/components/subscriber/PatternsView";
 import { RevealModal, revealPurpose } from "@/components/subscriber/RevealModal";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
@@ -36,9 +39,14 @@ import { useParams, usePathname, useRouter, useSearchParams } from "next/navigat
 import { useEffect, useState, type ReactNode } from "react";
 import { useSWRConfig } from "swr";
 
-type Tab = "overview" | "activity" | "transactions" | "sim" | "cases" | "audit";
-const TABS: Tab[] = ["overview", "activity", "transactions", "sim", "cases", "audit"];
+type Tab = "overview" | "activity" | "transactions" | "calls" | "sim" | "cases" | "audit";
+const TABS: Tab[] = ["overview", "activity", "transactions", "calls", "sim", "cases", "audit"];
 const PLAN: Record<Subscriber["plan"], string> = { prepaid: "prepaid", postpaid: "postpaid" };
+/** What the Activity (C19) and Transactions (C26) tabs export and add to a case — as their standalone check pages do. */
+const CHECK = {
+  activity: { section: "Behaviour profile", evidenceTitle: "Behaviour profile: normal vs now", exportLabel: "Export" },
+  transactions: { section: "Transaction patterns", evidenceTitle: "Transaction patterns", exportLabel: "Export chart" },
+};
 /** Sources Subscriber 360 reads from, as named in the C16 banner. */
 const SOURCE: Record<string, { title: string; detail: string }> = {
   kyc: { title: "KYC registry didn’t respond", detail: "Identity details may be out of date. Everything else is live." },
@@ -88,6 +96,8 @@ export default function SubscriberPage() {
   const tab = (TABS.includes(params.get("tab") as Tab) ? params.get("tab") : "overview") as Tab;
   const setTab = (t: Tab) => router.replace(`${pathname}${t === "overview" ? "" : `?tab=${t}`}`, { scroll: false });
   const retry = () => mutate(`/subscribers/${id}`);
+  const checkFor = tab === "transactions" ? CHECK.transactions : CHECK.activity;
+  const addCheck = useAddCheckToCase(id, checkFor.section, checkFor.evidenceTitle);
 
   // Revealed details mask again when you leave the page.
   useEffect(() => () => hide(id), [id]);
@@ -108,6 +118,7 @@ export default function SubscriberPage() {
         { id: "overview", label: "Overview" },
         { id: "activity", label: "Activity", count: sub?.counts.activity },
         { id: "transactions", label: "Transactions", count: sub?.counts.transactions },
+        { id: "calls", label: "Calls" },
         { id: "sim", label: "SIM & devices", count: sub?.counts.devices },
         { id: "cases", label: "Cases", count: sub?.cases.length },
         { id: "audit", label: "Audit log" },
@@ -115,7 +126,20 @@ export default function SubscriberPage() {
     />
   );
 
-  const actions = (
+  // C19/C26 · the Activity and Transactions tabs are the behaviour and patterns checks: export, then add to the case.
+  const check = tab === "activity" ? CHECK.activity : tab === "transactions" ? CHECK.transactions : null;
+  const actions = check ? (
+    <>
+      <Button variant="secondary" size="md" onClick={() => window.print()}>
+        {check.exportLabel}
+      </Button>
+      {addCheck.openCase && (
+        <Button size="md" onClick={addCheck.add} loading={addCheck.adding} disabled={!sub}>
+          Add to case {addCheck.openCase.id}
+        </Button>
+      )}
+    </>
+  ) : (
     <>
       {/* G34 · Add to watchlist; already on your list reads “Watching”. */}
       <Button variant="secondary" size="md" disabled={!sub || watching} onClick={() => setWatchOpen(true)}>
@@ -257,12 +281,10 @@ export default function SubscriberPage() {
               </div>
             </>
           )}
-          {tab === "activity" && (
-            <Card>
-              <ActivityTab subscriberId={id} now={now} />
-            </Card>
-          )}
-          {tab === "transactions" && <TransactionsTab subscriberId={id} now={now} />}
+          {/* C19/C20 · behaviour profile, C26 · transaction patterns, G35–G38 · number trace. */}
+          {tab === "activity" && <BehaviourView id={id} />}
+          {tab === "transactions" && <PatternsView id={id} />}
+          {tab === "calls" && <CallsTab subscriberId={id} caseId={openCase?.id} />}
           {tab === "sim" && (
             <>
               <SubscriberTiles sub={sub} now={now} />
@@ -272,6 +294,23 @@ export default function SubscriberPage() {
                 </Banner>
               )}
               <SimDevicesTab sub={sub} now={now} />
+              {/* C21–C25 · the SIM and device checks. */}
+              <Card title="Checks">
+                <div className="flex flex-col">
+                  <GuideRow
+                    href={`/subscribers/${id}/sim-check`}
+                    icon="app/icon-sim-secondary-16"
+                    title="SIM duplication check"
+                    detail="Is this SIM live in two phones at once? Checked against network registrations"
+                  />
+                  <GuideRow
+                    href={`/subscribers/${id}/device-check`}
+                    icon="app/icon-laptop-secondary-18"
+                    title="Device check"
+                    detail="IMEI check digit, model and the stolen-phone list"
+                  />
+                </div>
+              </Card>
             </>
           )}
           {tab === "cases" && (

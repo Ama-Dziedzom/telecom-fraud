@@ -33,7 +33,7 @@ const progressOf = (done: number, total: number) =>
 type Upload = { key: number; file: File; progress: number; error?: string; xhr?: XMLHttpRequest; startedAt: number; secondsLeft?: number };
 
 const ghost = "flex size-8 shrink-0 items-center justify-center rounded-lg hover:bg-surface-sunken";
-const row = "flex min-h-[60px] items-center gap-3 rounded-lg border bg-surface-base py-3 pr-2 pl-3";
+const row = "flex h-[60px] items-center gap-3 rounded-lg border bg-surface-base py-3 pr-2 pl-3";
 
 /** C6 · Evidence — drag & drop uploads with progress, the size limit and chain of custody. */
 export function EvidenceTab({ caseId }: { caseId: string }) {
@@ -128,7 +128,7 @@ export function EvidenceTab({ caseId }: { caseId: string }) {
         </div>
       </div>
 
-      <ul className="flex flex-col gap-2 pt-2">
+      <ul className="flex flex-col gap-2">
         {items.map((ev) => (
           <li key={ev.id} className={cn(row, "border-border-default")}>
             <RowTile icon="app/icon-file-secondary-16" size={16} />

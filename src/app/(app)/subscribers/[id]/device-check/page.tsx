@@ -86,6 +86,7 @@ export default function DeviceCheckPage() {
   return (
     <CheckLayout
       subscriberId={id}
+      profileTab="sim"
       section="Device check"
       title={data ? (data.model ? `Device check · ${data.model}` : `Device check · IMEI ${spaced(data.imei)}`) : "Device check"}
       status={

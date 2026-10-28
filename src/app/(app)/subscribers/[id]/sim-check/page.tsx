@@ -88,7 +88,7 @@ function Lanes({ check }: { check: SimCheck }) {
                 style={{ top: top + 0.5, left: `${a * 100}%`, width: `${(b - a) * 100}%` }}
               />
               {regs.map((r, i) => (
-                <span key={i} className="absolute -translate-x-1/2" style={{ top: top - 3, left: `${r * 100}%` }}>
+                <span key={i} className="absolute flex -translate-x-1/2" style={{ top: top - 3, left: `${r * 100}%` }}>
                   <Icon name={p.usual ? "app/lane-dot-primary-10" : "app/lane-dot-critical-10"} size={10} className="block" />
                 </span>
               ))}
@@ -122,6 +122,7 @@ export default function SimCheckPage() {
   return (
     <CheckLayout
       subscriberId={id}
+      profileTab="sim"
       section="SIM duplication check"
       title="SIM duplication check"
       status={data ? (dup ? { label: "Duplicate found", tone: "critical" } : { label: "No duplicate", tone: "success" }) : undefined}

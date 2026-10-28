@@ -138,6 +138,7 @@ export function Sidebar({ operatorName: operatorFromSession, collapsed }: { oper
 
   const operatorName = operatorFromSession ?? "Kasa Mobile";
   const savedId = pathname === "/cases" ? params.get("saved") : null;
+  const onHelp = pathname === "/help" || pathname.startsWith("/help/");
 
   const groups: { title: string; items: NavItem[] }[] = [
     {
@@ -154,6 +155,7 @@ export function Sidebar({ operatorName: operatorFromSession, collapsed }: { oper
         { href: "/lookup", label: "Subscriber lookup", short: "Lookup", icon: "nav-search" },
         { href: "/heatmap", label: "Heatmap", short: "Heatmap", icon: "nav-map" },
         { href: "/network", label: "Entity network", short: "Network", icon: "nav-network" },
+        { href: "/trace", label: "Number trace", short: "Trace", icon: "icon-sim-secondary-16" },
       ],
     },
     {
@@ -185,18 +187,24 @@ export function Sidebar({ operatorName: operatorFromSession, collapsed }: { oper
           </div>
         ))}
         <span className="flex-1" />
-        {secondary.map(([id, label, short, icon]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => shell.open(id)}
-            aria-label={label}
-            className="flex h-[54px] w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-1 hover:bg-shell-nav-hover-bg"
-          >
-            <NavIcon name={icon} active={false} size={20} />
-            <span className="text-caption font-medium text-shell-nav-text">{short}</span>
-          </button>
-        ))}
+        {secondary.map(([id, label, short, icon]) => {
+          const active = id === "help" && onHelp;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => shell.open(id)}
+              aria-label={label}
+              className={cn(
+                "flex h-[54px] w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-1",
+                active ? "bg-shell-nav-active-bg" : "hover:bg-shell-nav-hover-bg",
+              )}
+            >
+              <NavIcon name={icon} active={active} size={20} />
+              <span className={cn("text-caption font-medium", active ? "text-shell-nav-active-text" : "text-shell-nav-text")}>{short}</span>
+            </button>
+          );
+        })}
       </nav>
     );
   }
@@ -253,17 +261,16 @@ export function Sidebar({ operatorName: operatorFromSession, collapsed }: { oper
       </div>
 
       <div className="flex shrink-0 flex-col gap-0.5 px-3 pt-2 pb-4">
-        {secondary.map(([id, label, , icon]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => shell.open(id)}
-            className="flex h-[38px] w-full items-center gap-2 rounded-lg px-3 text-left text-body-s text-shell-nav-text hover:bg-shell-nav-hover-bg"
-          >
-            <NavIcon name={icon} active={false} />
-            {label}
-          </button>
-        ))}
+        {secondary.map(([id, label, , icon]) => {
+          // I19/I20 · Help & support reads as current on the help pages; it still opens the Help drawer (I12).
+          const active = id === "help" && onHelp;
+          return (
+            <button key={id} type="button" onClick={() => shell.open(id)} className={cn("flex h-[38px] w-full items-center gap-2 rounded-lg px-3 text-left", rowState(active))}>
+              <NavIcon name={icon} active={active} />
+              {label}
+            </button>
+          );
+        })}
       </div>
     </nav>
   );

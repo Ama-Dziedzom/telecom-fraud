@@ -4,7 +4,6 @@ import { RequestError } from "@/components/auth/RequestError";
 import { useStepUp } from "@/components/app/StepUp";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
-import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
 import { Select, TextArea } from "@/components/ui/TextField";
 import { reveal, type RevealReason } from "@/lib/api/reveal";
@@ -72,7 +71,7 @@ export function RevealModal({
     <Modal
       open={open}
       onClose={onClose}
-      width={480}
+      width={400}
       title="Reveal personal details"
       description={[subscriber.name, subscriber.msisdn].filter(Boolean).join(" · ")}
       actions={
@@ -86,30 +85,16 @@ export function RevealModal({
         </>
       }
     >
-      <div className="flex flex-col gap-1.5">
-        <Select
-          label="Reason"
-          value={reason}
-          aria-invalid={missing || undefined}
-          aria-describedby={missing ? "reveal-reason-error" : undefined}
-          onChange={(e) => setReason(e.target.value as RevealReason)}
-        >
-          <option value="" disabled>
-            Choose a reason
+      <Select label="Reason" value={reason} error={missing ? "Choose a reason to reveal" : undefined} onChange={(e) => setReason(e.target.value as RevealReason)}>
+        <option value="" disabled>
+          Choose a reason
+        </option>
+        {REASONS.map(([id, label]) => (
+          <option key={id} value={id}>
+            {label}
           </option>
-          {REASONS.map(([id, label]) => (
-            <option key={id} value={id}>
-              {label}
-            </option>
-          ))}
-        </Select>
-        {missing && (
-          <p id="reveal-reason-error" role="alert" className="flex items-center gap-1.5 text-caption text-critical-fg">
-            <Icon name="app/icon-alert-circle-critical-14" size={14} />
-            Choose a reason to reveal
-          </p>
-        )}
-      </div>
+        ))}
+      </Select>
       <TextArea label="Note" optional rows={3} placeholder="What do you need it for?" value={note} onChange={(e) => setNote(e.target.value)} />
       <Banner tone="info" title="Logged and visible to your supervisor">
         Details show for 15 min, then hide again.

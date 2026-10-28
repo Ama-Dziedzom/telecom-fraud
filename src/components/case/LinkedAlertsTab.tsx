@@ -3,11 +3,11 @@
 import { RequestError } from "@/components/auth/RequestError";
 import { RiskScore } from "@/components/app/indicators";
 import { Card, CardMeta, Skeleton } from "@/components/app/Card";
+import { ToolbarSearch } from "@/components/cases/Table";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Menu, MenuItem } from "@/components/ui/Menu";
-import { TextField } from "@/components/ui/TextField";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
 import { useLinkedAlerts, type LinkedAlert } from "@/lib/api/cases";
@@ -68,16 +68,16 @@ export function LinkedAlertsTab({ caseId, meId, now }: { caseId: string; meId?: 
   };
 
   return (
-    <>
+    <div className="flex flex-col gap-6">
       <div className={table.wrap}>
         <table className="w-full table-fixed">
           <thead>
             <tr className={table.head}>
-              <th className="w-[84px] pl-4 font-normal">Time</th>
-              <th className="w-[118px] font-normal">Risk</th>
+              <th className="w-[100px] pl-4 font-normal">Time</th>
+              <th className="w-[140px] font-normal">Risk</th>
               <th className="font-normal">Signal</th>
-              <th className="w-[134px] font-normal">Where</th>
-              <th className="w-[180px] font-normal">How linked</th>
+              <th className="w-[160px] font-normal">Where</th>
+              <th className="w-[200px] font-normal">How linked</th>
               <th className="w-14 pr-4">
                 <span className="sr-only">Actions</span>
               </th>
@@ -95,7 +95,7 @@ export function LinkedAlertsTab({ caseId, meId, now }: { caseId: string; meId?: 
               const how = howLinked(a, meId);
               const when = formatWhen(a.created_at, now);
               return (
-                <tr key={a.id} className={cn(table.row, "h-[54px]")}>
+                <tr key={a.id} className={cn(table.row, "h-16")}>
                   <td className="pl-4 text-body-s text-text-primary">{when === formatClock(a.created_at) ? when : `${when} ${formatClock(a.created_at)}`}</td>
                   <td>
                     <RiskScore score={a.risk_score} />
@@ -169,21 +169,13 @@ export function LinkedAlertsTab({ caseId, meId, now }: { caseId: string; meId?: 
             void link();
           }}
         >
-          <TextField
-            size="md"
-            aria-label="Alert ID"
-            placeholder="Search alerts, e.g. AL-88190"
-            value={alertId}
-            onChange={(e) => setAlertId(e.target.value)}
-            iconLeft={<Icon name="app/icon-search-tertiary-16" size={16} />}
-            className="flex-1"
-          />
-          <Button type="submit" variant="secondary" size="md" className="h-10" loading={busy} disabled={!valid}>
+          <ToolbarSearch label="Alert ID" placeholder="Search alerts" value={alertId} onChange={setAlertId} className="w-auto flex-1" />
+          <Button type="submit" variant="secondary" size="sm" loading={busy} disabled={!valid}>
             Link alert
           </Button>
         </form>
         <RequestError error={failure} />
       </Card>
-    </>
+    </div>
   );
 }

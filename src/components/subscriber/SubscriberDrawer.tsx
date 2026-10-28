@@ -60,7 +60,7 @@ export function SubscriberDrawer({
           onChange={setTab}
           tabs={[
             { id: "overview", label: "Overview" },
-            { id: "wallet", label: "Wallet" },
+            { id: "wallet", label: "Wallet", count: sub.counts.transactions },
             { id: "sim", label: "SIM & devices", count: sub.counts.devices },
             { id: "cases", label: "Cases", count: sub.cases.length },
             { id: "contact", label: "Contact" },

@@ -50,7 +50,7 @@ export const nodeFlags = (node: NodeDetail) => node.flags.map((f) => FLAGS[f] ??
 const money = (m: Money) => formatMoney(m.amount_minor, m.currency);
 
 /** Fact rows: “Opened · 11 days ago · Kejetia”. `name` turns forwarded-to IDs into what the graph shows. */
-export function nodeFacts(node: NodeDetail, name: (id: string) => string = (id) => id): Array<[string, ReactNode]> {
+export function nodeFacts(node: NodeDetail, name: (id: string) => string = (id) => id, highlight = true): Array<[string, ReactNode]> {
   const f = node.facts;
   const rows: Array<[string, string, boolean?]> = [];
   if (f.opened_at) {
@@ -66,7 +66,7 @@ export function nodeFacts(node: NodeDetail, name: (id: string) => string = (id) 
   if (f.case_ids?.length) rows.push(["Cases", `${f.case_ids.join(" · ")} (linked)`]);
   return rows.map(([k, v, critical]) => [
     k,
-    <span key={k} className={cn(critical && "text-critical-fg")}>
+    <span key={k} className={cn(highlight && critical && "text-critical-fg")}>
       {v}
     </span>,
   ]);
@@ -85,14 +85,14 @@ export function NodePanel({ nodeId, onAction, busy }: { nodeId: string; onAction
   const { data } = useApi<NodeDetail>(`/network/nodes/${nodeId}`);
   if (!data) {
     return (
-      <Card className="w-[324px] shrink-0">
+      <Card className="w-[360px] shrink-0">
         <p className="text-body-s text-text-secondary">Loading…</p>
       </Card>
     );
   }
   const badges = nodeFlags(data);
   return (
-    <section className="flex w-[324px] shrink-0 flex-col gap-4 rounded-lg border border-border-default bg-surface-base px-6 py-5">
+    <section className="flex w-[360px] shrink-0 flex-col gap-4 rounded-lg border border-border-default bg-surface-base px-6 py-5">
       <h3 className="text-title text-text-primary">
         {NODE_TYPE[data.type]} {data.identifier}
       </h3>
@@ -103,11 +103,16 @@ export function NodePanel({ nodeId, onAction, busy }: { nodeId: string; onAction
           ))}
         </div>
       )}
-      <KeyValueList rows={nodeFacts(data)} />
+      {/* C8 · values stay text/primary here: status colour lives in the pills. */}
+      <KeyValueList rows={nodeFacts(data, undefined, false)} />
       <div className="flex flex-col gap-2">
         {actionsFor(data).map((a) => {
           const linkCase = a.startsWith("link_case:") ? a.split(":")[1] : null;
-          const spec = linkCase ? { label: `Link ${linkCase} to this case`, icon: "app/icon-link-16" } : ACTIONS[a];
+          const spec = linkCase
+            ? { label: `Link ${linkCase} to this case`, icon: "app/icon-link-16" }
+            : a === "add_to_evidence"
+              ? { ...ACTIONS[a], label: `Add ${NODE_TYPE[data.type].toLowerCase()} to evidence` }
+              : ACTIONS[a];
           if (!spec) return null;
           return (
             <Button

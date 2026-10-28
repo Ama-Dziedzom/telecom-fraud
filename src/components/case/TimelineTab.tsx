@@ -21,6 +21,8 @@ type Filter = "all" | "people" | "system" | "notes";
 
 const SOURCE: Record<string, string> = { system: "System", momo: "MoMo", network: "Network", crm: "CRM" };
 const isNote = (e: TimelineEvent) => e.kind === "note" || e.kind === "call";
+/** “Fraud Supervisor” → “Fraud supervisor”, as the mention list shows roles. */
+const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
 /** Dot per event: notes filled, money out red, device and SIM changes amber, the rest hollow. */
 function dot(e: TimelineEvent) {
@@ -80,14 +82,14 @@ export function TimelineTab({ caseId, now }: { caseId: string; now: number }) {
         <ol className="flex flex-col">
           {shown.map((e, i) => (
             <li key={e.id} className="flex gap-3">
-              <span className="w-14 shrink-0 pt-px text-right text-body-s text-text-tertiary">{when(e.at)}</span>
-              <span className="relative flex w-2.5 shrink-0 justify-center">
-                <span aria-hidden className={cn("relative z-10 mt-[5px] size-2.5 rounded-full border-[1.5px]", dot(e))} />
-                {i < shown.length - 1 && <span aria-hidden className="absolute top-[15px] -bottom-[5px] w-px bg-border-default" />}
+              <span className="w-14 shrink-0 text-right text-caption text-text-tertiary">{when(e.at)}</span>
+              <span aria-hidden className="flex w-3 shrink-0 flex-col items-center gap-1 pt-1">
+                <span className={cn("size-2.5 shrink-0 rounded-full border-[1.5px]", dot(e))} />
+                {i < shown.length - 1 && <span className="w-px flex-1 bg-border-default" />}
               </span>
-              <span className="flex min-w-0 flex-col pb-[18px]">
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5 pb-4">
                 <span className="text-label-s text-text-primary">{e.title}</span>
-                <span className="text-caption text-text-secondary">
+                <span className="text-body-s text-text-secondary">
                   {[e.source === "person" ? e.actor?.name : (SOURCE[e.source] ?? e.source), e.detail].filter(Boolean).join(" · ")}
                 </span>
               </span>
@@ -157,7 +159,7 @@ function NoteComposer({ caseId }: { caseId: string }) {
 
   return (
     <>
-      <Card title="Add a note" className="w-[360px] shrink-0">
+      <Card title="Add a note" className="w-[400px] shrink-0">
         <div className="relative">
           <TextArea
             id={areaId}
@@ -184,7 +186,7 @@ function NoteComposer({ caseId }: { caseId: string }) {
             }}
           />
           {ordered.length > 0 && (
-            <div role="listbox" aria-label="Mention a colleague" className="absolute top-[calc(100%-4px)] left-0 z-20 flex w-full flex-col gap-0.5 rounded-lg border border-border-default bg-surface-base p-1 shadow-lg">
+            <div role="listbox" aria-label="Mention a colleague" className="absolute top-[calc(100%-4px)] left-0 z-20 flex w-80 flex-col gap-0.5 rounded-lg border border-border-default bg-surface-base p-1 shadow-lg">
               {ordered.map((p) => (
                 <button
                   key={p.id}
@@ -200,7 +202,7 @@ function NoteComposer({ caseId }: { caseId: string }) {
                   <Avatar initials={p.initials} size={32} />
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate text-label-s text-text-primary">{p.name}</span>
-                    <span className="text-caption text-text-secondary">{roleLabel(p.role)}</span>
+                    <span className="text-caption text-text-secondary">{sentence(roleLabel(p.role))}</span>
                   </span>
                   <Badge label={p.status === "on_leave" ? "On leave" : p.on_shift ? "On shift" : "Off shift"} tone={p.on_shift && p.status !== "on_leave" ? "success" : "neutral"} />
                 </button>
@@ -213,7 +215,7 @@ function NoteComposer({ caseId }: { caseId: string }) {
             <option value="internal">Case team (internal)</option>
             <option value="supervisor">Shared with supervisor</option>
           </Select>
-          <Button size="md" className="h-10" onClick={() => submit()} loading={busy} disabled={!body.trim()}>
+          <Button size="md" onClick={() => submit()} loading={busy} disabled={!body.trim()}>
             Add note
           </Button>
         </div>

@@ -145,6 +145,7 @@ export function NetworkGraph({
   height = 600,
   colWidth = 210,
   compact = false,
+  controls = true,
 }: {
   network: Network;
   seed: string;
@@ -154,6 +155,8 @@ export function NetworkGraph({
   colWidth?: number;
   /** Smaller nodes, no roles or amounts — for the “Who’s involved” card. */
   compact?: boolean;
+  /** Zoom buttons and the scroll hint (G28); the case tab (C8) fits the graph instead. */
+  controls?: boolean;
 }) {
   const [zoom, setZoom] = useState(1);
   const box = useRef<HTMLDivElement>(null);
@@ -286,7 +289,7 @@ export function NetworkGraph({
           </div>
         </div>
       </div>
-      {!compact && (
+      {!compact && controls && (
         <div className="absolute right-3.5 bottom-12 flex flex-col gap-1">
           <button
             type="button"
@@ -314,7 +317,7 @@ export function NetworkGraph({
           </button>
         </div>
       )}
-      {!compact && <p className="absolute right-4 bottom-3 text-caption text-text-tertiary">Scroll to move · +/− to zoom</p>}
+      {!compact && controls && <p className="absolute right-4 bottom-3 text-caption text-text-tertiary">Scroll to move · +/− to zoom</p>}
     </div>
   );
 }
