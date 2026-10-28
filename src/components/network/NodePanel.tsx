@@ -4,7 +4,6 @@ import { Card } from "@/components/app/Card";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { KeyValueList } from "@/components/ui/Drawer";
-import { Icon } from "@/components/ui/Icon";
 import type { NetworkNode } from "@/lib/api/cases";
 import { useApi, type Money } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
@@ -65,7 +64,12 @@ export function nodeFacts(node: NodeDetail, name: (id: string) => string = (id) 
   if (f.sent_on_today) rows.push(["Sent on", `${money(f.sent_on_today)}${f.sent_on_minutes ? ` in ${f.sent_on_minutes} min` : ""}`, true]);
   if (f.forwarded_to?.length) rows.push(["Forwarded to", f.forwarded_to.map(name).join(" · ")]);
   if (f.case_ids?.length) rows.push(["Cases", `${f.case_ids.join(" · ")} (linked)`]);
-  return rows.map(([k, v, critical]) => [k, <span key={k} className={cn(critical && "text-critical-fg")}>{v}</span>]);
+  return rows.map(([k, v, critical]) => [
+    k,
+    <span key={k} className={cn(critical && "text-critical-fg")}>
+      {v}
+    </span>,
+  ]);
 }
 
 const ACTIONS: Record<string, { label: string; icon: string; tone?: "critical" }> = {
@@ -74,35 +78,22 @@ const ACTIONS: Record<string, { label: string; icon: string; tone?: "critical" }
 };
 
 /** What the case tab offers for a node: evidence always, blocking for wallets, linking the cases it’s in. */
-const actionsFor = (node: NodeDetail) => [
-  "add_to_evidence",
-  ...(node.type === "wallet" ? ["block"] : []),
-  ...(node.facts.case_ids ?? []).map((c) => `link_case:${c}`),
-];
+const actionsFor = (node: NodeDetail) => ["add_to_evidence", ...(node.type === "wallet" ? ["block"] : []), ...(node.facts.case_ids ?? []).map((c) => `link_case:${c}`)];
 
-/** Side panel for the selected entity (C8, G29). */
-export function NodePanel({
-  nodeId,
-  onAction,
-  busy,
-}: {
-  nodeId: string;
-  onAction: (action: string, node: NodeDetail) => void;
-  busy?: string | null;
-}) {
+/** Side panel for the selected entity in a case’s network tab (C8; G29 styling). */
+export function NodePanel({ nodeId, onAction, busy }: { nodeId: string; onAction: (action: string, node: NodeDetail) => void; busy?: string | null }) {
   const { data } = useApi<NodeDetail>(`/network/nodes/${nodeId}`);
   if (!data) {
     return (
-      <Card className="w-[400px] shrink-0">
+      <Card className="w-[324px] shrink-0">
         <p className="text-body-s text-text-secondary">Loading…</p>
       </Card>
     );
   }
   const badges = nodeFlags(data);
   return (
-    <section className="flex w-[400px] shrink-0 flex-col gap-3 rounded-xl border border-border-subtle bg-surface-base px-[18px] py-4">
-      <h3 className="flex items-center gap-2 text-title text-text-primary">
-        <Icon name="app/icon-wallet-18" size={18} />
+    <section className="flex w-[324px] shrink-0 flex-col gap-4 rounded-lg border border-border-default bg-surface-base px-6 py-5">
+      <h3 className="text-title text-text-primary">
         {NODE_TYPE[data.type]} {data.identifier}
       </h3>
       {badges.length > 0 && (
@@ -122,11 +113,10 @@ export function NodePanel({
             <Button
               key={a}
               variant={"tone" in spec && spec.tone === "critical" ? "danger-outline" : "secondary"}
-              size="sm"
+              size="md"
               fullWidth
               loading={busy === a}
               onClick={() => onAction(a, data)}
-              iconLeft={<Icon name={spec.icon} size={16} />}
             >
               {spec.label}
             </Button>

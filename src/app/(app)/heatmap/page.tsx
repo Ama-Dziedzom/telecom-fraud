@@ -2,16 +2,18 @@
 
 import { AppHeader } from "@/components/app/AppHeader";
 import { PageBody, PageHead } from "@/components/app/AppShell";
-import { Skeleton } from "@/components/app/Card";
+import { Card, CardLink, CardMeta, Skeleton } from "@/components/app/Card";
 import { EmptyState } from "@/components/app/EmptyState";
+import { riskTone } from "@/components/app/indicators";
+import { localMsisdn } from "@/components/cases/CaseTable";
+import { BarDivider, SegmentChips, ToolbarSearch, ToolbarSelect } from "@/components/cases/Table";
 import { HeatMap } from "@/components/heatmap/HeatMap";
 import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import { Icon } from "@/components/ui/Icon";
-import { Segmented } from "@/components/ui/Segmented";
 import { fraudTypeLabel, useApi, type Money, type SubscriberRef } from "@/lib/api/fd";
-import { cn } from "@/lib/cn";
+import { useOperatorName } from "@/lib/auth/session";
 import { formatClock, formatMoney } from "@/lib/time";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -65,13 +67,6 @@ type AreaDetail = {
 type Kpi = { label: string; value: string; sub: string; icon: string; tone?: "critical" | "medium" };
 type Row = { id: string; name: string; parent?: string; sub: string; value: number; change: number | null };
 
-const KPI_ICON: Record<string, string> = {
-  alert: "app/icon-alert-triangle-secondary-18",
-  pin: "app/icon-map-pin-secondary-18",
-  wallet: "app/icon-wallet-18",
-  activity: "app/icon-activity-secondary-18",
-  building: "app/icon-building-tertiary-18",
-};
 const LEVEL: Record<string, "country" | "ashanti" | "kumasi"> = { ghana: "country", ashanti: "ashanti", kumasi: "kumasi" };
 const FRAUD_TYPES: ReadonlyArray<readonly [string, string]> = [
   ["", "All fraud types"],
@@ -87,32 +82,19 @@ const REGIONS = [
   ["northern", "Northern"],
   ["volta", "Volta"],
 ] as const;
-const BAR = ["bg-critical-fg", "bg-high-fg", "bg-high-fg", "bg-high-fg", "bg-high-fg", "bg-medium-fg", "bg-medium-fg"];
 
-function ToolbarSelect({ icon, label, value, onChange, options }: { icon: string; label: string; value: string; onChange: (v: string) => void; options: ReadonlyArray<readonly [string, string]> }) {
-  return (
-    <label className="relative flex h-10 w-[200px] items-center gap-2 rounded-lg border border-border-default bg-surface-base pr-8 pl-3 focus-within:border-border-focus focus-within:shadow-focus">
-      <Icon name={icon} size={16} />
-      <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} className="min-w-0 flex-1 appearance-none bg-transparent text-body-m text-text-primary outline-none focus-visible:shadow-none">
-        {options.map(([id, text]) => (
-          <option key={id} value={id}>
-            {text}
-          </option>
-        ))}
-      </select>
-      <Icon name="app/icon-chevron-down-16" size={16} className="pointer-events-none absolute right-3" />
-    </label>
-  );
-}
-
+/** “+21”, “-1”, “No change” vs the period before. */
 function Change({ n }: { n: number | null }) {
-  if (n === null || n === 0) return <span className="text-caption text-text-tertiary">no change</span>;
-  return <span className={cn("text-caption font-medium", n > 0 ? "text-critical-fg" : "text-text-tertiary")}>{n > 0 ? `▲ ${n}` : `▼ ${-n}`}</span>;
+  return <span className="text-caption text-text-secondary">{n === null || n === 0 ? "No change" : n > 0 ? `+${n}` : `-${-n}`}</span>;
 }
 
 const money = (m: Money) => formatMoney(m.amount_minor, m.currency);
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-const humanise = (id: string) => id.split("-").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+const humanise = (id: string) =>
+  id
+    .split("-")
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(" ");
 
 /** An area’s name from what the response lists, else from its ID (“accra-central” → “Accra Central”). */
 function areaName(heat: Heat, id: string) {
@@ -131,24 +113,29 @@ function kpisOf(heat: Heat): Kpi[] {
     {
       label: `Alerts · ${level === "country" ? period : area.name}`,
       value: kpis.alerts.value.toLocaleString("en-GB"),
-      sub: change === null ? (kpis.alerts.value ? "no change" : "none matching") : `${change >= 0 ? "▲" : "▼"} ${Math.abs(change)}% vs ${vs}`,
+      sub:
+        change === null
+          ? kpis.alerts.value
+            ? "No change"
+            : [heat.filters?.fraud_type && fraudTypeLabel(heat.filters.fraud_type), heat.filters?.region && areaName(heat, heat.filters.region)].filter(Boolean).join(" · ") ||
+              "None matching"
+          : `${Math.abs(change)}% ${change >= 0 ? "more" : "fewer"} than ${vs}`,
       icon: "alert",
       tone: change && change > 0 ? "critical" : undefined,
     },
     {
       label: level === "country" ? "Hottest area" : level === "region" ? "Hottest district" : "Hottest neighbourhood",
-      value: hottest?.name ?? "—",
-      sub: hottest ? `${plural(hottest.alerts, "alert")} · ${plural(hottest.agents, "agent")}` : "no activity",
+      value: hottest?.name ?? "None",
+      sub: hottest ? `${plural(hottest.alerts, "alert")} · ${plural(hottest.agents, "agent")}` : "No alerts match",
       icon: "pin",
     },
   ];
-  if (kpis.money_out) cards.push({ label: "Moved out", value: money(kpis.money_out.money), sub: `across ${plural(kpis.money_out.wallets, "wallet")}`, icon: "wallet" });
+  if (kpis.money_out) cards.push({ label: "Moved out", value: money(kpis.money_out.money), sub: `Across ${plural(kpis.money_out.wallets, "wallet")}`, icon: "wallet" });
   else if (kpis.confirmed_fraud) {
-    const region = heat.filters?.region;
     cards.push({
       label: "Confirmed fraud",
       value: money(kpis.confirmed_fraud.money),
-      sub: filtered && region && !kpis.confirmed_fraud.cases_closed ? `in ${areaName(heat, region)} today` : `${plural(kpis.confirmed_fraud.cases_closed, "case")} closed today`,
+      sub: filtered && !kpis.confirmed_fraud.cases_closed ? "None today" : `${plural(kpis.confirmed_fraud.cases_closed, "case")} closed today`,
       icon: "wallet",
     });
   }
@@ -165,7 +152,7 @@ function kpisOf(heat: Heat): Kpi[] {
     cards.push({
       label: `New since ${formatClock(n.since)}`,
       value: n.value ? `+${n.value}` : "0",
-      sub: n.top_area_id ? `mostly ${areaName(heat, n.top_area_id)}` : "—",
+      sub: n.top_area_id ? `Mostly ${areaName(heat, n.top_area_id)}` : "None",
       icon: "activity",
       tone: n.value ? "medium" : undefined,
     });
@@ -194,7 +181,13 @@ function rankingOf(heat: Heat) {
     tabs: ["Neighbourhoods", "Agents"],
     lists: [
       towns,
-      heat.agents.map((a): Row => ({ id: a.code, name: a.code, sub: a.swaps_became_fraud ? `${a.area} · ${a.swaps_became_fraud} to fraud` : a.area, value: a.alerts, change: a.change })),
+      heat.agents.map((a): Row => ({
+        id: a.code,
+        name: a.code,
+        sub: a.swaps_became_fraud ? `${a.area} · ${a.swaps_became_fraud} to fraud` : a.area,
+        value: a.alerts,
+        change: a.change,
+      })),
     ],
   };
 }
@@ -212,12 +205,13 @@ function emptyCopy(heat: Heat, empty: NonNullable<Heat["empty"]>) {
   const title = `No ${what} in ${areaName(heat, empty.focus_area_id)} ${heat.period === "24h" ? "today" : `in the last ${heat.period}`}`;
   const n = empty.last_7d;
   const places = empty.last_7d_area_ids.map((id) => areaName(heat, id));
-  const where = places.length === 1 ? `${n === 1 ? "" : n === 2 ? "both " : "all "}in ${places[0]}` : places.length ? `in ${places.slice(0, -1).join(", ")} and ${places.at(-1)}` : "";
+  const where =
+    places.length === 1 ? `${n === 1 ? "" : n === 2 ? "both " : "all "}in ${places[0]}` : places.length ? `in ${places.slice(0, -1).join(", ")} and ${places.at(-1)}` : "";
   const detail = n ? `There ${n === 1 ? "was 1" : `were ${n}`} in the last 7 days${where ? `, ${where}` : ""}.` : "None in the last 7 days either.";
   return { title: title[0].toUpperCase() + title.slice(1), detail };
 }
 
-/** G21–G27 · Fraud heatmap — Ghana → region → district, with the agents, alerts and cases behind each area. */
+/** G21–G27 · Fraud heatmap — Ghana (G21) → region (G22) → district (G23), area drill-down (G24), no match (G25), loading (G26), map failed (G27). */
 export default function HeatmapPage() {
   const router = useRouter();
   const params = useSearchParams();
@@ -229,6 +223,7 @@ export default function HeatmapPage() {
   const [region, setRegion] = useState("");
   const [tab, setTab] = useState(0);
   const [drawer, setDrawer] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const q = new URLSearchParams({ area, metric, period });
   if (fraudType) q.set("fraud_type", fraudType);
@@ -259,15 +254,25 @@ export default function HeatmapPage() {
     URL.revokeObjectURL(url);
   };
 
+  const operator = useOperatorName();
+  const filtersOn = Boolean(fraudType || region);
+  const clearFilters = () => {
+    setFraudType("");
+    setRegion("");
+    setSearch("");
+  };
+  const hottest = data?.kpis.hottest_area?.area_id;
+  const shown = search.trim() ? rows.filter((r) => `${r.name} ${r.parent ?? ""}`.toLowerCase().includes(search.trim().toLowerCase())) : rows;
+
   return (
     <>
       <AppHeader section="Investigate" title="Heatmap" />
       <PageBody>
         <PageHead
           title="Fraud heatmap"
-          subtitle="Where fraud is happening across Kasa Mobile’s network right now. Click an area to see the agents, alerts and cases behind it."
+          subtitle={`Where fraud is happening on ${operator ? `${operator}’s` : "your"} network${data ? ` · updated ${formatClock(data.updated_at)}, refreshes every ${Math.round(data.refresh_seconds / 60)} min` : ""}`}
           actions={
-            <Button variant="secondary" size="md" onClick={exportCsv} disabled={!data} iconLeft={<Icon name="app/icon-download-18" size={18} />}>
+            <Button variant="secondary" size="md" onClick={exportCsv} disabled={!data}>
               Export
             </Button>
           }
@@ -276,34 +281,21 @@ export default function HeatmapPage() {
         <div className="grid grid-cols-4 gap-4">
           {(data ? kpisOf(data) : Array.from({ length: 4 }, () => null)).map((k, i) =>
             k ? (
-              <div key={k.label} className="flex flex-col gap-1.5 rounded-xl border border-border-subtle bg-surface-base px-5 py-4">
-                <span className="flex items-center justify-between text-caption text-text-secondary">
-                  {k.label}
-                  <Icon name={KPI_ICON[k.icon]} size={18} />
-                </span>
-                <span className="text-h1 text-text-primary">{k.value}</span>
-                <span className={cn("text-caption", k.tone === "critical" ? "text-critical-fg" : k.tone === "medium" ? "text-medium-fg" : "text-text-secondary")}>{k.sub}</span>
+              <div key={k.label} className="flex min-w-0 flex-col gap-1 rounded-lg border border-border-default bg-surface-raised px-5 py-4">
+                <span className="text-caption text-text-secondary">{k.label}</span>
+                <span className="truncate text-h2 text-text-primary">{k.value}</span>
+                <span className="truncate text-caption text-text-secondary">{k.sub}</span>
               </div>
             ) : (
-              <Skeleton key={i} className="h-[126px] rounded-xl" />
+              <Skeleton key={i} className="h-[106px] rounded-lg" />
             ),
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Segmented
-            label="Measure"
-            value={metric}
-            onChange={setMetric}
-            options={[
-              { id: "alerts", label: "Alerts" },
-              { id: "confirmed", label: "Confirmed fraud" },
-              { id: "ghs_lost", label: "GHS lost" },
-            ]}
-          />
-          <ToolbarSelect icon="app/icon-filter-18" label="Fraud type" value={fraudType} onChange={setFraudType} options={FRAUD_TYPES} />
+        <div className="flex flex-wrap items-center gap-2">
+          <ToolbarSearch label="Search a town, district or region" value={search} onChange={setSearch} placeholder="Search a town, district or region" className="w-[260px]" />
+          <ToolbarSelect label="Fraud type" value={fraudType} onChange={setFraudType} options={FRAUD_TYPES} active={!!fraudType} />
           <ToolbarSelect
-            icon="app/icon-clock-secondary-16"
             label="Period"
             value={period}
             onChange={setPeriod}
@@ -314,9 +306,9 @@ export default function HeatmapPage() {
             ]}
           />
           <ToolbarSelect
-            icon="app/icon-map-16"
             label="Area"
             value={regionLabel ? area : region}
+            active={Boolean(regionLabel || region)}
             onChange={(v) => {
               if (v === "ashanti") go("ashanti");
               else {
@@ -324,30 +316,44 @@ export default function HeatmapPage() {
                 setRegion(v);
               }
             }}
-            options={regionLabel ? [[area, regionLabel], ...REGIONS.filter(([id]) => id !== "ashanti")] : REGIONS}
+            options={regionLabel ? [[area, regionLabel.replace(" › ", " · ")], ...REGIONS.filter(([id]) => id !== "ashanti")] : REGIONS}
           />
-          <span className="flex-1" />
-          <span className="text-caption text-text-tertiary">{data ? `Updated ${formatClock(data.updated_at)} · refreshes every 5 min` : ""}</span>
+          <BarDivider />
+          <SegmentChips
+            label="Measure"
+            value={metric}
+            onChange={setMetric}
+            options={[
+              { id: "alerts", label: "Alerts" },
+              { id: "confirmed", label: "Confirmed fraud" },
+              { id: "ghs_lost", label: "GHS lost" },
+            ]}
+          />
         </div>
 
-        <div className="flex items-start gap-4">
+        <div className="flex items-start gap-5">
           {layersError ? (
-            <EmptyState
-              icon="icon-alert-circle-critical-20"
-              tone="critical"
-              title="The map didn’t load"
-              className="h-[640px] min-w-0 flex-1"
-              actions={
-                <Button variant="secondary" size="md" onClick={() => mutate(`/heatmap/layers?${layersQ}`)} iconLeft={<Icon name="app/icon-refresh-16" size={16} />}>
-                  Try again
-                </Button>
-              }
-            >
-              The map service took too long. Your numbers above are still live. Only the map is missing.
-            </EmptyState>
+            /* G27 · The map didn’t load — the numbers and the ranking stay live. */
+            <section className="flex h-[640px] min-w-0 flex-1 flex-col rounded-lg border border-border-default bg-surface-base px-6 pt-5">
+              <h3 className="text-title text-text-primary">Map</h3>
+              <EmptyState
+                bare
+                className="flex-1 pb-16"
+                icon="app/icon-alert-circle-tertiary-20"
+                title="The map didn’t load"
+                actions={
+                  <Button variant="secondary" size="md" onClick={() => mutate(`/heatmap/layers?${layersQ}`)} iconLeft={<Icon name="app/icon-refresh-16" size={16} />}>
+                    Retry
+                  </Button>
+                }
+              >
+                The map service took too long. The numbers are still live; only the map is missing.
+              </EmptyState>
+            </section>
           ) : !layers || !data ? (
-            <div className="relative h-[640px] min-w-0 flex-1 overflow-hidden rounded-xl border border-border-subtle bg-surface-base" aria-busy>
-              <Skeleton className="absolute inset-6 rounded-xl" />
+            /* G26 · Loading. */
+            <div className="relative h-[640px] min-w-0 flex-1 overflow-hidden rounded-lg border border-border-default bg-surface-base" aria-busy>
+              <Skeleton className="absolute inset-6 rounded-lg" />
               <p className="absolute inset-0 flex items-center justify-center text-body-s text-text-secondary">Loading the map…</p>
             </div>
           ) : (
@@ -355,7 +361,7 @@ export default function HeatmapPage() {
               level={LEVEL[area] ?? "country"}
               layers={{
                 shapes: layers.shapes,
-                pins: layers.pins.map((p) => ({ id: p.id, name: areaName(data, p.id), alerts: p.alerts })),
+                pins: layers.pins.map((p) => ({ id: p.id, name: areaName(data, p.id), alerts: p.alerts, hot: p.id === hottest })),
                 agents: data.agents.map((a) => ({ code: a.code, hot: a.hot })),
               }}
               legendTitle={legendOf(data)}
@@ -377,12 +383,15 @@ export default function HeatmapPage() {
               }
             >
               {data.area.path.length > 0 && (
-                <nav aria-label="Map level" className="flex w-fit items-center gap-1.5 rounded-[10px] border border-border-subtle bg-surface-base py-1 pr-3 pl-1 text-label-s shadow-sm">
+                <nav
+                  aria-label="Map level"
+                  className="flex w-fit items-center gap-1.5 rounded-lg border border-border-default bg-surface-base py-1 pr-3 pl-1 text-label-s shadow-sm"
+                >
                   <button
                     type="button"
                     aria-label="Up one level"
                     onClick={() => go(data.area.path[data.area.path.length - 1].id)}
-                    className="flex size-7 items-center justify-center rounded-lg bg-surface-sunken"
+                    className="flex size-7 items-center justify-center rounded-md bg-surface-sunken"
                   >
                     <Icon name="app/icon-arrow-left-18" size={14} />
                   </button>
@@ -400,50 +409,57 @@ export default function HeatmapPage() {
             </HeatMap>
           )}
 
-          <section aria-label={ranking?.title ?? "Hotspots"} className="flex w-[400px] shrink-0 flex-col gap-3 rounded-xl border border-border-subtle bg-surface-base px-5 py-4">
-            <header className="flex items-center gap-2">
-              <Icon name={area === "ghana" ? "app/icon-zap-secondary-18" : "app/icon-map-pin-secondary-16"} size={16} />
-              <h3 className="text-title text-text-primary">{ranking?.title ?? "Hotspots"}</h3>
-              <span className="rounded-full bg-surface-sunken px-1.5 text-caption font-medium text-text-tertiary">{rows.length}</span>
-              <span className="flex-1" />
-              {rows.length > 0 && <span className="text-caption text-text-tertiary">vs yesterday</span>}
-            </header>
-            {ranking && ranking.tabs.length > 0 && rows.length > 0 && (
-              <div className="w-fit">
-                <Segmented
-                  label="Rank by"
-                  value={String(tab)}
-                  onChange={(v) => setTab(Number(v))}
-                  options={ranking.tabs.map((t, i) => ({ id: String(i), label: t, count: i === 1 && data?.area.level === "district" ? ranking.lists[1]?.length : undefined }))}
-                />
-              </div>
+          <Card title={ranking?.title ?? "Hotspots"} aside={shown.length > 0 ? <CardMeta>vs yesterday</CardMeta> : undefined} className="w-[324px] shrink-0">
+            {ranking && ranking.tabs.length > 0 && shown.length > 0 && (
+              <SegmentChips
+                label="Rank by"
+                value={String(tab)}
+                onChange={(v) => setTab(Number(v))}
+                options={ranking.tabs.map((t, i) => ({ id: String(i), label: t, count: i === 1 && data?.area.level === "district" ? ranking.lists[1]?.length : undefined }))}
+              />
             )}
             {!data ? (
               <Skeleton className="h-[420px] w-full rounded-lg" />
-            ) : rows.length === 0 ? (
-              <p className="text-body-s text-text-secondary">No areas match these filters.</p>
+            ) : shown.length === 0 ? (
+              /* G25 · Nothing for these filters. */
+              <EmptyState
+                bare
+                icon="app/icon-search-18"
+                title="No alerts match these filters"
+                actions={
+                  (filtersOn || search) && (
+                    <Button variant="secondary" size="md" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  )
+                }
+              >
+                {search.trim()
+                  ? `Nothing called “${search.trim()}” in this view.`
+                  : `Nothing for ${[data.filters?.fraud_type && fraudTypeLabel(data.filters.fraud_type).toLowerCase(), data.filters?.region && `in ${areaName(data, data.filters.region)}`].filter(Boolean).join(" ") || "this view"} in the last ${data.period === "24h" ? "24 hours" : data.period}.`}
+              </EmptyState>
             ) : (
               <ol className="flex flex-col">
-                {rows.map((r, i) => {
+                {shown.map((r, i) => {
                   // Adum, Kumasi opens the Kumasi district, where Adum’s detail lives.
                   const drill = r.id === "ashanti" || r.id === "kumasi" || r.id === "adum-kumasi" ? (r.id === "adum-kumasi" ? "kumasi" : r.id) : null;
-                  const open = () => (drill && drill !== area ? go(drill) : r.id === "adum" ? setDrawer("adum") : r.id.startsWith("AG-") ? router.push(`/network?seed=${r.id}`) : undefined);
+                  const open = () =>
+                    drill && drill !== area ? go(drill) : r.id === "adum" ? setDrawer("adum") : r.id.startsWith("AG-") ? router.push(`/network?seed=${r.id}`) : undefined;
                   return (
-                    <li key={r.id} className="border-b border-border-subtle last:border-b-0">
-                      <button type="button" onClick={open} className="flex w-full items-start gap-3 py-2.5 text-left">
-                        <span className="w-3 pt-0.5 text-caption text-text-tertiary">{i + 1}</span>
-                        <span className="flex min-w-0 flex-1 flex-col gap-1">
-                          <span className="text-label-m text-text-primary">
-                            {r.name}
-                            {r.parent && <span className="text-caption font-normal text-text-tertiary"> · {r.parent}</span>}
-                          </span>
-                          <span className="h-1 rounded-full bg-surface-sunken">
-                            <span className={cn("block h-1 rounded-full", BAR[Math.min(i, BAR.length - 1)])} style={{ width: `${(r.value / max) * 100}%` }} />
-                          </span>
-                          <span className="text-caption text-text-secondary">{r.sub}</span>
+                    <li key={r.id} className="border-b border-border-default last:border-b-0">
+                      <button type="button" onClick={open} className="flex w-full flex-col gap-1.5 py-2.5 text-left hover:bg-surface-raised">
+                        <span className="flex items-baseline gap-1.5">
+                          <span className="text-caption text-text-secondary">{i + 1}</span>
+                          <span className="text-label-s text-text-primary">{r.name}</span>
+                          {r.parent && <span className="truncate text-caption text-text-secondary">{r.parent}</span>}
+                          <span className="flex-1" />
+                          <span className="text-label-s text-text-primary tabular-nums">{r.value}</span>
                         </span>
-                        <span className="flex w-16 flex-col items-end">
-                          <span className="text-title text-text-primary">{r.value}</span>
+                        <span className="h-1 rounded-full bg-surface-sunken">
+                          <span className="block h-1 rounded-full bg-neutral-fg" style={{ width: `${(r.value / max) * 100}%` }} />
+                        </span>
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="truncate text-caption text-text-secondary">{r.sub}</span>
                           <Change n={r.change} />
                         </span>
                       </button>
@@ -452,136 +468,112 @@ export default function HeatmapPage() {
                 })}
               </ol>
             )}
-          </section>
+          </Card>
         </div>
 
         {error && !data && <p className="text-body-s text-critical-fg">The numbers didn’t load. They’ll retry automatically.</p>}
       </PageBody>
 
       {drawer && (
+        /* G24 · Drill-down into an area. */
         <Drawer
           open
           onClose={() => setDrawer(null)}
-          width={520}
-          badges={
-            <span className="flex items-center gap-2">
-              <Badge label="Hotspot" tone="critical" dot />
-              <span className="text-caption text-text-secondary">
-                {detail?.path
-                  .filter((p) => p.id !== "ghana")
-                  .reverse()
-                  .map((p) => p.name)
-                  .join(" · ")}
-              </span>
-            </span>
-          }
-          title={detail?.name ?? "…"}
+          width={460}
+          badges={hot ? <Badge label="Hotspot" tone="critical" /> : undefined}
+          title={detail ? [detail.name, ...detail.path.filter((p) => p.id !== "ghana" && p.id !== "ashanti").map((p) => p.name.replace(/ Metro$/, ""))].join(", ") : "…"}
           subtitle={detail?.summary}
           footer={
             <>
-              <ButtonLink href={`/network?seed=${detail?.agent_list[0]?.code ?? ""}`} variant="secondary" size="md" iconLeft={<Icon name="app/icon-network-primary-16" size={16} />}>
-                Open {detail?.agent_list[0]?.code} in network
-              </ButtonLink>
+              <Button variant="ghost" size="md" onClick={() => setDrawer(null)}>
+                Close
+              </Button>
               <span className="flex-1" />
-              <ButtonLink href={`/alerts?area=${detail?.id ?? drawer}`} size="md" iconRight={<Icon name="app/icon-arrow-right-white-16" size={16} />}>
+              {detail?.agent_list[0] && (
+                <ButtonLink href={`/network?seed=${detail.agent_list[0].code}`} variant="secondary" size="md">
+                  Open {detail.agent_list[0].code} in network
+                </ButtonLink>
+              )}
+              <ButtonLink href={`/alerts?area=${detail?.id ?? drawer}`} size="md">
                 Triage {detail?.untriaged.total ?? ""} alerts
               </ButtonLink>
             </>
           }
         >
           {!detail ? (
-            <Skeleton className="h-[400px] w-full rounded-xl" />
+            <Skeleton className="h-[400px] w-full rounded-lg" />
           ) : (
-            <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-4">
               <div className="grid grid-cols-3 gap-2.5">
                 {(
                   [
-                    [String(detail.alerts), `alerts · ${detail.period}`, hot],
-                    [String(detail.agents), `agents in ${detail.name}`, false],
-                    [money(detail.moved_out), "moved out", detail.moved_out.amount_minor > 0],
+                    [`Alerts · ${detail.period}`, String(detail.alerts), detail.usual_alerts ? `${Math.round(detail.alerts / detail.usual_alerts)} times the usual` : ""],
+                    ["Agents", String(detail.agents), `In ${detail.name}`],
+                    ["Moved out", money(detail.moved_out), `From ${detail.name} wallets`],
                   ] as const
-                ).map(([v, l, critical]) => (
-                  <div key={l} className="flex flex-col rounded-[10px] bg-surface-raised px-3.5 py-3">
-                    <span className={cn("text-h3", critical ? "text-critical-fg" : "text-text-primary")}>{v}</span>
+                ).map(([l, v, sub]) => (
+                  <div key={l} className="flex min-w-0 flex-col gap-1 rounded-lg border border-border-default bg-surface-raised px-3.5 py-3">
                     <span className="text-caption text-text-secondary">{l}</span>
+                    <span className="truncate text-h3 text-text-primary">{v}</span>
+                    <span className="truncate text-caption text-text-secondary">{sub}</span>
                   </div>
                 ))}
               </div>
-              <div className="flex flex-col gap-2.5">
-                <p className="text-overline text-text-tertiary uppercase">What’s driving it</p>
-                {detail.drivers.map((d, i) => (
-                  <div key={d.fraud_type} className="flex flex-col gap-1">
-                    <span className="flex justify-between text-body-s text-text-primary">
-                      {fraudTypeLabel(d.fraud_type)}
-                      <span>{d.alerts}</span>
-                    </span>
-                    <span className="h-1 rounded-full bg-surface-sunken">
-                      <span
-                        className={cn("block h-1 rounded-full", i === 0 ? "bg-critical-fg" : i === 1 ? "bg-high-fg" : "bg-medium-fg")}
-                        style={{ width: `${(d.alerts / Math.max(1, detail.drivers[0].alerts)) * 100}%` }}
-                      />
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex flex-col gap-2.5">
-                <p className="text-overline text-text-tertiary uppercase">Agents in {detail.name}</p>
-                <div className="overflow-hidden rounded-[10px] border border-border-subtle">
-                  <table className="w-full text-left">
-                    <thead className="bg-surface-raised">
-                      <tr className="text-overline text-text-tertiary uppercase">
-                        <th className="py-2 pl-3.5 font-bold">Agent</th>
-                        <th className="py-2 font-bold">Today</th>
-                        <th className="py-2 pr-3.5 text-right font-bold">Outcome</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detail.agent_list.map((a) => (
-                        <tr key={a.code} className={cn("border-t border-border-subtle", a.swaps_became_fraud > 1 && "shadow-[inset_3px_0_0_#b51c1c]")}>
-                          <td className="py-2.5 pl-3.5">
-                            <Link href={`/network?seed=${a.code}`} className="rounded font-mono text-mono-m text-text-brand hover:underline">
-                              {a.code}
-                            </Link>
-                            <p className="text-caption text-text-secondary">
-                              {detail.name} · {a.street}
-                            </p>
-                          </td>
-                          <td className="py-2.5 text-body-s text-text-secondary">{a.swaps_today} swaps</td>
-                          <td className="py-2.5 pr-3.5 text-right">
-                            <Badge
-                              label={a.swaps_became_fraud ? `${a.swaps_became_fraud} to fraud` : "0"}
-                              tone={a.swaps_became_fraud > 1 ? "critical" : a.swaps_became_fraud ? "high" : "neutral"}
-                              dot={a.swaps_became_fraud > 0}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              <div className="flex flex-col gap-1">
-                <p className="flex items-center justify-between text-overline text-text-tertiary uppercase">
-                  Untriaged alerts · {detail.untriaged.total}
-                  <Link href={`/alerts?area=${detail.id}`} className="rounded text-label-s tracking-normal text-text-brand normal-case hover:underline">
-                    View all
-                  </Link>
-                </p>
-                {detail.untriaged.data.map((a) => (
-                  <div key={a.id} className="flex items-center gap-3 border-b border-border-subtle py-2.5 last:border-b-0">
-                    <span className={cn("w-6 text-label-m", a.risk_score >= 90 ? "text-critical-fg" : "text-high-fg")}>{a.risk_score}</span>
-                    <span className="flex flex-1 flex-col">
-                      <span className="text-body-s text-text-primary">
-                        {fraudTypeLabel(a.fraud_type)} · {a.subscriber.msisdn}
+              <Card title="What’s driving it">
+                <ul className="flex flex-col">
+                  {detail.drivers.map((d) => (
+                    <li key={d.fraud_type} className="flex justify-between border-b border-border-default py-2.5 text-body-s last:border-b-0 last:pb-0">
+                      <span className="text-text-secondary">{fraudTypeLabel(d.fraud_type)}</span>
+                      <span className="text-text-primary">{plural(d.alerts, "alert")}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+              <Card title={`Agents in ${detail.name}`} aside={<CardMeta>{detail.agent_list.length}</CardMeta>}>
+                <ul className="flex flex-col">
+                  {detail.agent_list.map((a) => (
+                    <li key={a.code} className="flex items-center gap-3 border-b border-border-default py-2.5 last:border-b-0 last:pb-0">
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <Link href={`/network?seed=${a.code}`} className="w-fit rounded text-body-s text-text-primary hover:underline">
+                          {a.code}
+                        </Link>
+                        <span className="truncate text-caption text-text-secondary">
+                          {a.street} · {plural(a.swaps_today, "swap")} today
+                        </span>
                       </span>
-                      <span className="font-mono text-mono-s text-text-tertiary">{a.id}</span>
-                    </span>
-                    <Link href={`/alerts?open=${a.id}`} className="rounded text-label-s text-text-brand hover:underline">
-                      Triage
-                    </Link>
-                  </div>
-                ))}
-              </div>
+                      <Badge
+                        label={a.swaps_became_fraud ? `${a.swaps_became_fraud} became fraud` : "None"}
+                        tone={a.swaps_became_fraud > 1 ? "critical" : a.swaps_became_fraud ? "high" : "neutral"}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+              <Card
+                title="Untriaged alerts"
+                aside={
+                  <span className="flex items-center gap-3">
+                    <CardMeta>{detail.untriaged.total}</CardMeta>
+                    <CardLink href={`/alerts?area=${detail.id}`}>View all</CardLink>
+                  </span>
+                }
+              >
+                <ul className="flex flex-col">
+                  {detail.untriaged.data.map((a) => (
+                    <li key={a.id} className="border-b border-border-default last:border-b-0">
+                      <Link href={`/alerts?open=${a.id}`} className="flex items-center gap-3 py-2.5 hover:bg-surface-raised">
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-body-s text-text-primary">
+                            {fraudTypeLabel(a.fraud_type)} · {localMsisdn(a.subscriber.msisdn)}
+                          </span>
+                          <span className="text-caption text-text-secondary">{a.id}</span>
+                        </span>
+                        <RiskPill score={a.risk_score} />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
             </div>
           )}
         </Drawer>
@@ -590,20 +582,26 @@ export default function HeatmapPage() {
   );
 }
 
+/** “94 Critical” — score and level in one pill (untriaged alerts in the drill-down). */
+function RiskPill({ score }: { score: number }) {
+  const t = riskTone(score);
+  return <Badge label={`${score} ${t[0].toUpperCase()}${t.slice(1)}`} tone={t === "low" ? "neutral" : t} />;
+}
+
 /** G25 · Nothing for these filters — said over the map, with the two ways out. */
 function EmptyCard({ title, detail, onWeek, onAll }: { title: string; detail: string; onWeek: () => void; onAll: () => void }) {
   return (
-    <div role="status" className="flex w-[380px] flex-col items-center gap-3 rounded-2xl border border-border-subtle bg-surface-base px-6 py-5 text-center shadow-lg">
-      <span className="flex size-11 items-center justify-center rounded-xl bg-success-bg">
-        <Icon name="app/icon-check-circle-success-22" size={20} />
+    <div role="status" className="flex w-[380px] flex-col items-center gap-2 rounded-lg border border-border-default bg-surface-base px-6 py-6 text-center shadow-lg">
+      <span className="mb-1 flex size-10 items-center justify-center rounded-lg bg-success-bg">
+        <Icon name="app/icon-check-circle-success-20" size={20} />
       </span>
       <p className="text-title text-text-primary">{title}</p>
       <p className="text-body-s text-text-secondary">{detail}</p>
-      <div className="flex gap-2">
-        <Button variant="secondary" size="sm" onClick={onWeek}>
+      <div className="mt-2 flex gap-2">
+        <Button variant="secondary" size="md" onClick={onWeek}>
           Show last 7 days
         </Button>
-        <Button size="sm" onClick={onAll}>
+        <Button size="md" onClick={onAll}>
           All regions
         </Button>
       </div>

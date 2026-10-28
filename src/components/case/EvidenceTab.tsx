@@ -1,6 +1,6 @@
 "use client";
 
-import { Card } from "@/components/app/Card";
+import { Card, CardMeta } from "@/components/app/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
@@ -9,9 +9,11 @@ import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
 import { useEvidence, type Evidence, type EvidenceDownload, type EvidenceView } from "@/lib/api/cases";
 import { useApi } from "@/lib/api/fd";
+import { cn } from "@/lib/cn";
 import { formatClock } from "@/lib/time";
 import { useRef, useState } from "react";
 import { useSWRConfig } from "swr";
+import { DetailRows, RowTile } from "./parts";
 
 const MAX_BYTES = 50 * 1024 * 1024;
 const KIND_BADGE: Record<string, string> = {
@@ -24,10 +26,16 @@ const KIND_BADGE: Record<string, string> = {
 
 const size = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+/** “6.4 of 9.8 MB” — one unit, on the total. */
+const progressOf = (done: number, total: number) =>
+  total >= 1024 * 1024 ? `${(done / 1024 / 1024).toFixed(1)} of ${(total / 1024 / 1024).toFixed(1)} MB` : `${Math.round(done / 1024)} of ${size(total)}`;
 
 type Upload = { key: number; file: File; progress: number; error?: string; xhr?: XMLHttpRequest; startedAt: number; secondsLeft?: number };
 
-/** C6 · Evidence — drag & drop uploads with progress, size limit and chain of custody. */
+const ghost = "flex size-8 shrink-0 items-center justify-center rounded-lg hover:bg-surface-sunken";
+const row = "flex min-h-[60px] items-center gap-3 rounded-lg border bg-surface-base py-3 pr-2 pl-3";
+
+/** C6 · Evidence — drag & drop uploads with progress, the size limit and chain of custody. */
 export function EvidenceTab({ caseId }: { caseId: string }) {
   const { data } = useEvidence(caseId);
   const { mutate } = useSWRConfig();
@@ -52,7 +60,7 @@ export function EvidenceTab({ caseId }: { caseId: string }) {
       else window.location.assign(d.url);
     } catch {
       tab?.close();
-      toast({ title: "Couldn’t download the file", body: "Try again." });
+      toast({ tone: "error", title: "Couldn’t download the file", body: "Try again." });
     }
   };
 
@@ -60,7 +68,7 @@ export function EvidenceTab({ caseId }: { caseId: string }) {
     for (const file of Array.from(files)) {
       const key = Date.now() + Math.random();
       if (file.size > MAX_BYTES) {
-        setUploads((u) => [...u, { key, file, progress: 0, startedAt: Date.now(), error: `${size(file.size)} is over the 50 MB limit. Trim the clip, or ask the branch to share a link.` }]);
+        setUploads((u) => [...u, { key, file, progress: 0, startedAt: Date.now(), error: `${size(file.size)} is over the 50 MB limit. Trim the clip or ask the branch for a link.` }]);
         continue;
       }
       // XHR, not fetch, for upload progress. Multipart, as in the collection.
@@ -89,82 +97,62 @@ export function EvidenceTab({ caseId }: { caseId: string }) {
   };
 
   return (
-    <Card
-      title={
-        <span className="flex items-center gap-2">
-          Evidence <Badge label={String(items.length)} tone="neutral" />
-        </span>
-      }
-      aside={
-        <span className="flex items-center gap-1.5 text-caption text-text-tertiary">
-          <Icon name="app/icon-shield-tertiary-16" size={16} />
-          Every file is fingerprinted and logged for chain of custody
-        </span>
-      }
-    >
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragging(false);
-          start(e.dataTransfer.files);
-        }}
-        className={`flex flex-col items-center gap-2 rounded-xl border-[1.5px] border-dashed px-6 py-7 text-center ${dragging ? "border-brand-primary bg-brand-primary-subtle" : "border-brand-highlight"}`}
-      >
-        <span className="flex size-10 items-center justify-center rounded-[10px] bg-brand-primary-subtle">
-          <Icon name="app/icon-download-brand-22" size={22} />
-        </span>
-        <p className="text-body-m text-text-primary">
-          Drag files here or{" "}
-          <button type="button" onClick={() => input.current?.click()} className="text-text-brand hover:underline">
-            browse
-          </button>
-        </p>
-        <p className="text-caption text-text-tertiary">PDF, images, audio, video, CSV · up to 50 MB each</p>
-        <input ref={input} type="file" multiple hidden onChange={(e) => e.target.files && start(e.target.files)} />
+    <Card title="Evidence" aside={<CardMeta>Every file is fingerprinted and logged for chain of custody</CardMeta>}>
+      <div className="flex flex-col gap-1.5">
+        <p className="text-label-s text-text-primary">Add evidence</p>
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            start(e.dataTransfer.files);
+          }}
+          className={cn(
+            "flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed py-6",
+            dragging ? "border-brand-primary bg-brand-primary-subtle" : "border-border-strong bg-surface-raised",
+          )}
+        >
+          <Icon name="app/icon-download-tertiary-20" size={20} className="shrink-0 rotate-180" />
+          <p className="flex gap-1 text-body-s text-text-primary">
+            Drop files here or
+            <button type="button" onClick={() => input.current?.click()} className="rounded text-label-s text-text-brand underline">
+              browse
+            </button>
+          </p>
+          <p className="text-caption text-text-tertiary">PDF, images, audio, video, CSV · up to 50 MB each</p>
+          <input ref={input} type="file" multiple hidden onChange={(e) => e.target.files && start(e.target.files)} />
+        </div>
       </div>
 
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2 pt-2">
         {items.map((ev) => (
-          <li key={ev.id} className="flex items-center gap-3 rounded-xl border border-border-subtle px-4 py-3">
-            <span className="flex size-9 items-center justify-center rounded-[10px] bg-brand-primary-subtle">
-              <Icon name="app/icon-file-brand-20" size={20} />
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="truncate text-label-m text-text-primary">{ev.title}</span>
-              <span className="text-caption text-text-secondary">
-                {[ev.item_count ? `${ev.item_count} transactions` : size(ev.size_bytes), ev.attached_by?.name ?? "System", formatClock(ev.attached_at)].join(" · ")}
+          <li key={ev.id} className={cn(row, "border-border-default")}>
+            <RowTile icon="app/icon-file-secondary-16" size={16} />
+            <span className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="truncate text-label-s text-text-primary">{ev.title}</span>
+              <span className="truncate text-caption text-text-secondary">
+                {[ev.item_count ? `${ev.item_count} transactions` : size(ev.size_bytes), ev.attached_by?.name ? `${ev.kind === "transactions" ? "saved by " : ""}${ev.attached_by.name}` : "System", formatClock(ev.attached_at)].join(" · ")}
               </span>
             </span>
             <Badge label={KIND_BADGE[ev.kind] ?? ev.kind} tone="neutral" />
-            <button
-              type="button"
-              aria-label={`View ${ev.title}`}
-              onClick={() => setViewing(ev)}
-              className="flex size-8 items-center justify-center rounded-lg border border-border-default hover:bg-surface-raised"
-            >
-              <Icon name="app/icon-eye-primary-20" size={20} />
+            <button type="button" aria-label={`View ${ev.title}`} onClick={() => setViewing(ev)} className={ghost}>
+              <Icon name="app/icon-eye-primary-18" size={16} />
             </button>
-            <button
-              type="button"
-              onClick={() => download(ev)}
-              aria-label={`Download ${ev.title}`}
-              className="flex size-8 items-center justify-center rounded-lg border border-border-default hover:bg-surface-raised"
-            >
-              <Icon name="app/icon-download-primary-20" size={20} />
+            <button type="button" onClick={() => download(ev)} aria-label={`Download ${ev.title}`} className={ghost}>
+              <Icon name="app/icon-download-18" size={16} />
             </button>
           </li>
         ))}
         {uploads.map((u) =>
           u.error ? (
-            <li key={u.key} role="alert" className="flex items-center gap-3 rounded-xl border border-critical-border bg-critical-bg px-4 py-3">
-              <Icon name="icon-alert-circle-critical-20" size={20} />
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="truncate text-label-m text-text-primary">{u.file.name}</span>
+            <li key={u.key} role="alert" className={cn(row, "border-critical-border")}>
+              <RowTile icon="app/icon-alert-circle-critical-16" size={16} />
+              <span className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className="truncate text-label-s text-text-primary">{u.file.name}</span>
                 <span className="text-caption text-critical-fg">Couldn’t upload: {u.error}</span>
               </span>
               <Button
@@ -177,26 +165,28 @@ export function EvidenceTab({ caseId }: { caseId: string }) {
               >
                 Choose another file
               </Button>
-              <button type="button" aria-label="Dismiss" onClick={() => remove(u.key)} className="flex size-8 items-center justify-center rounded-lg border border-border-default bg-surface-base">
-                <Icon name="app/icon-x-primary-18" size={18} />
+              <button type="button" aria-label={`Remove ${u.file.name}`} onClick={() => remove(u.key)} className={ghost}>
+                <Icon name="app/icon-x-primary-16" size={16} />
               </button>
             </li>
           ) : (
-            <li key={u.key} className="flex items-center gap-3 rounded-xl border border-border-subtle px-4 py-3">
-              <span className="flex size-9 items-center justify-center rounded-[10px] bg-brand-primary-subtle">
-                <Icon name="app/icon-file-brand-20" size={20} />
-              </span>
+            <li key={u.key} className={cn(row, "border-border-default")}>
+              <RowTile icon="app/icon-file-secondary-16" size={16} />
               <span className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className="truncate text-label-m text-text-primary">{u.file.name}</span>
+                <span className="truncate text-label-s text-text-primary">{u.file.name}</span>
+                <span
+                  role="progressbar"
+                  aria-label={`Uploading ${u.file.name}`}
+                  aria-valuenow={Math.round(u.progress * 100)}
+                  className="h-1 w-60 overflow-hidden rounded-full bg-border-default"
+                >
+                  <span className="block h-1 rounded-full bg-text-primary" style={{ width: `${u.progress * 100}%` }} />
+                </span>
                 <span className="text-caption text-text-secondary">
-                  Uploading · {size(u.file.size * u.progress)} of {size(u.file.size)}
+                  {progressOf(u.file.size * u.progress, u.file.size)}
                   {u.secondsLeft ? ` · about ${u.secondsLeft} s left` : ""}
                 </span>
-                <span className="h-1 w-[250px] rounded-full bg-surface-sunken" aria-hidden>
-                  <span className="block h-1 rounded-full bg-brand-primary" style={{ width: `${u.progress * 100}%` }} />
-                </span>
               </span>
-              <span className="text-label-s text-text-brand">{Math.round(u.progress * 100)}%</span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -223,7 +213,7 @@ function EvidenceViewer({ evidence, onClose }: { evidence: Evidence; onClose: ()
     <Modal
       open
       onClose={onClose}
-      width={640}
+      width={560}
       title={evidence.title}
       description={data ? data.watermark.text : "Opening… this view is recorded in the audit log."}
       actions={
@@ -233,15 +223,21 @@ function EvidenceViewer({ evidence, onClose }: { evidence: Evidence; onClose: ()
       }
     >
       {data && (
-        <div className="flex flex-col gap-2 text-body-s">
-          <Badge
-            label={data.integrity.unchanged_since_upload ? "Unchanged since upload" : "Fingerprint recorded"}
-            tone={data.integrity.unchanged_since_upload ? "success" : "neutral"}
+        <div className="flex flex-col gap-3">
+          <div className="w-fit">
+            <Badge
+              label={data.integrity.unchanged_since_upload ? "Unchanged since upload" : "Fingerprint recorded"}
+              tone={data.integrity.unchanged_since_upload ? "success" : "neutral"}
+            />
+          </div>
+          <DetailRows
+            rows={[
+              ["SHA-256", <span key="h" className="font-mono text-mono-s break-all">{evidence.sha256}</span>],
+              ["Pages", evidence.pages],
+              ["Size", size(evidence.size_bytes)],
+              ["Kept until", evidence.retention_until],
+            ]}
           />
-          <p className="font-mono text-mono-s text-text-tertiary">SHA-256 {evidence.sha256}</p>
-          <p className="text-text-secondary">
-            {evidence.pages} {evidence.pages === 1 ? "page" : "pages"} · {size(evidence.size_bytes)} · kept until {evidence.retention_until}
-          </p>
         </div>
       )}
     </Modal>

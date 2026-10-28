@@ -1,10 +1,9 @@
 "use client";
 
-import { Skeleton } from "@/components/app/Card";
+import { Card, Skeleton } from "@/components/app/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
-import { KeyValueList } from "@/components/ui/Drawer";
 import { Icon } from "@/components/ui/Icon";
 import {
   useAlertTransactions,
@@ -21,20 +20,23 @@ import type { ReactNode } from "react";
 
 // ─── Shared pieces ────────────────────────────────────────────────────────
 
-const GLANCE_TONES = {
-  critical: "bg-critical-bg text-critical-fg",
-  high: "bg-high-bg text-high-fg",
-  medium: "bg-medium-bg text-medium-fg",
-  brand: "bg-brand-primary-subtle text-text-brand",
-  neutral: "bg-surface-raised text-text-primary",
-};
-
-/** “At a glance” tile: overline label + Title value on a tinted card. */
-export function Glance({ label, value, tone }: { label: string; value: ReactNode; tone: keyof typeof GLANCE_TONES }) {
+/** Stat tile — Caption label, H2 value, Caption sub-line; `brand` when the value links somewhere (a case). */
+export function Glance({
+  label,
+  value,
+  sub,
+  brand,
+}: {
+  label: string;
+  value: ReactNode;
+  sub?: ReactNode;
+  brand?: boolean;
+}) {
   return (
-    <div className={cn("flex min-w-0 flex-1 flex-col gap-1 rounded-[10px] px-3.5 py-3", GLANCE_TONES[tone])}>
-      <span className="text-overline text-text-tertiary uppercase">{label}</span>
-      <span className="truncate text-title">{value}</span>
+    <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg border border-border-default bg-surface-raised px-4 py-3.5">
+      <span className="text-caption text-text-tertiary">{label}</span>
+      <span className={cn("truncate text-h2", brand ? "text-text-brand" : "text-text-primary")}>{value}</span>
+      {sub && <span className="truncate text-caption text-text-tertiary">{sub}</span>}
     </div>
   );
 }
@@ -57,109 +59,104 @@ function TabSkeleton({ rows = 5 }: { rows?: number }) {
   );
 }
 
+/** Timeline dot: loss (red), risk (amber) or neutral (hollow). */
+type Dot = "loss" | "risk" | "neutral";
+
+/** Timeline — time on the left (right-aligned), a dot, then the event and its source line. */
+function Timeline({
+  items,
+  timeWidth = 48,
+}: {
+  items: Array<{ key: string; when: string; dot: Dot; title: ReactNode; sub?: ReactNode }>;
+  timeWidth?: number;
+}) {
+  return (
+    <ol className="flex flex-col gap-3">
+      {items.map((it) => (
+        <li key={it.key} className="flex items-start gap-3">
+          <span style={{ width: timeWidth }} className="shrink-0 pt-px text-right text-caption text-text-tertiary">
+            {it.when}
+          </span>
+          <Icon name={`app/timeline-dot-${it.dot}-10`} size={10} className="mt-[5px] shrink-0" />
+          <div className="flex min-w-0 flex-col pl-1.5">
+            <p className="text-body-s text-text-primary">{it.title}</p>
+            {it.sub && <p className="text-body-s text-text-secondary">{it.sub}</p>}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 // ─── Summary ──────────────────────────────────────────────────────────────
 
-/** Icon and tile per step kind; `critical` kinds are where the money or the evidence is. */
-const STEP_STYLE: Record<string, { icon: string; tile: string; critical?: true }> = {
-  new_device: { icon: "app/icon-phone-high-18", tile: "bg-high-bg" },
-  payments_out: { icon: "app/icon-send-brand-18", tile: "bg-brand-primary-subtle" },
-  wallets_paid: { icon: "app/icon-users-critical-18", tile: "bg-critical-bg", critical: true },
-  recipients: { icon: "app/icon-users-critical-18", tile: "bg-critical-bg", critical: true },
-  network: { icon: "app/icon-network-critical-18", tile: "bg-critical-bg", critical: true },
-  calls: { icon: "app/icon-phone-high-18", tile: "bg-high-bg" },
-  pin: { icon: "app/icon-shield-critical-18", tile: "bg-critical-bg", critical: true },
-  sim_swap: { icon: "app/icon-sim-18", tile: "bg-surface-sunken" },
-  sim: { icon: "app/icon-sim-18", tile: "bg-surface-sunken" },
-  crm: { icon: "app/icon-message-18", tile: "bg-surface-sunken" },
-};
+/** Where the money or the evidence is: shown as a loss; other signals are a risk. */
+const LOSS_STEPS = new Set(["payments_out", "wallets_paid", "recipients", "network", "pin"]);
+const stepDot = (step: AlertStep, moneyOut: Money | null): Dot =>
+  LOSS_STEPS.has(step.kind) || (!!moneyOut && step.amount?.amount_minor === moneyOut.amount_minor) ? "loss" : "risk";
 
-/** A step is shown in red when its kind is, or when it carries all the money that left. */
-const isCritical = (step: AlertStep, moneyOut: Money | null) =>
-  Boolean(STEP_STYLE[step.kind]?.critical) || (!!moneyOut && step.amount?.amount_minor === moneyOut.amount_minor);
-
-/** Vertical story: icon tile on a rail, time + label, detail below. */
+/** B4 · What happened — the alert’s story, oldest first. */
 export function WhatHappened({ steps, moneyOut, now }: { steps: AlertStep[]; moneyOut: Money | null; now: number }) {
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="flex items-center gap-2 text-title text-text-primary">
-        <Icon name="app/icon-history-18" size={18} />
-        What happened
-      </h3>
-      <ol className="flex flex-col">
-        {steps.map((step, i) => {
-          const style = STEP_STYLE[step.kind] ?? STEP_STYLE.crm;
-          const critical = isCritical(step, moneyOut);
-          return (
-            <li key={i} className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <span className={cn("flex size-9 items-center justify-center rounded-[10px]", style.tile)}>
-                  <Icon name={style.icon} size={18} />
-                </span>
-                {i < steps.length - 1 && (
-                  <span aria-hidden className={cn("h-7 w-0.5", critical ? "bg-critical-border" : "bg-border-default")} />
-                )}
-              </div>
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <p className="flex items-center gap-2">
-                  <span className="font-mono text-mono-s text-text-tertiary">{formatWhen(step.at, now)}</span>
-                  <span className="text-label-m text-text-primary">{step.label}</span>
-                </p>
-                <p className={cn("text-body-s", critical ? "text-critical-fg" : "text-text-secondary")}>{step.detail}</p>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+      <h3 className="text-label-m text-text-primary">What happened</h3>
+      <Timeline
+        items={steps.map((step, i) => ({
+          key: String(i),
+          when: formatWhen(step.at, now),
+          dot: stepDot(step, moneyOut),
+          title: step.label,
+          sub: step.detail,
+        }))}
+      />
     </section>
   );
 }
 
+/** Rule chips — rule ID + name, points in tertiary. */
 export function RulesRow({ rules }: { rules: AlertDetail["rules_fired"] }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-overline text-text-tertiary uppercase">Rules</span>
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-caption text-text-tertiary">Rules</span>
       {rules.map((r) => (
-        <Badge key={r.id} label={`${r.id} ${r.name} +${r.points}`} tone="neutral" />
+        <span key={r.id} className="flex h-6 items-center gap-1.5 rounded border border-border-default bg-surface-base px-2 text-caption">
+          <span className="font-medium text-text-primary">
+            {r.id} {r.name}
+          </span>
+          <span className="text-text-tertiary">+{r.points}</span>
+        </span>
       ))}
     </div>
   );
 }
 
-/** “Add to FD-3047” — the recommended next step when the alert matches an open case. */
+/** Suggested action — “Add to FD-3047” when the alert matches an open case. */
 export function Recommendation({
   suggestion,
   onAttach,
   onProtect,
   busy,
-  locked,
 }: {
   suggestion: NonNullable<AlertDetail["suggested_case"]>;
   onAttach: () => void;
   onProtect: () => void;
   busy: boolean;
-  locked: boolean;
 }) {
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-brand-primary bg-brand-primary-subtle px-[18px] py-4">
-      <div className="flex items-center gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-brand-primary-subtle">
-          <Icon name="app/icon-folder-brand-20" size={20} />
-        </span>
-        <div className="flex flex-col gap-0.5">
-          <p className="text-h3 text-text-primary">Add to {suggestion.case_id}</p>
-          <p className="text-body-s text-text-secondary">{suggestion.why}</p>
-        </div>
+    <section className="flex flex-col gap-3 rounded-lg border border-border-default bg-surface-raised p-4">
+      <div className="flex flex-col gap-0.5">
+        <p className="text-caption text-text-tertiary">Suggested</p>
+        <p className="text-label-m text-text-primary">Add to {suggestion.case_id}</p>
+        <p className="text-body-s text-text-secondary">{suggestion.why}</p>
       </div>
-      {!locked && (
-        <div className="flex gap-2">
-          <Button size="md" onClick={onAttach} loading={busy} iconLeft={<Icon name="app/icon-plus-white-18" size={18} />}>
-            Add to {suggestion.case_id}
-          </Button>
-          <Button variant="secondary" size="md" onClick={onProtect} iconLeft={<Icon name="app/icon-shield-primary-18" size={18} />}>
-            Protect wallet first
-          </Button>
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        <Button variant="secondary" size="sm" onClick={onAttach} loading={busy}>
+          Add to {suggestion.case_id}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onProtect}>
+          Freeze wallet first
+        </Button>
+      </div>
     </section>
   );
 }
@@ -167,41 +164,30 @@ export function Recommendation({
 // ─── Activity ─────────────────────────────────────────────────────────────
 
 const SOURCE_LABEL: Record<string, string> = { momo: "MoMo", network: "Network", crm: "CRM", person: "Analyst", system: "System" };
-const KIND_DOT: Record<string, string> = {
-  opened: "bg-critical-fg",
-  device: "bg-medium-fg",
-  sim_swap: "bg-medium-fg",
-  kyc: "bg-success-fg",
-};
+const LOSS_EVENTS = new Set(["opened", "payment"]);
+const QUIET_EVENTS = new Set(["kyc", "normal"]);
 
+/** B5 · Activity — everything the subscriber did, newest first. */
 export function ActivityTab({ subscriberId, now }: { subscriberId: string; now: number }) {
   const { data, isLoading } = useSubscriberActivity(subscriberId);
   if (isLoading || !data) return <TabSkeleton />;
   return (
-    <ol className="relative flex flex-col gap-5 pl-7">
-      <span aria-hidden className="absolute top-2 bottom-2 left-[5px] w-0.5 bg-border-default" />
-      {data.data.map((e) => (
-        <li key={e.id} className="relative flex flex-col gap-1">
-          <span
-            aria-hidden
-            className={cn(
-              "absolute top-1.5 -left-7 size-3 rounded-full border-2 border-surface-base",
-              KIND_DOT[e.kind] ?? "bg-border-strong",
-            )}
-          />
-          <p className="flex items-center gap-2">
-            <span className="font-mono text-mono-s text-text-tertiary">{formatWhen(e.at, now)}</span>
-            <Badge label={SOURCE_LABEL[e.source] ?? e.source} tone={e.kind === "opened" ? "critical" : "neutral"} />
-          </p>
-          <p className="text-body-m text-text-primary">{e.title}</p>
-        </li>
-      ))}
-    </ol>
+    <Timeline
+      timeWidth={52}
+      items={data.data.map((e) => ({
+        key: e.id,
+        when: formatWhen(e.at, now),
+        dot: LOSS_EVENTS.has(e.kind) ? "loss" : QUIET_EVENTS.has(e.kind) ? "neutral" : "risk",
+        title: e.title,
+        sub: [SOURCE_LABEL[e.source] ?? e.source, e.actor?.name].filter(Boolean).join(" · "),
+      }))}
+    />
   );
 }
 
 // ─── Transactions ─────────────────────────────────────────────────────────
 
+/** B6 · Transactions — money out, new recipients, balance left, then every transfer. */
 export function TransactionsTab({ alertId }: { alertId: string }) {
   const { data, isLoading } = useAlertTransactions(alertId);
   if (isLoading || !data) return <TabSkeleton rows={6} />;
@@ -210,75 +196,92 @@ export function TransactionsTab({ alertId }: { alertId: string }) {
   const toNew = data.data.filter((t) => t.counterparty_new).length;
   return (
     <>
-      <div className="flex gap-2">
-        <div className="flex flex-1 flex-col gap-0.5 rounded-xl border border-critical-border bg-critical-bg px-4 py-3">
-          <span className="text-h3 text-critical-fg">{money(totals.out ?? totals.out_since_swap)}</span>
-          <span className="text-caption text-text-secondary">
-            out{totals.window_minutes ? ` in ${totals.window_minutes} min` : ""}
-          </span>
-        </div>
-        <div className="flex flex-1 flex-col gap-0.5 rounded-xl border border-border-default px-4 py-3">
-          <span className="text-h3 text-text-primary">
-            {toNew} of {totals.total}
-          </span>
-          <span className="text-caption text-text-secondary">to new recipients</span>
-        </div>
-        <div className="flex flex-1 flex-col gap-0.5 rounded-xl border border-border-default px-4 py-3">
-          <span className="text-h3 text-text-primary">
-            {formatMoney(totals.balance.amount_minor, totals.balance.currency, { decimals: true })}
-          </span>
-          <span className="text-caption text-text-secondary">balance left</span>
-        </div>
+      <div className="flex gap-3">
+        <Glance
+          label="Money out"
+          value={money(totals.out ?? totals.out_since_swap)}
+          sub={totals.window_minutes ? `In ${totals.window_minutes} min` : undefined}
+        />
+        <Glance label="New recipients" value={`${toNew} of ${totals.total}`} sub="Never paid before" />
+        <Glance
+          label="Balance left"
+          value={formatMoney(totals.balance.amount_minor, totals.balance.currency, { decimals: true })}
+          sub="After the last transfer"
+        />
       </div>
-      <div className="overflow-hidden rounded-xl border border-border-default">
-        <table className="w-full text-left">
-          <thead className="border-b border-border-subtle bg-surface-raised">
-            <tr className="text-overline text-text-tertiary uppercase">
-              <th className="py-[11px] pl-[18px] font-bold">Time</th>
-              <th className="py-[11px] pl-4 font-bold">To wallet</th>
-              <th className="py-[11px] pl-4 font-bold">Recipient</th>
-              <th className="py-[11px] pr-[18px] pl-4 text-right font-bold">{totals.balance.currency}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.data.map((t) => {
-              const recipient = t.counterparty_new ? "New recipient" : t.counterparty_case_id ? `In ${t.counterparty_case_id}` : "Known";
-              return (
-                <tr key={t.id} className="border-b border-border-subtle last:border-b-0">
-                  <td className="py-2.5 pl-[18px] font-mono text-mono-s text-text-primary">{formatClock(t.at)}</td>
-                  <td className={cn("py-2.5 pl-4 font-mono text-mono-s", t.flagged ? "text-critical-fg" : "text-text-secondary")}>
-                    {t.counterparty}
-                  </td>
-                  <td className="py-2.5 pl-4">
-                    <Badge label={recipient} tone={t.flagged ? "critical" : "neutral"} />
-                  </td>
-                  <td
-                    className={cn(
-                      "py-2.5 pr-[18px] pl-4 text-right font-mono text-mono-m",
-                      t.flagged ? "text-critical-fg" : "text-text-primary",
-                    )}
-                  >
-                    {t.direction === "out" ? "-" : "+"}
-                    {(t.amount.amount_minor / 100).toLocaleString("en-GB", { minimumFractionDigits: 2 })}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="flex flex-col gap-3">
+        <div className="overflow-hidden rounded-lg border border-border-default">
+          <table className="w-full table-fixed">
+            <thead className="border-b border-border-default bg-surface-raised">
+              <tr className="text-caption text-text-secondary">
+                <th scope="col" aria-sort="descending" className="h-10 w-[68px] pl-4 text-left font-medium text-text-primary">
+                  <span className="flex items-center gap-1">
+                    Time
+                    <Icon name="app/icon-sort-desc-primary-14" size={14} />
+                  </span>
+                </th>
+                <th scope="col" className="h-10 px-4 text-left font-normal">
+                  To wallet
+                </th>
+                <th scope="col" className="h-10 w-[140px] px-4 text-left font-normal">
+                  Recipient
+                </th>
+                <th scope="col" className="h-10 w-[110px] pr-4 text-right font-normal">
+                  {totals.balance.currency} {first?.direction === "in" ? "in" : "out"}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.data.map((t) => {
+                const recipient = t.counterparty_new
+                  ? { label: "New", tone: "high" as const }
+                  : t.counterparty_case_id
+                    ? { label: `In ${t.counterparty_case_id}`, tone: "brand" as const }
+                    : { label: "Known", tone: "neutral" as const };
+                return (
+                  <tr key={t.id} className="h-[45px] border-b border-border-default text-body-s text-text-primary">
+                    <td className="pl-4">{formatClock(t.at)}</td>
+                    <td className="truncate px-4">{t.counterparty}</td>
+                    <td className="px-4">
+                      <Badge label={recipient.label} tone={recipient.tone} />
+                    </td>
+                    <td className="pr-4 text-right tabular-nums">
+                      {t.direction === "in" ? "+" : ""}
+                      {(t.amount.amount_minor / 100).toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="flex h-14 items-center px-4 text-body-s text-text-secondary">
+            {data.data.length} {data.data.length === 1 ? "transfer" : "transfers"}
+            {first ? ` since ${formatClock(first.at)}` : ""}
+          </p>
+        </div>
+        <p className="text-caption text-text-tertiary">Earlier history is on the subscriber profile.</p>
       </div>
-      {first && (
-        <p className="flex items-center gap-2 text-caption text-text-secondary">
-          <Icon name="icon-info-secondary" size={14} />
-          Showing transfers since {formatClock(first.at)}. Earlier history is on the subscriber profile.
-        </p>
-      )}
     </>
   );
 }
 
 // ─── KYC & SIM ────────────────────────────────────────────────────────────
 
+/** Key–value rows: Body/S key secondary, Body/S value primary, dividers. */
+function Facts({ rows }: { rows: Array<[string, ReactNode]> }) {
+  return (
+    <dl className="flex flex-col">
+      {rows.map(([k, v]) => (
+        <div key={k} className="flex items-center justify-between gap-4 border-b border-border-default py-2 last:border-b-0">
+          <dt className="text-body-s text-text-secondary">{k}</dt>
+          <dd className="text-right text-body-s text-text-primary">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** B7 · KYC & SIM — who owns the wallet, and every SIM and device it has seen. */
 export function KycTab({ subscriberId, now }: { subscriberId: string; now: number }) {
   const { data: sub, isLoading } = useSubscriber(subscriberId);
   const { data: devices } = useDevices(subscriberId);
@@ -287,6 +290,33 @@ export function KycTab({ subscriberId, now }: { subscriberId: string; now: numbe
   const day = 86_400_000;
   const swappedRecently = sub.sim.last_swap_at && now - Date.parse(sub.sim.last_swap_at) < 7 * day;
   const newDevice = devices?.data.find((d) => now - Date.parse(d.first_seen) < day);
+  const when = (iso: string) => (formatWhen(iso, now) === formatClock(iso) ? "Today" : formatWhen(iso, now));
+
+  const history = [
+    ...(devices?.data ?? []).map((d) => {
+      const isNew = now - Date.parse(d.first_seen) < day;
+      const months = Math.max(1, Math.round((Date.parse(d.last_seen) - Date.parse(d.first_seen)) / (30 * day)));
+      return {
+        at: d.first_seen,
+        key: `d:${d.imei}`,
+        dot: (isNew ? "risk" : "neutral") as Dot,
+        title: `${d.model} · IMEI ${d.imei}`,
+        sub: [
+          isNew ? "New: never used with this SIM before" : `Used for ${months} ${months === 1 ? "month" : "months"}`,
+          d.eir_status !== "ok" && `IMEI check: ${d.eir_status.replace(/_/g, " ")}`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      };
+    }),
+    ...sub.sim_history.map((s, i) => ({
+      at: s.at,
+      key: `s:${i}`,
+      dot: (s.event === "sim_swap" ? "loss" : "neutral") as Dot,
+      title: s.event === "sim_swap" ? "SIM swapped" : sub.sim.last_swap_at ? "SIM issued" : "SIM issued, no swaps since",
+      sub: [s.place, s.agent && `agent ${s.agent}`].filter(Boolean).join(" · "),
+    })),
+  ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 
   return (
     <>
@@ -295,69 +325,32 @@ export function KycTab({ subscriberId, now }: { subscriberId: string; now: numbe
           {sub.sim.swap_agent ? `At agent ${sub.sim.swap_agent}. ` : ""}Check the swap before anything else.
         </Banner>
       ) : newDevice ? (
-        <Banner tone="info" title="No SIM swap: but a new device">
-          This looks more like a stolen or cloned phone, or an insider using the PIN, than a SIM swap.
+        <Banner tone="info" title="No SIM swap, but a new device">
+          Points to a stolen or cloned phone, or an insider using the PIN.
         </Banner>
       ) : null}
 
-      <section className="flex flex-col gap-3 rounded-xl border border-border-subtle px-[18px] py-4">
-        <h3 className="flex items-center gap-2 text-title text-text-primary">
-          <Icon name="app/icon-user-secondary-16" size={18} />
-          KYC
-        </h3>
-        <KeyValueList
+      <Card title="KYC">
+        <Facts
           rows={[
             ["Name on wallet", `${sub.name} (masked)`],
-            ["ID", `Ghana Card · ${sub.kyc.ghana_card} (masked)`],
+            ["ID", `Ghana Card ${sub.kyc.ghana_card} (masked)`],
             [
               "Verified",
-              sub.kyc.nia_verified
-                ? `${formatDate(sub.kyc.verified_at)}${sub.kyc.branch ? ` · ${sub.kyc.branch}` : ""}`
-                : "Not verified",
+              sub.kyc.nia_verified ? `${formatDate(sub.kyc.verified_at)}${sub.kyc.branch ? ` · ${sub.kyc.branch}` : ""}` : "Not verified",
             ],
             ["Date of birth", sub.kyc.date_of_birth_matches ? "Matches ID" : "Doesn’t match ID"],
             ["Registered address", sub.kyc.address],
-            ["Wallet", `Tier ${sub.wallet.tier} · customer since ${formatDate(sub.customer_since)}`],
           ]}
         />
-      </section>
+      </Card>
 
-      <section className="flex flex-col gap-3 rounded-xl border border-border-subtle px-[18px] py-4">
-        <h3 className="flex items-center gap-2 text-title text-text-primary">
-          <Icon name="app/icon-sim-18" size={18} />
-          SIM &amp; device history
-        </h3>
-        <ol className="relative flex flex-col gap-4 pl-6">
-          <span aria-hidden className="absolute top-2 bottom-2 left-[4px] w-0.5 bg-border-default" />
-          {(devices?.data ?? []).map((d, i) => {
-            const isNew = now - Date.parse(d.first_seen) < day;
-            const months = Math.max(1, Math.round((Date.parse(d.last_seen) - Date.parse(d.first_seen)) / (30 * day)));
-            const note = [
-              isNew ? "New: never used on this wallet before" : `Used for ${months} ${months === 1 ? "month" : "months"}`,
-              d.eir_status !== "ok" && `IMEI check: ${d.eir_status.replace(/_/g, " ")}`,
-            ]
-              .filter(Boolean)
-              .join(" · ");
-            return (
-              <li key={i} className="relative flex flex-col gap-1">
-                <span
-                  aria-hidden
-                  className={cn(
-                    "absolute top-1.5 -left-6 size-2.5 rounded-full",
-                    isNew ? "bg-medium-fg" : "bg-border-strong",
-                  )}
-                />
-                <p className="flex items-center gap-2">
-                  <span className="font-mono text-mono-s text-text-tertiary">{formatWhen(d.first_seen, now, { withTime: true })}</span>
-                  <Badge label="Device" tone="neutral" />
-                </p>
-                <p className="text-body-m text-text-primary">{`${d.model} · IMEI ${d.imei}`}</p>
-                <p className="text-caption text-text-secondary">{note}</p>
-              </li>
-            );
-          })}
-        </ol>
-      </section>
+      <Card title="SIM and device history">
+        <Timeline
+          timeWidth={52}
+          items={history.map((h) => ({ key: h.key, when: when(h.at), dot: h.dot, title: h.title, sub: h.sub }))}
+        />
+      </Card>
     </>
   );
 }

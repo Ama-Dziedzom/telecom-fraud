@@ -1,15 +1,15 @@
 "use client";
 
 import { AppHeader } from "@/components/app/AppHeader";
-import { PageBody } from "@/components/app/AppShell";
-import { Skeleton } from "@/components/app/Card";
-import { Badge } from "@/components/ui/Badge";
+import { PageBody, PageHead } from "@/components/app/AppShell";
+import { DataTable, Pagination, rowClass, SkeletonRows, TableState, Td, Th } from "@/components/cases/Table";
+import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Banner } from "@/components/ui/Banner";
 import { ButtonLink } from "@/components/ui/Button";
-import { Icon } from "@/components/ui/Icon";
 import { useApi, type Page } from "@/lib/api/fd";
-import { cn } from "@/lib/cn";
-import { formatClock } from "@/lib/time";
+import { formatClock, formatDate } from "@/lib/time";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 type Watch = {
   case_id: string;
@@ -36,115 +36,125 @@ const ENTITY: Record<string, [string, string]> = {
   cell: ["cell", "cells"],
   device: ["device", "devices"],
 };
-/** { wallet: 4, agent: 1 } → “4 wallets · 1 agent” */
-const entitiesText = (counts: Record<string, number>) =>
-  Object.entries(counts)
-    .map(([kind, n]) => `${n} ${(ENTITY[kind] ?? [kind.replace(/_/g, " "), `${kind.replace(/_/g, " ")}s`])[n === 1 ? 0 : 1]}`)
-    .join(" · ");
+/** Agent codes read better than “1 agent” (“TM-0221”). */
+const AGENT_CODE = /^[A-Z]{2}-\d{3,}$/;
 
-const STEPS = ["Prospect", "Investigate", "Decide", "Monitor", "Closed"];
+/** { wallet: 4, agent: 1 } → “4 wallets, 1 agent”; a lone agent is named: “Agent TM-0221”. */
+function watching(w: Watch) {
+  const parts = Object.entries(w.entity_counts).map(([kind, n]) => {
+    const agent = kind === "agent" && n === 1 ? w.entities.find((e) => AGENT_CODE.test(e)) : undefined;
+    if (agent) return Object.keys(w.entity_counts).length === 1 ? `Agent ${agent}` : agent;
+    const [one, many] = ENTITY[kind] ?? [kind.replace(/_/g, " "), `${kind.replace(/_/g, " ")}s`];
+    return `${n} ${n === 1 ? one : many}`;
+  });
+  return parts.join(", ");
+}
+
+const STATUS = (w: Watch): { label: string; tone: BadgeTone } =>
+  w.status === "reopened"
+    ? { label: "Repeat · reopened", tone: "critical" }
+    : w.near_misses
+      ? { label: `${w.near_misses} near-${w.near_misses === 1 ? "miss" : "misses"}`, tone: "medium" }
+      : { label: "No repeats", tone: "success" };
+
+type Sort = "case" | "time" | null;
 
 /** F2/F3 · Monitoring — closed cases still on watch. A repeat reopens the case. */
 export default function MonitoringPage() {
-  const { data, isLoading } = useApi<Page<Watch> & { totals: { cases: number; watched: number } }>("/watchlist?limit=25");
+  const router = useRouter();
+  const { data, isLoading, error } = useApi<Page<Watch> & { totals: { cases: number; watched: number } }>("/watchlist?limit=25");
+  const [sort, setSort] = useState<Sort>(null);
   const repeat = data?.data.find((w) => w.status === "reopened");
+
+  // A reopened case leads; otherwise the order the API sends, unless a column is sorted.
+  const rows = [...(data?.data ?? [])].sort((a, b) => {
+    if (sort === "case") return b.case_id.localeCompare(a.case_id);
+    if (sort === "time") return (b.status === "reopened" ? -1 : b.days_left) - (a.status === "reopened" ? -1 : a.days_left);
+    return Number(b.status === "reopened") - Number(a.status === "reopened");
+  });
+  const count = data?.data.length ?? 0;
 
   return (
     <>
-      <AppHeader section="Cases" title="Monitoring" />
+      <AppHeader title="Monitoring" />
       <PageBody>
-        <ol className="flex items-center gap-2" aria-label="Stage">
-          {STEPS.map((s, i) => (
-            <li key={s} className="flex items-center gap-2">
-              {i > 0 && <span aria-hidden className={cn("h-px w-8", i <= 3 ? "bg-brand-primary" : "bg-border-default")} />}
-              <span
-                aria-current={s === "Monitor" ? "step" : undefined}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-full px-3 py-1 text-label-s",
-                  s === "Monitor" ? "bg-brand-primary text-text-inverse" : i < 3 ? "bg-brand-primary-subtle text-text-brand" : "text-text-tertiary",
-                )}
-              >
-                {i < 3 && <Icon name="app/icon-check-brand-22" size={12} />}
-                {s}
-              </span>
-            </li>
-          ))}
-        </ol>
+        <PageHead title="Monitoring" subtitle="Closed cases still being watched. A repeat reopens the case." />
+        <div className="flex flex-col gap-4">
+          {repeat && (
+            <Banner
+              tone="error"
+              title={`${repeat.case_id} reopened${repeat.reopened_at ? ` at ${formatClock(repeat.reopened_at)}` : ""}`}
+              action={
+                <ButtonLink href={`/cases/${repeat.case_id}`} variant="ghost" size="sm">
+                  Open {repeat.case_id}
+                </ButtonLink>
+              }
+            >
+              {repeat.repeat_detail}
+            </Banner>
+          )}
 
-        <div className="flex items-start justify-between">
-          <div className="flex flex-col gap-1">
-            <h2 className="flex items-center gap-2.5 text-h2 text-text-primary">
-              Monitoring
-              {data && <Badge label={`${data.totals.cases} cases · ${data.totals.watched} things watched`} tone="neutral" />}
-            </h2>
-            <p className="text-body-s text-text-secondary">Closed cases we’re still watching. A repeat reopens the case.</p>
-          </div>
-          <ButtonLink href="/cases?layout=board" variant="secondary" size="md" iconLeft={<Icon name="app/icon-grid-18" size={18} />}>
-            Back to board
-          </ButtonLink>
+          <DataTable footer={data && count > 0 ? <Pagination summary={`${count} ${count === 1 ? "case" : "cases"}`} /> : undefined}>
+            <colgroup>
+              <col className="w-[120px]" />
+              <col />
+              <col className="w-[260px]" />
+              <col className="w-[180px]" />
+              <col className="w-[200px]" />
+            </colgroup>
+            <thead>
+              <tr>
+                <Th sortable sorted={sort === "case"} onSort={() => setSort(sort === "case" ? null : "case")}>
+                  Case
+                </Th>
+                <Th>What</Th>
+                <Th>Watching</Th>
+                <Th sortable sorted={sort === "time"} onSort={() => setSort(sort === "time" ? null : "time")}>
+                  Time left
+                </Th>
+                <Th>Status</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && <SkeletonRows check={false} widths={[64, [220, 160], 160, 90, "pill"]} />}
+              {error && !data && (
+                <TableState colSpan={5} icon="app/icon-alert-circle-tertiary-20" title="Couldn’t load monitoring">
+                  Something went wrong. Try again in a moment.
+                </TableState>
+              )}
+              {data && count === 0 && (
+                <TableState colSpan={5} icon="app/icon-activity-info-22" title="Nothing on watch">
+                  When you close a case and keep watching it, it shows here until the watch ends.
+                </TableState>
+              )}
+              {rows.map((w) => {
+                const s = STATUS(w);
+                const reopened = w.status === "reopened";
+                return (
+                  <tr key={w.case_id} className={rowClass()} onClick={() => router.push(`/cases/${w.case_id}`)}>
+                    <Td className="h-16">
+                      <span className="font-mono text-mono-m text-text-primary">{w.case_id}</span>
+                    </Td>
+                    <Td className="h-16">
+                      <span className="flex flex-col">
+                        <span className="truncate text-label-s text-text-primary">{w.title.replace(/, /g, " · ")}</span>
+                        {/* TODO(api): 0.2 /watchlist doesn’t say when or how the case closed (“Closed 21 Sep · confirmed fraud”). */}
+                        <span className="truncate text-caption text-text-secondary">
+                          {reopened && w.reopened_at ? `Reopened ${formatClock(w.reopened_at)}` : `Watched until ${formatDate(w.until)}`}
+                        </span>
+                      </span>
+                    </Td>
+                    <Td className="h-16">{watching(w)}</Td>
+                    <Td className="h-16">{reopened ? "Stopped" : `${w.days_left} of ${w.days_total} days`}</Td>
+                    <Td className="h-16">
+                      <Badge label={s.label} tone={s.tone} />
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </DataTable>
         </div>
-
-        {repeat && (
-          <Banner tone="error" title={`${repeat.case_id} reopened at ${formatClock(repeat.reopened_at!)}`}>
-            {repeat.repeat_detail}
-          </Banner>
-        )}
-
-        <ul className="flex flex-col gap-3">
-          {isLoading &&
-            Array.from({ length: 5 }, (_, i) => (
-              <li key={i}>
-                <Skeleton className="h-[72px] w-full rounded-xl" />
-              </li>
-            ))}
-          {data?.data.map((w) => {
-            const hot = w.status === "reopened";
-            return (
-              <li
-                key={w.case_id}
-                className={cn("flex items-center gap-4 rounded-xl border px-4 py-3.5", hot ? "border-critical-border bg-critical-bg" : "border-border-subtle bg-surface-base")}
-              >
-                <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-[10px]", hot ? "" : "bg-info-bg")}>
-                  <Icon name={hot ? "icon-alert-triangle-critical-24" : "app/icon-activity-info-22"} size={18} />
-                </span>
-                <span className="flex w-[400px] flex-col">
-                  <span className="flex items-center gap-2 text-label-m text-text-primary">
-                    <span className="font-mono text-mono-s text-text-secondary">{w.case_id}</span>
-                    {w.title}
-                  </span>
-                  <span className="text-caption text-text-secondary">{entitiesText(w.entity_counts)}</span>
-                </span>
-                <span className="flex w-[220px] flex-col gap-1">
-                  <span className="h-1.5 w-full rounded-full bg-surface-sunken">
-                    <span className={cn("block h-1.5 rounded-full", hot ? "bg-critical-fg" : "bg-brand-highlight")} style={{ width: `${(w.days_left / w.days_total) * 100}%` }} />
-                  </span>
-                  <span className="text-caption text-text-tertiary">
-                    {w.days_left} of {w.days_total} days left
-                  </span>
-                </span>
-                <span className="flex-1" />
-                {hot ? (
-                  <>
-                    <span className="flex items-center gap-1.5 text-caption font-medium text-critical-fg">
-                      <span className="size-1.5 rounded-full bg-critical-fg" />
-                      Repeat · reopened
-                    </span>
-                    <ButtonLink href={`/cases/${w.case_id}`} size="sm">
-                      Open case
-                    </ButtonLink>
-                  </>
-                ) : (
-                  <>
-                    <Badge label={w.near_misses ? `${w.near_misses} near-misses` : "No repeats"} tone={w.near_misses ? "medium" : "success"} dot />
-                    <ButtonLink href={`/cases/${w.case_id}`} variant="secondary" size="sm">
-                      Details
-                    </ButtonLink>
-                  </>
-                )}
-              </li>
-            );
-          })}
-        </ul>
       </PageBody>
     </>
   );

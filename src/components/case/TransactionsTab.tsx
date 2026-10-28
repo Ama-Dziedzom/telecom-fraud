@@ -2,6 +2,7 @@
 
 import { Skeleton } from "@/components/app/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Choice";
 import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
@@ -9,9 +10,10 @@ import { apiFetch } from "@/lib/api/client";
 import type { Transaction } from "@/lib/api/cases";
 import { useApi, type TransactionPage } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
-import { formatClock, formatMoney, formatWhen } from "@/lib/time";
+import { TZ, formatClock, formatMoney, formatWhen } from "@/lib/time";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
+import { StatTile, table } from "./parts";
 
 const TYPE_LABEL: Record<string, string> = {
   agent_cash_out: "Agent cash-out",
@@ -21,19 +23,23 @@ const TYPE_LABEL: Record<string, string> = {
   transfer_in: "Transfer in",
 };
 
-/** Already gone: cashed out at an agent or onwards — a red edge on the row. */
-const lost = (t: Transaction) => t.where_now === "cashed_out" || t.where_now === "agent_holds";
 const money = (minor: number, currency = "GHS") => formatMoney(minor, currency);
-/** “New · in FD-2998” */
-const recipientNote = (t: Transaction) =>
-  [t.counterparty_new && "New", t.counterparty_case_id && `${t.counterparty_new ? "in" : "In"} ${t.counterparty_case_id}`].filter(Boolean).join(" · ");
 
-/** C5 · Transactions — pick transfers to save as evidence, reverse or copy. */
+/** Recipient pill: in another case, new, or known. Airtime to self has none. */
+function recipient(t: Transaction) {
+  if (t.counterparty_case_id) return { label: `In ${t.counterparty_case_id}`, tone: "critical" as const };
+  if (t.counterparty_new) return { label: "New", tone: "critical" as const };
+  if (t.type === "airtime") return null;
+  return { label: "Known", tone: "neutral" as const };
+}
+
+/** C5 · Transactions — pick transfers to save as evidence, reverse or copy. Read-only on a subscriber. */
 export function TransactionsTab({
   caseId,
   subscriberId,
   now,
   onRequestReversal,
+  onOpenEvidence,
 }: {
   /** On a case: select transfers to save, reverse or copy. */
   caseId?: string;
@@ -41,6 +47,7 @@ export function TransactionsTab({
   subscriberId?: string;
   now: number;
   onRequestReversal?: (transactions: Transaction[]) => void;
+  onOpenEvidence?: () => void;
 }) {
   const { data } = useApi<TransactionPage>(caseId ? `/cases/${caseId}/transactions` : `/subscribers/${subscriberId}/transactions`);
   const { mutate } = useSWRConfig();
@@ -50,19 +57,21 @@ export function TransactionsTab({
 
   if (!data) {
     return (
-      <div className="flex flex-col gap-3">
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-80 w-full" />
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-[90px] w-full rounded-lg" />
+        <Skeleton className="h-80 w-full rounded-lg" />
       </div>
     );
   }
 
   const rows = data.data;
+  const outs = rows.filter((t) => t.direction === "out");
   const chosen = rows.filter((t) => picked.has(t.id));
   const total = chosen.reduce((sum, t) => sum + t.amount.amount_minor, 0);
-  // The case most of the money went to (FD-2998 for Kojo), and how many payments reached it.
+  // The case most of the money went to (FD-2998 for Kojo), and how many transfers reached it.
   const ringCounts = rows.reduce<Record<string, number>>((m, t) => (t.counterparty_case_id ? { ...m, [t.counterparty_case_id]: (m[t.counterparty_case_id] ?? 0) + 1 } : m), {});
   const ring = Object.entries(ringCounts).sort((a, b) => b[1] - a[1])[0];
+  const oldest = rows.reduce((m, t) => Math.min(m, Date.parse(t.at)), Infinity);
   const toggle = (id: string, on: boolean) =>
     setPicked((p) => {
       const next = new Set(p);
@@ -86,8 +95,8 @@ export function TransactionsTab({
       toast({
         tone: "success",
         title: `${chosen.length} transfers saved as evidence`,
-        body: `“${title}” · visible on the Evidence tab.`,
-        action: { label: "View", onClick: () => document.getElementById("tab-evidence")?.click() },
+        body: `“${title}” is on the Evidence tab`,
+        action: onOpenEvidence ? { label: "View", onClick: onOpenEvidence } : undefined,
       });
       setPicked(new Set());
     } finally {
@@ -100,104 +109,93 @@ export function TransactionsTab({
     toast({ title: `${chosen.length} references copied` });
   };
 
-  const tiles = [
-    { value: money(data.totals.out_since_swap?.amount_minor ?? 0), label: "out since SIM swap", tone: "critical" },
-    { value: `${data.totals.flagged} of ${data.totals.total}`, label: "flagged by rules" },
-    { value: String(ring?.[1] ?? 0), label: ring ? `go to ring ${ring[0]}` : "go to a known ring" },
-    { value: formatMoney(data.totals.balance.amount_minor, data.totals.balance.currency, { decimals: true }), label: "balance left" },
-  ];
+  const when = (t: Transaction) => {
+    const d = formatWhen(t.at, now);
+    if (d === formatClock(t.at)) return d;
+    // Within the week: “Mon 18:40”; older: “14 Oct”.
+    const days = (now - Date.parse(t.at)) / 86_400_000;
+    return days < 7 ? `${new Date(t.at).toLocaleDateString("en-GB", { weekday: "short", timeZone: TZ })} ${formatClock(t.at)}` : d;
+  };
 
   return (
     <>
-      <div className="flex gap-2">
-        {tiles.map((t) => (
-          <div
-            key={t.label}
-            className={cn(
-              "flex flex-1 flex-col gap-0.5 rounded-xl border px-4 py-3",
-              t.tone === "critical" ? "border-critical-border bg-critical-bg" : "border-border-subtle bg-surface-base",
-            )}
-          >
-            <span className={cn("text-h3", t.tone === "critical" ? "text-critical-fg" : "text-text-primary")}>{t.value}</span>
-            <span className="text-caption text-text-secondary">{t.label}</span>
-          </div>
-        ))}
+      <div className="flex gap-3">
+        <StatTile label="Money out" value={money(data.totals.out_since_swap?.amount_minor ?? data.totals.out?.amount_minor ?? 0)} sub={data.totals.out_since_swap ? "Since the SIM swap" : "In this window"} />
+        <StatTile label="Flagged" value={`${data.totals.flagged} of ${data.totals.total}`} sub="By rules" />
+        <StatTile label={ring ? `To ring ${ring[0]}` : "To a known ring"} value={String(ring?.[1] ?? 0)} sub="Transfers" />
+        <StatTile label="Balance left" value={formatMoney(data.totals.balance.amount_minor, data.totals.balance.currency, { decimals: true })} sub="Now" />
       </div>
 
       {caseId && chosen.length > 0 && (
-        <div role="toolbar" aria-label="Selected transfers" className="flex items-center gap-3 rounded-xl bg-brand-ink px-4 py-2.5">
-          <Checkbox label="Clear selection" hideLabel checked indeterminate={chosen.length < rows.length} onChange={() => setPicked(new Set())} />
-          <p className="text-label-m text-text-inverse">
-            {chosen.length} transfers selected · {money(total)}
+        <div role="toolbar" aria-label="Selected transfers" className="flex h-12 items-center gap-3 rounded-lg border border-brand-primary bg-brand-primary-subtle px-4">
+          <Checkbox label="Clear selection" hideLabel checked indeterminate={chosen.length < outs.length} onChange={() => setPicked(new Set())} />
+          <p className="flex items-baseline gap-2">
+            <span className="text-label-s text-text-primary">
+              {chosen.length} {chosen.length === 1 ? "transfer" : "transfers"} selected
+            </span>
+            <span className="text-caption text-text-secondary">{money(total)}</span>
           </p>
           <span className="flex-1" />
-          {[
-            ["Save as evidence", "app/icon-file-white-16", saveEvidence],
-            ["Request reversal", "app/icon-refresh-white-16", () => onRequestReversal?.(chosen)],
-            ["Copy references", "app/icon-copy-white-16", copyRefs],
-          ].map(([label, icon, run]) => (
-            <button
-              key={label as string}
-              type="button"
-              disabled={saving}
-              onClick={run as () => void}
-              className="flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-label-s text-text-inverse hover:bg-white/15"
-            >
-              <Icon name={icon as string} size={16} />
-              {label as string}
-            </button>
-          ))}
-          <button type="button" aria-label="Clear selection" onClick={() => setPicked(new Set())} className="flex size-8 items-center justify-center rounded-lg hover:bg-white/10">
-            <Icon name="app/icon-x-lilac-18" size={18} />
+          <Button variant="secondary" size="sm" loading={saving} onClick={saveEvidence}>
+            Save as evidence
+          </Button>
+          <Button variant="secondary" size="sm" disabled={saving} onClick={() => onRequestReversal?.(chosen)}>
+            Request reversal
+          </Button>
+          <Button variant="secondary" size="sm" disabled={saving} onClick={copyRefs}>
+            Copy references
+          </Button>
+          <button type="button" aria-label="Clear selection" onClick={() => setPicked(new Set())} className="flex size-8 items-center justify-center rounded-lg hover:bg-brand-primary-subtle-hover">
+            <Icon name="app/icon-x-primary-18" size={16} />
           </button>
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface-base">
-        <table className="w-full table-fixed text-left">
-          <thead className="border-b border-border-subtle bg-surface-raised">
-            <tr className="text-overline text-text-tertiary uppercase">
-              <th className={cn("py-[11px] pl-5", caseId ? "w-[54px]" : "w-5")}>
-                {caseId && <Checkbox
-                  label="Select all transfers out"
-                  hideLabel
-                  checked={chosen.length > 0 && chosen.length === rows.filter((t) => t.direction === "out").length}
-                  indeterminate={chosen.length > 0 && chosen.length < rows.filter((t) => t.direction === "out").length}
-                  onChange={(e) => setPicked(e.target.checked ? new Set(rows.filter((t) => t.direction === "out").map((t) => t.id)) : new Set())}
-                />}
+      <div className={table.wrap}>
+        <table className="w-full table-fixed">
+          <thead>
+            <tr className={table.head}>
+              {caseId && (
+                <th className="w-12 pl-4">
+                  <Checkbox
+                    label="Select all transfers out"
+                    hideLabel
+                    checked={chosen.length > 0 && chosen.length === outs.length}
+                    indeterminate={chosen.length > 0 && chosen.length < outs.length}
+                    onChange={(e) => setPicked(e.target.checked ? new Set(outs.map((t) => t.id)) : new Set())}
+                  />
+                </th>
+              )}
+              <th className={cn("w-[110px] font-medium text-text-primary", !caseId && "pl-4")} aria-sort="descending">
+                <span className="flex items-center gap-1">
+                  Time
+                  <Icon name="app/icon-chevron-down-16" size={14} />
+                </span>
               </th>
-              <th className="w-[120px] py-[11px] font-bold">Time</th>
-              <th className="w-[150px] py-[11px] font-bold">Reference</th>
-              <th className="w-[150px] py-[11px] font-bold">Type</th>
-              <th className="py-[11px] font-bold">Counterparty</th>
-              <th className="w-[200px] py-[11px] font-bold">Recipient</th>
-              <th className="w-[140px] py-[11px] pr-5 text-right font-bold">{data.totals.balance.currency}</th>
+              <th className="w-[150px] font-normal">Reference</th>
+              <th className="w-[150px] font-normal">Type</th>
+              <th className="font-normal">Counterparty</th>
+              <th className="w-[180px] font-normal">Recipient</th>
+              <th className="w-[140px] pr-4 text-right font-normal">{data.totals.balance.currency}</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((t) => {
               const checked = picked.has(t.id);
-              const when = formatWhen(t.at, now);
+              const pill = recipient(t);
               return (
-                <tr key={t.id} className={cn("relative border-b border-border-subtle last:border-b-0", checked ? "bg-brand-primary-subtle/60" : t.flagged ? "bg-surface-base" : "bg-surface-raised")}>
-                  <td className="relative py-3 pl-5">
-                    {lost(t) && <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-critical-fg" title="Already cashed out" />}
-                    {caseId && <Checkbox label={`Select ${t.id}`} hideLabel checked={checked} disabled={t.direction === "in"} onChange={(e) => toggle(t.id, e.target.checked)} />}
-                  </td>
-                  <td className="py-3 font-mono text-mono-s text-text-primary">
-                    {when === formatClock(t.at) ? when : `${when === "Yesterday" ? "Yest." : when} ${when === "Yesterday" ? formatClock(t.at) : ""}`.trim()}
-                  </td>
-                  <td className="py-3 font-mono text-mono-s text-text-tertiary">{t.id}</td>
-                  <td className="py-3 text-body-s text-text-primary">{TYPE_LABEL[t.type] ?? t.type}</td>
-                  <td className={cn("py-3 font-mono text-mono-m", t.flagged ? "text-critical-fg" : "text-text-primary")}>{t.counterparty}</td>
-                  <td className="py-3">
-                    {t.counterparty_new || t.counterparty_case_id ? (
-                      <Badge label={recipientNote(t)} tone={t.flagged ? "critical" : "neutral"} />
-                    ) : (
-                      <span className="text-text-tertiary">—</span>
-                    )}
-                  </td>
-                  <td className={cn("py-3 pr-5 text-right font-mono text-mono-m", t.flagged ? "text-critical-fg" : "text-text-primary")}>
+                <tr key={t.id} className={cn(table.row, "text-body-s text-text-primary", checked && "bg-brand-primary-subtle-hover hover:bg-brand-primary-subtle-hover")}>
+                  {caseId && (
+                    <td className="pl-4">
+                      <Checkbox label={`Select ${t.id}`} hideLabel checked={checked} disabled={t.direction === "in"} onChange={(e) => toggle(t.id, e.target.checked)} />
+                    </td>
+                  )}
+                  <td className={cn(!caseId && "pl-4")}>{when(t)}</td>
+                  <td>{t.id}</td>
+                  <td>{TYPE_LABEL[t.type] ?? t.type}</td>
+                  <td className="truncate pr-4">{t.counterparty}</td>
+                  <td>{pill ? <Badge label={pill.label} tone={pill.tone} /> : <span className="text-text-tertiary">—</span>}</td>
+                  <td className="pr-4 text-right tabular-nums">
                     {t.direction === "out" ? "-" : "+"}
                     {(t.amount.amount_minor / 100).toLocaleString("en-GB", { minimumFractionDigits: 2 })}
                   </td>
@@ -206,6 +204,9 @@ export function TransactionsTab({
             })}
           </tbody>
         </table>
+        <p className={table.foot}>
+          {rows.length} transactions{Number.isFinite(oldest) ? ` since ${new Date(oldest).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: TZ })}` : ""}
+        </p>
       </div>
     </>
   );

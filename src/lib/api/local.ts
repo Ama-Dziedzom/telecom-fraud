@@ -75,7 +75,8 @@ export async function submitHandover(
   at: number,
 ) {
   const handover = await apiFetch<ShiftHandover>("POST", "/handovers/shift", body);
-  const submitted: SubmittedHandover = { ...handover, submitted_at: at, starts_at: startsAt };
+  // Keep the cases we sent if the response leaves them out, so the queue can hide handed-over cases.
+  const submitted: SubmittedHandover = { ...handover, cases: handover.cases ?? body.cases, submitted_at: at, starts_at: startsAt };
   write(handoverKey(at), submitted);
   return submitted;
 }

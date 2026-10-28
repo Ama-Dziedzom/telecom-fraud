@@ -1,12 +1,12 @@
 "use client";
 
 import { AppHeader } from "@/components/app/AppHeader";
-import { PageBody } from "@/components/app/AppShell";
+import { PageBody, PageHead } from "@/components/app/AppShell";
 import { Skeleton } from "@/components/app/Card";
 import { EmptyState } from "@/components/app/EmptyState";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
-import { Checkbox } from "@/components/ui/Choice";
+import { Banner } from "@/components/ui/Banner";
 import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api/client";
@@ -59,7 +59,10 @@ function flagTag(f: Flag): { label: string; tone: BadgeTone } {
     case "linked_case":
       return { label: `Linked to ${f.case_id}`, tone: "critical" };
     case "paid_confirmed_mules":
-      return { label: `${f.count} confirmed ${f.count === 1 ? "mule" : "mules"} paid`, tone: "high" };
+      return {
+        label: `${f.count} confirmed ${f.count === 1 ? "mule" : "mules"} paid`,
+        tone: "high",
+      };
     case "no_links":
       return { label: "No links", tone: "neutral" };
     case "likely_promo":
@@ -69,34 +72,38 @@ function flagTag(f: Flag): { label: string; tone: BadgeTone } {
   }
 }
 
-const STEPS = ["Prospect", "Investigate", "Decide", "Monitor", "Closed"];
-
-function SwapChart({ match }: { match: Match }) {
+/** 14-day swap chart. Days over the normal line are red only on the match worth a case (the API marks it critical). */
+function SwapChart({ match, normalMax }: { match: Match; normalMax: number }) {
   const max = 16;
   const hot = match.severity === "critical";
   return (
-    <div className="flex flex-col gap-1">
-      <div className="relative h-[72px] pl-6">
+    <div className="flex flex-col gap-1" role="img" aria-label={`SIM swaps a day over ${match.by_day.length} days, ${match.today} today`}>
+      <div className="relative h-[88px] pl-5">
         {[0, 8, 16].map((v) => (
-          <span key={v} className="absolute right-0 left-6 h-px bg-border-subtle" style={{ bottom: `${(v / max) * 100}%` }}>
-            <span className="absolute -left-6 -translate-y-1/2 font-mono text-mono-s text-text-tertiary">{v}</span>
+          <span key={v} className="absolute -translate-y-1/2 text-caption text-text-tertiary" style={{ left: 0, top: `${100 - (v / max) * 100}%` }}>
+            {v}
           </span>
         ))}
-        {/* “Normal” band: up to 3 swaps a day. */}
-        <span aria-hidden className="absolute right-0 bottom-0 left-6 bg-success-bg" style={{ height: `${(3 / max) * 100}%` }} />
-        <div className="relative flex h-full items-end gap-1">
+        {/* Grey band: what a normal agent does. */}
+        <span aria-hidden className="absolute right-0 bottom-0 left-5 bg-surface-sunken" style={{ height: `${(normalMax / max) * 100}%` }} />
+        <div className="relative flex h-full items-end gap-1 border-b border-border-default">
           {match.by_day.map((d) => (
             <span
               key={d.date}
               title={`${d.date}: ${d.count}`}
-              className={cn("flex-1 rounded-t-[2px]", hot ? "bg-critical-fg" : "bg-brand-highlight/60")}
+              className={cn("flex-1 rounded-t-[2px]", hot && d.count > normalMax ? "bg-critical-solid" : "bg-border-strong")}
               style={{ height: `${(Math.min(d.count, max) / max) * 100}%` }}
             />
           ))}
         </div>
       </div>
-      <div className="flex justify-between pl-6 font-mono text-mono-s text-text-tertiary">
-        <span>{new Date(match.by_day[0].date).getDate()} Oct</span>
+      <div className="flex justify-between pl-5 text-caption text-text-secondary">
+        <span>
+          {new Date(match.by_day[0].date).toLocaleDateString("en-GB", {
+            day: "numeric",
+            month: "short",
+          })}
+        </span>
         <span>Today</span>
       </div>
     </div>
@@ -112,22 +119,28 @@ export default function ProspectPage() {
   const { data, error, isLoading } = useApi<Prospect>(`/prospects/${prospectId}`);
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
   const [promoted, setPromoted] = useState<(Promoted & { from: string }) | null>(null);
   const [dropping, setDropping] = useState(false);
 
+  // The engine’s verdict is picked to start with; clicking a card adds or removes it.
   const selected = picked ?? new Set(data?.verdict ? [data.verdict.id] : []);
-  const toggle = (mid: string, on: boolean) => {
+  const toggle = (mid: string) => {
     const next = new Set(selected);
-    if (on) next.add(mid);
-    else next.delete(mid);
+    if (next.has(mid)) next.delete(mid);
+    else next.add(mid);
     setPicked(next);
   };
+  const ids = Array.from(selected);
 
   const promote = async () => {
     setBusy(true);
+    setFailure(null);
     try {
-      const res = await apiFetch<Promoted>("POST", `/prospects/${prospectId}/promote`, { entity_ids: Array.from(selected) });
-      setPromoted({ ...res, from: Array.from(selected).join(", ") });
+      const res = await apiFetch<Promoted>("POST", `/prospects/${prospectId}/promote`, { entity_ids: ids });
+      setPromoted({ ...res, from: ids.join(", ") });
+    } catch (err) {
+      setFailure(err);
     } finally {
       setBusy(false);
     }
@@ -144,105 +157,87 @@ export default function ProspectPage() {
       <AppHeader section="Cases / Prospects" title={prospectId} />
       <PageBody>
         {error ? (
-          <EmptyState icon="app/icon-search-brand-20" tone="brand" title={`We can’t find ${prospectId}`} className="min-h-[300px]" actions={<ButtonLink href="/cases?layout=board" size="md">Back to the board</ButtonLink>}>
+          <EmptyState
+            icon="app/icon-search-brand-20"
+            tone="brand"
+            title={`We can’t find ${prospectId}`}
+            className="min-h-[300px]"
+            actions={
+              <ButtonLink href="/cases?layout=board" size="md">
+                Back to the board
+              </ButtonLink>
+            }
+          >
             It may have been dropped or promoted already.
           </EmptyState>
         ) : isLoading || !data ? (
-          <div className="flex flex-col gap-5" aria-busy>
+          <div className="flex flex-col gap-6" aria-busy>
             <Skeleton className="h-7 w-[420px]" />
-            <div className="flex gap-4">
+            <div className="grid grid-cols-3 gap-4">
               {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="h-[180px] flex-1 rounded-xl" />
+                <Skeleton key={i} className="h-[212px] rounded-lg" />
               ))}
             </div>
           </div>
         ) : (
           <>
-            <ol className="flex items-center gap-2" aria-label="Stage">
-              {STEPS.map((s, i) => (
-                <li key={s} className="flex items-center gap-2">
-                  {i > 0 && <span aria-hidden className="h-px w-8 bg-border-default" />}
-                  <span
-                    aria-current={i === 0 ? "step" : undefined}
-                    className={cn("flex items-center gap-1.5 rounded-full px-3 py-1 text-label-s", i === 0 ? "bg-brand-primary text-text-inverse" : "text-text-tertiary")}
-                  >
-                    <span className={cn("size-2.5 rounded-full border", i === 0 ? "border-white" : "border-text-tertiary")} />
-                    {s}
-                  </span>
-                </li>
-              ))}
-            </ol>
+            <PageHead
+              title={data.hunch}
+              pill={<Badge label="Prospect" tone="neutral" size="md" />}
+              subtitle={`${data.id} · started by ${data.owner.name} ${formatAgo(data.started_at, now)} · ${ruleText(data.rule)}`}
+              actions={
+                <>
+                  <Button variant="secondary" size="md" onClick={() => setDropping(true)}>
+                    Drop prospect
+                  </Button>
+                  <Button size="md" disabled={!ids.length} loading={busy} onClick={promote}>
+                    Promote {ids.length === 1 ? ids[0] : `${ids.length || ""} ${lookAt}`.trim()} to a case
+                  </Button>
+                </>
+              }
+            />
 
-            <div className="flex items-start justify-between gap-6">
-              <div className="flex flex-col gap-1">
-                <h2 className="flex items-center gap-3 text-h2 text-text-primary">
-                  {data.hunch}
-                  <Badge label="Prospect" tone="brand" dot />
-                </h2>
-                <p className="text-body-s text-text-secondary">
-                  {data.id} · started by {data.owner.name} {formatAgo(data.started_at, now)} · rule: {ruleText(data.rule)}
-                </p>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <Button variant="ghost" size="md" onClick={() => setDropping(true)} iconLeft={<Icon name="app/icon-x-brand-14" size={16} />}>
-                  Drop prospect
-                </Button>
-                <Button size="md" disabled={!selected.size} loading={busy} onClick={promote} iconLeft={<Icon name="app/icon-arrow-right-white-16" size={18} />}>
-                  Promote {selected.size} to a case
-                </Button>
-              </div>
-            </div>
+            {data.verdict && (
+              <Banner tone="warning" title={data.verdict.title} icon="app/icon-alert-triangle-medium-16">
+                {data.verdict.detail}
+              </Banner>
+            )}
+            <RequestError error={failure} />
 
-            <div className="grid grid-cols-3 gap-4">
-              {data.matches.map((m) => {
-                const on = selected.has(m.id);
-                return (
-                  <label
-                    key={m.id}
-                    className={cn(
-                      "flex cursor-pointer flex-col gap-3 rounded-xl border bg-surface-base px-4 py-4",
-                      on ? "border-[1.5px] border-brand-primary bg-brand-primary-subtle/60" : "border-border-subtle",
-                    )}
-                  >
-                    <span className="flex items-center gap-3">
-                      <Checkbox label={`Select ${m.id}`} hideLabel checked={on} onChange={(e) => toggle(m.id, e.target.checked)} />
-                      <span className={cn("flex size-8 items-center justify-center rounded-lg", m.severity === "critical" ? "bg-critical-bg" : "bg-high-bg")}>
-                        <Icon name="app/icon-building-high-20" size={16} />
-                      </span>
-                      <span className="flex flex-col">
-                        <span className="font-mono text-mono-m font-semibold text-text-primary">{m.id}</span>
-                        <span className="text-caption text-text-secondary">
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-3 gap-4">
+                {data.matches.map((m) => {
+                  const on = selected.has(m.id);
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggle(m.id)}
+                      className={cn(
+                        "flex flex-col gap-3 rounded-lg border bg-surface-base px-5 pt-4 pb-4 text-left",
+                        on ? "border-brand-primary shadow-focus" : "border-border-default hover:border-border-strong",
+                      )}
+                    >
+                      <span className="flex items-baseline justify-between gap-3">
+                        <span className="text-title text-text-primary">{m.id}</span>
+                        <span className="truncate text-caption text-text-tertiary">
                           {m.name} · agent since {m.agent_since.slice(0, 4)}
                         </span>
                       </span>
-                    </span>
-                    <SwapChart match={m} />
-                    <span className={cn("text-body-s", m.severity === "critical" ? "text-critical-fg" : "text-text-primary")}>{m.summary}</span>
-                    <span className="flex flex-wrap gap-1.5">
-                      {m.flags.map(flagTag).map((t) => (
-                        <Badge key={t.label} label={t.label} tone={t.tone} />
-                      ))}
-                    </span>
-                  </label>
-                );
-              })}
+                      <SwapChart match={m} normalMax={data.normal_max} />
+                      <span className="text-body-s text-text-primary">{m.summary}</span>
+                      <span className="flex flex-wrap gap-1.5">
+                        {m.flags.map(flagTag).map((t) => (
+                          <Badge key={t.label} label={t.label} tone={t.tone} />
+                        ))}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-caption text-text-secondary">Grey band: a normal agent, up to {data.normal_max} swaps a day</p>
             </div>
-            <p className="flex items-center gap-2 text-caption text-text-secondary">
-              <span aria-hidden className="h-2.5 w-4 rounded-sm bg-success-bg" />
-              Green band = a normal agent (up to {data.normal_max} swaps a day)
-            </p>
-
-            {data.verdict && (
-              <section className="flex items-center gap-4 rounded-xl border border-critical-border bg-critical-bg px-5 py-4">
-                <span className="flex size-10 items-center justify-center rounded-[10px] bg-surface-base">
-                  <Icon name="app/icon-zap-critical-22" size={20} />
-                </span>
-                <span className="flex flex-col gap-0.5">
-                  <span className="text-title text-critical-fg">{data.verdict.title}</span>
-                  <span className="text-body-s text-text-primary">{data.verdict.detail}</span>
-                </span>
-              </section>
-            )}
           </>
         )}
       </PageBody>
@@ -251,42 +246,35 @@ export default function ProspectPage() {
         <Modal
           open
           onClose={() => setPromoted(null)}
-          width={560}
-          title={
-            <span className="flex items-start gap-3.5">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-[10px] bg-success-bg">
-                <Icon name="app/icon-check-circle-success-22" size={22} />
-              </span>
-              <span className="flex flex-col gap-1">
-                {promoted.from} is now case {promoted.case.id}
-                <span className="text-body-m font-normal text-text-secondary">It moved from Prospect to Investigate and is assigned to you. SLA starts now: first response in 4 hours.</span>
-              </span>
-            </span>
-          }
+          width={420}
+          title={`${promoted.from} is now case ${promoted.case.id}`}
+          description="Moved to Investigate and assigned to you. First response due in 4 hours."
           actions={
             <>
               <Button variant="secondary" size="md" onClick={() => setPromoted(null)}>
                 Stay on prospect
               </Button>
-              <ButtonLink href={`/cases/${promoted.case.id}`} size="md" iconLeft={<Icon name="app/icon-arrow-right-white-16" size={18} />}>
+              <ButtonLink href={`/cases/${promoted.case.id}`} size="md">
                 Open {promoted.case.id}
               </ButtonLink>
             </>
           }
         >
-          <div className="flex flex-col gap-2">
-            <p className="text-label-s text-text-secondary">Brought across</p>
-            {["Your hunch and rule", ...(data ? [`${ruleChart(data.rule)} as evidence`] : []), ...promoted.linked_cases.map((c) => `Link to ${c}`)].map((b) => (
-              <p key={b} className="flex items-center gap-2 text-body-m text-text-secondary">
-                <Icon name="app/icon-check-success-16" size={16} />
+          <div className="flex flex-col gap-2.5 rounded-lg border border-border-default bg-surface-raised px-3.5 py-3">
+            <p className="text-body-s text-text-secondary">Brought across</p>
+            {["Your hunch and rule", ...(data ? [`${ruleChart(data.rule)}, as evidence`] : []), ...promoted.linked_cases.map((c) => `Link to ${c}`)].map((b) => (
+              <p key={b} className="flex items-center gap-2.5 text-body-s text-text-primary">
+                <Icon name="app/icon-check-secondary-18" size={14} />
                 {b}
               </p>
             ))}
           </div>
-          <p className="flex items-center gap-2.5 rounded-[10px] bg-surface-sunken px-3.5 py-3 text-body-s text-text-secondary">
-            <Icon name="app/icon-info-secondary-16" size={16} />
-            {prospectId} stays open with the other {promoted.remaining_matches} {promoted.remaining_matches === 1 ? lookAt.replace(/s$/, "") : lookAt}.
-          </p>
+          {promoted.remaining_matches > 0 && (
+            <p className="flex items-center gap-2.5 rounded-lg border border-info-border bg-info-bg px-4 py-3 text-body-s text-info-fg">
+              <Icon name="app/icon-info-info-20" size={16} />
+              {prospectId} stays open with the other {promoted.remaining_matches} {promoted.remaining_matches === 1 ? lookAt.replace(/s$/, "") : lookAt}
+            </p>
+          )}
         </Modal>
       )}
       {dropping && <DropModal prospectId={prospectId} onDrop={drop} onClose={() => setDropping(false)} />}

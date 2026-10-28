@@ -3,31 +3,24 @@
 import { AppHeader } from "@/components/app/AppHeader";
 import { PageBody, useShell } from "@/components/app/AppShell";
 import { Skeleton, Tabs } from "@/components/app/Card";
-import { ActionBanner, EscalationBanner, ExportMenu, HandoverBanner, ReversalCard, ReversalResults, escalationAnswer } from "@/components/case/CaseBanners";
+import { ActionBanner, EscalationBanner, ExportMenu, HandoverBanner, ReversalCard, ReversalResults, escalationAnswer, useActionRetry } from "@/components/case/CaseBanners";
 import { CaseDialogs, type CaseDialog } from "@/components/case/CaseDialogs";
-import {
-  CompactStrip,
-  FeedbackThanks,
-  RejectedBanner,
-  RejectedSummary,
-  ResolutionCard,
-  SentBackBanner,
-  SignoffBanner,
-} from "@/components/case/ResolutionViews";
-import { CaseNav, CaseTitle, GlanceTiles, StageBar, StartBanner } from "@/components/case/CaseHeader";
+import { CaseNav, CaseTitle, StageBar, StartBanner } from "@/components/case/CaseHeader";
 import { CaseProblem } from "@/components/case/CaseProblem";
 import { EvidenceTab } from "@/components/case/EvidenceTab";
 import { LinkedAlertsTab } from "@/components/case/LinkedAlertsTab";
 import { NetworkTab } from "@/components/case/NetworkTab";
-import { DoThisNext, StoryStrip, WhoInvolved } from "@/components/case/SummaryTab";
+import { partLabel } from "@/components/case/ProtectDialogs";
+import { FeedbackThanks, RejectedBanner, RejectedSummary, ResolutionCard, SentBackBanner, SignoffBanner } from "@/components/case/ResolutionViews";
+import { DoThisNext, OtherActions, WhatHappened, WhoInvolved } from "@/components/case/SummaryTab";
 import { TimelineTab } from "@/components/case/TimelineTab";
 import { TransactionsTab } from "@/components/case/TransactionsTab";
+import { BannerLink, firstName } from "@/components/case/parts";
 import { RevealModal } from "@/components/subscriber/RevealModal";
 import { SubscriberDrawer } from "@/components/subscriber/SubscriberDrawer";
 import { Banner } from "@/components/ui/Banner";
-import { Button, ButtonLink } from "@/components/ui/Button";
-import { Icon } from "@/components/ui/Icon";
-import { Menu, MenuDivider, MenuItem, MenuLabel } from "@/components/ui/Menu";
+import { Button } from "@/components/ui/Button";
+import { Menu, MenuDivider, MenuItem } from "@/components/ui/Menu";
 import { useToast } from "@/components/ui/Toast";
 import { ApiError, apiFetch } from "@/lib/api/client";
 import { useCase, type CaseDetail, type CaseStarted, type NextStepKind } from "@/lib/api/cases";
@@ -44,12 +37,6 @@ const TABS: Tab[] = ["summary", "alerts", "timeline", "transactions", "evidence"
 const BANNERS_ELSEWHERE = ["new", "pending_decision", "sent_back"];
 const BANNER_TONE: Record<string, "success" | "warning" | "info"> = { protected: "success", reopened: "warning" };
 
-const PROTECT_ITEMS = [
-  { kind: "freeze_wallet", icon: "app/icon-wallet-18", title: "Freeze MoMo wallet", detail: "Blocks transfers and cash-outs." },
-  { kind: "suspend_sim", icon: "app/icon-sim-18", title: "Suspend SIM", detail: "Blocks calls, SMS and USSD until re-verified in branch." },
-  { kind: "block_recipients", icon: "app/icon-ban-18", title: "Block recipient wallets", detail: "Adds the new recipients to the watchlist for 30 days." },
-] as const;
-
 /** C1–C10 (and the D/E actions) · Case workspace */
 export default function CasePage() {
   const { id } = useParams<{ id: string }>();
@@ -62,12 +49,13 @@ export default function CasePage() {
   const { user } = useShell();
   const { mutate } = useSWRConfig();
   const { data: detail, error, isLoading } = useCase(caseId);
+  const retry = useActionRetry(detail);
   const [starting, setStarting] = useState(false);
   const [subscriberOpen, setSubscriberOpen] = useState(false);
   const [revealOpen, setRevealOpen] = useState(false);
   // Arriving from a subscriber or a check with “Protect now” opens the protect dialog.
   const [dialog, setDialog] = useState<CaseDialog | null>(() =>
-    params.get("protect") === "1" ? { kind: "protect", parts: ["freeze_wallet"] } : null,
+    params.get("protect") === "1" ? { kind: "protect", parts: ["freeze_wallet", "suspend_sim", "block_recipients"] } : null,
   );
 
   const tab = (TABS.includes(params.get("tab") as Tab) ? params.get("tab") : "summary") as Tab;
@@ -83,8 +71,16 @@ export default function CasePage() {
     toast({
       title: `${answered.to.name.split(" ")[0]} answered your escalation`,
       body: `${caseId} · ${escalationAnswer(answered.status)}: ${answered.answer ?? "see the answer on the case"}`,
-      action: { label: "View", onClick: () => document.getElementById("case-banners")?.scrollIntoView({ behavior: "smooth" }) },
+      action: {
+        label: "View",
+        onClick: () => {
+          setTab("summary");
+          document.getElementById("case-banners")?.scrollIntoView({ behavior: "smooth" });
+        },
+      },
     });
+    // setTab only reads the current route.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [answered, caseId, toast]);
 
   if (error) return <CaseProblem caseId={caseId} error={error} />;
@@ -167,225 +163,215 @@ export default function CasePage() {
   const closed = detail?.status === "closed";
   const locked = detail?.status === "pending_decision";
   const sentBack = detail?.status === "sent_back";
-  const compact = Boolean(detail?.rejection) || (closed && detail?.resolution?.outcome !== "confirmed_fraud");
   const escalated = detail?.escalation?.status === "waiting";
+  // E9 · a case closed without fraud is just its resolution.
+  const resolutionOnly = closed && detail?.resolution?.outcome !== "confirmed_fraud";
+  // “4 wallets + 1 cash-out” → 4.
+  const recipients = detail?.what_happened.find((s) => s.kind === "wallets_paid")?.label.match(/(\d+) wallets?/)?.[1];
+
+  const protectItems = detail
+    ? ([
+        { kind: "freeze_wallet", icon: "app/icon-lock-secondary-18", title: "Freeze MoMo wallet", detail: "Blocks transfers and cash-outs." },
+        { kind: "suspend_sim", icon: "app/icon-sim-18", title: "Suspend SIM", detail: "Blocks calls, SMS and USSD until re-verified at a branch." },
+        { kind: "block_recipients", icon: "app/icon-ban-18", title: `Block recipient wallets${recipients ? ` (${recipients})` : ""}`, detail: "Adds the new recipients to the watchlist for 30 days." },
+        {
+          kind: "send_safety_sms",
+          icon: "app/icon-message-18",
+          title: "Send a safety SMS",
+          detail: `To the ${detail.contact?.alt_msisdn ? "alternate" : "registered"} number: “Did you make these payments? Call 100.”`,
+        },
+      ] as const)
+    : [];
 
   return (
     <>
       <AppHeader section="Cases" title={caseId} />
-      <PageBody>
+      <PageBody className="flex flex-1 flex-col gap-4 px-8 pt-6 pb-8">
         {!detail || isLoading ? (
-          <div className="flex flex-col gap-6" aria-busy>
-            <Skeleton className="h-8 w-[420px]" />
-            <Skeleton className="h-12 w-[520px]" />
-            <div className="flex gap-3">
-              {Array.from({ length: 4 }, (_, i) => (
-                <Skeleton key={i} className="h-[122px] flex-1 rounded-xl" />
-              ))}
+          <div className="flex flex-col gap-4" aria-busy>
+            <Skeleton className="h-8 w-[520px]" />
+            <Skeleton className="h-14 w-[420px]" />
+            <Skeleton className="h-10 w-full" />
+            <div className="flex gap-6">
+              <Skeleton className="h-[420px] flex-1 rounded-lg" />
+              <Skeleton className="h-[420px] w-[360px] rounded-lg" />
             </div>
-            <Skeleton className="h-[220px] w-full rounded-xl" />
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
               <StageBar stage={detail.stage} status={detail.status} />
-              <div className="flex items-center gap-2">
-                {!isNew && !closed && !unassigned && (
-                  <Button variant="ghost" size="sm" onClick={() => setDialog({ kind: "handover" })} iconLeft={<Icon name="app/icon-users-secondary-16" size={16} />}>
-                    Hand over
-                  </Button>
-                )}
-                <ExportMenu detail={detail} />
-                <CaseNav caseId={caseId} />
-              </div>
+              <span className="flex-1" />
+              <CaseNav caseId={caseId} before={<ExportMenu detail={detail} />} />
             </div>
-            <CaseTitle
-              detail={detail}
-              meId={user?.id}
-              onOpenSubscriber={() => setSubscriberOpen(true)}
-              onReveal={() => setRevealOpen(true)}
-              actions={
-                isNew ? (
-                  <>
-                    <ButtonLink href={`/cases/${caseId}/story`} variant="secondary" size="md" iconLeft={<Icon name="app/icon-play-story-18" size={18} />}>
-                      Play story
-                    </ButtonLink>
-                    {!unassigned && (
-                      <Button variant="ghost" size="md" onClick={returnToQueue}>
-                        Not mine: return to queue
-                      </Button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <ButtonLink href={`/cases/${caseId}/story`} variant="secondary" size="md" iconLeft={<Icon name="app/icon-play-story-18" size={18} />}>
-                      Play story
-                    </ButtonLink>
-                    {locked && (
-                      <Button variant="secondary" size="md" onClick={() => setTab("timeline")} iconLeft={<Icon name="app/icon-message-18" size={18} />}>
-                        Add note
-                      </Button>
-                    )}
-                    {!closed && (
-                      <>
-                        {!locked && (
-                          <Button variant="secondary" size="md" onClick={() => setDialog({ kind: "call" })} iconLeft={<Icon name="app/icon-phone-18" size={18} />}>
-                            Log a call
+            <div className="flex flex-col gap-5">
+              <CaseTitle
+                detail={detail}
+                meId={user?.id}
+                now={now}
+                onOpenSubscriber={() => setSubscriberOpen(true)}
+                onReveal={() => setRevealOpen(true)}
+                actions={
+                  isNew ? (
+                    !unassigned && <BannerLink onClick={returnToQueue}>Not mine: return to queue</BannerLink>
+                  ) : closed ? (
+                    <Button variant="secondary" size="md" onClick={() => setDialog({ kind: "reopen" })}>
+                      Reopen
+                    </Button>
+                  ) : (
+                    <>
+                      <Menu
+                        label="Protect"
+                        width={300}
+                        trigger={(t) => (
+                          <Button variant="danger-outline" size="md" disabled={locked} onClick={t.toggle} aria-expanded={t["aria-expanded"]} aria-haspopup="menu">
+                            Protect
                           </Button>
                         )}
-                        {!escalated && !locked && (
-                          <Button variant="secondary" size="md" onClick={() => setDialog({ kind: "escalate" })} iconLeft={<Icon name="app/icon-escalate-18" size={18} />}>
-                            Escalate
-                          </Button>
+                      >
+                        {(close) => (
+                          <>
+                            {protectItems.map((p) => (
+                              <MenuItem
+                                key={p.kind}
+                                icon={p.icon}
+                                title={p.title}
+                                description={p.detail}
+                                onSelect={() => {
+                                  close();
+                                  setDialog({ kind: "protect", parts: [p.kind] });
+                                }}
+                              />
+                            ))}
+                            <MenuDivider />
+                            <MenuItem
+                              icon="app/icon-sim-18"
+                              title="Bar all SIMs on this Ghana Card"
+                              description="For SIM farms registered to one ID."
+                              onSelect={() => {
+                                close();
+                                setDialog({ kind: "bar_sims" });
+                              }}
+                            />
+                          </>
                         )}
-                        <Menu
-                          label="Protect"
-                          trigger={(t) => (
-                            <Button
-                              variant="danger-outline"
-                              size="md"
-                              disabled={locked}
-                              onClick={t.toggle}
-                              aria-expanded={t["aria-expanded"]}
-                              aria-haspopup="menu"
-                              iconLeft={<Icon name="app/icon-shield-critical-18" size={18} />}
-                              iconRight={<Icon name="app/icon-chevron-down-critical-18" size={18} />}
-                            >
-                              Protect
-                            </Button>
-                          )}
-                        >
-                          {(close) => (
-                            <>
-                              <MenuLabel>Stop the loss</MenuLabel>
-                              {PROTECT_ITEMS.map((p) => (
-                                <MenuItem
-                                  key={p.kind}
-                                  icon={p.icon}
-                                  title={p.title}
-                                  description={p.detail}
-                                  onSelect={() => {
-                                    close();
-                                    setDialog({ kind: "protect", parts: [p.kind] });
-                                  }}
-                                />
-                              ))}
-                              <MenuDivider />
-                              <MenuItem
-                                icon="app/icon-refresh-16"
-                                title="Request reversal from MoMo ops"
-                                description="Recall money still in recipient wallets."
-                                onSelect={() => {
-                                  close();
-                                  setDialog({ kind: "reversal" });
-                                }}
-                              />
-                              <MenuItem
-                                icon="app/icon-sim-18"
-                                title="Bar all SIMs on this Ghana Card"
-                                description="For SIM farms registered to one ID."
-                                onSelect={() => {
-                                  close();
-                                  setDialog({ kind: "bar_sims" });
-                                }}
-                              />
-                              <MenuItem
-                                icon="app/icon-ban-18"
-                                title="Request an agent suspension"
-                                description="For the agent who did the swap."
-                                onSelect={() => {
-                                  close();
-                                  setDialog({ kind: "suspend_agent" });
-                                }}
-                              />
-                            </>
-                          )}
-                        </Menu>
-                      </>
-                    )}
-                    {closed ? (
-                      <Button variant="secondary" size="md" onClick={() => setDialog({ kind: "reopen" })} iconLeft={<Icon name="app/icon-refresh-primary-18" size={18} />}>
-                        Reopen
-                      </Button>
-                    ) : (
+                      </Menu>
                       <Button
+                        variant="secondary"
                         size="md"
                         disabled={locked || escalated}
                         title={escalated ? "Waiting on your escalation" : locked ? "Waiting for sign-off" : undefined}
                         onClick={() => setDialog({ kind: sentBack ? "resubmit" : "resolve" })}
-                        iconLeft={<Icon name="app/icon-check-white-18" size={18} />}
                       >
                         Resolve
                       </Button>
-                    )}
-                  </>
-                )
-              }
-            />
-            {isNew && <StartBanner detail={detail} onStart={unassigned ? pickUp : start} busy={starting} />}
-            <div id="case-banners" className="flex flex-col gap-3 empty:hidden">
-              <RejectedBanner detail={detail} />
-              <SignoffBanner detail={detail} />
-              <SentBackBanner detail={detail} onEvidence={() => setTab("evidence")} />
-              {!locked && !closed && <ActionBanner detail={detail} />}
-              <EscalationBanner detail={detail} />
-              <HandoverBanner detail={detail} />
-              {detail.banners
-                .filter((b) => (b.kind === "read_only" ? true : !locked && !closed && !sentBack && !BANNERS_ELSEWHERE.includes(b.kind)))
-                .filter((b) => b.kind !== "protected" || detail.latest_action?.status !== "partial")
-                .map((b) => {
-                  // The protected banner names no one: it is whoever asked for the action.
-                  const by = b.by ?? (b.kind === "protected" ? detail.latest_action?.requested_by : undefined);
-                  // Some titles carry the time already (“Reopened at 08:41”).
-                  const time = b.at && !b.title.includes(formatClock(b.at)) ? ` · ${formatClock(b.at)}` : "";
-                  return (
-                    <Banner key={b.kind + (b.at ?? "")} tone={BANNER_TONE[b.kind] ?? "info"} title={`${b.title}${time}${time && by?.id === user?.id ? " by you" : ""}`}>
-                      {b.detail}
-                    </Banner>
-                  );
-                })}
+                    </>
+                  )
+                }
+              />
+              <Tabs
+                label="Case sections"
+                surface="canvas"
+                value={tab}
+                onChange={setTab}
+                tabs={[
+                  { id: "summary", label: "Summary" },
+                  { id: "alerts", label: "Linked alerts", count: detail.counts?.linked_alerts },
+                  { id: "timeline", label: "Timeline", count: detail.counts?.timeline },
+                  { id: "transactions", label: "Transactions", count: detail.counts?.transactions },
+                  { id: "evidence", label: "Evidence", count: detail.counts?.evidence },
+                  { id: "network", label: "Network" },
+                ]}
+              />
             </div>
-            {compact ? <CompactStrip detail={detail} now={now} /> : <GlanceTiles detail={detail} now={now} />}
-            <Tabs
-              label="Case sections"
-              value={tab}
-              onChange={setTab}
-              tabs={[
-                { id: "summary", label: "Summary" },
-                { id: "alerts", label: "Linked alerts", count: detail.counts?.linked_alerts },
-                { id: "timeline", label: "Timeline", count: detail.counts?.timeline },
-                { id: "transactions", label: "Transactions", count: detail.counts?.transactions },
-                { id: "evidence", label: "Evidence", count: detail.counts?.evidence },
-                { id: "network", label: "Network" },
-              ]}
-            />
-            {tab === "summary" && detail.rejection && <RejectedSummary detail={detail} />}
-            {tab === "summary" && compact && closed && (
+
+            {tab === "summary" && (
               <>
-                <FeedbackThanks detail={detail} />
-                <ResolutionCard detail={detail} now={now} />
-              </>
-            )}
-            {tab === "summary" && !compact && (
-              <>
-                <ResolutionCard detail={detail} now={now} />
-                {detail.reversal && !closed && <ReversalCard id={detail.reversal.id} />}
-                <StoryStrip steps={detail.what_happened} />
-                <div className="flex items-stretch gap-4">
-                  {!(closed && detail.monitoring) && <DoThisNext steps={detail.next_steps} onStep={onStep} locked={isNew || locked || closed} />}
-                  <WhoInvolved detail={detail} onOpenNetwork={() => setTab("network")} />
+                <div id="case-banners" className="flex flex-col gap-3 empty:hidden">
+                  {isNew && <StartBanner detail={detail} onStart={unassigned ? pickUp : start} busy={starting} />}
+                  <RejectedBanner detail={detail} />
+                  <SignoffBanner detail={detail} />
+                  <SentBackBanner detail={detail} />
+                  {!locked && !closed && <ActionBanner retry={retry} />}
+                  <EscalationBanner detail={detail} />
+                  <HandoverBanner detail={detail} />
+                  <FeedbackThanks detail={detail} />
+                  {detail.banners
+                    .filter((b) => (b.kind === "read_only" ? !locked && !closed : !locked && !closed && !sentBack && !BANNERS_ELSEWHERE.includes(b.kind)))
+                    .filter((b) => b.kind !== "protected" || detail.latest_action?.status !== "partial")
+                    .map((b) => {
+                      // The protected banner names no one: it is whoever asked for the action.
+                      const by = b.by ?? (b.kind === "protected" ? detail.latest_action?.requested_by : undefined);
+                      // Some titles carry the time already (“Reopened at 08:41”).
+                      const time = b.at && !b.title.includes(formatClock(b.at)) ? ` · ${formatClock(b.at)}` : "";
+                      return (
+                        <Banner key={b.kind + (b.at ?? "")} tone={BANNER_TONE[b.kind] ?? "info"} title={`${b.title}${time}${time && by?.id === user?.id ? " by you" : ""}`}>
+                          {b.detail}
+                        </Banner>
+                      );
+                    })}
                 </div>
+                <ResolutionCard detail={detail} now={now} />
+                {detail.reversal && !closed && <ReversalCard id={detail.reversal.id} subject={firstName(detail.subject.name)} />}
+                {!resolutionOnly && (
+                  <div className="flex items-start gap-6">
+                    <div className="flex min-w-0 flex-1 flex-col gap-6">
+                      {detail.rejection ? (
+                        <RejectedSummary detail={detail} />
+                      ) : (
+                        <>
+                          <WhatHappened detail={detail} />
+                          <WhoInvolved detail={detail} onOpenNetwork={() => setTab("network")} />
+                        </>
+                      )}
+                    </div>
+                    <div className="flex w-[360px] shrink-0 flex-col gap-6">
+                      {!(closed && detail.monitoring) && (
+                        <DoThisNext
+                          detail={detail}
+                          onStep={onStep}
+                          locked={isNew || locked || closed}
+                          retry={
+                            retry && !locked && !closed
+                              ? {
+                                  title: partLabel(retry.failed, "waiting"),
+                                  detail: `Failed ${formatClock(retry.failed.at ?? retry.action.requested_at)} · retrying in 2 min`,
+                                  busy: retry.retrying,
+                                  run: retry.retry,
+                                }
+                              : null
+                          }
+                        />
+                      )}
+                      <OtherActions
+                        onNote={() => setTab("timeline")}
+                        onEscalate={() => setDialog({ kind: "escalate" })}
+                        onHandover={() => setDialog({ kind: "handover" })}
+                        escalated={escalated}
+                        readOnly={locked || closed}
+                        supervisor={detail.escalation?.status === "waiting" ? detail.escalation.to.name : undefined}
+                      />
+                    </div>
+                  </div>
+                )}
               </>
             )}
             {tab === "alerts" && <LinkedAlertsTab caseId={caseId} meId={user?.id} now={now} />}
             {tab === "timeline" && <TimelineTab caseId={caseId} now={now} />}
             {tab === "transactions" && detail.reversal && <ReversalResults id={detail.reversal.id} />}
             {tab === "transactions" && (
-              <TransactionsTab caseId={caseId} now={now} onRequestReversal={(txs) => setDialog({ kind: "reversal", transactions: txs })} />
+              <TransactionsTab caseId={caseId} now={now} onRequestReversal={(txs) => setDialog({ kind: "reversal", transactions: txs })} onOpenEvidence={() => setTab("evidence")} />
             )}
             {tab === "evidence" && <EvidenceTab caseId={caseId} />}
             {tab === "network" && (
-              <NetworkTab caseId={caseId} seed={detail.subject.subscriber_id} onBlock={(node) => setDialog({ kind: "protect", parts: ["block_recipients"], targets: [node.id] })} />
+              <NetworkTab
+                caseId={caseId}
+                seed={detail.subject.subscriber_id}
+                subject={detail.subject.msisdn}
+                moneyOut={detail.glance.money}
+                since={detail.what_happened.find((s) => s.kind === "sim_swap")?.at}
+                onBlock={(node) => setDialog({ kind: "protect", parts: ["block_recipients"], targets: [node.id] })}
+              />
             )}
           </>
         )}
@@ -406,7 +392,7 @@ export default function CasePage() {
         <RevealModal
           open
           onClose={() => setRevealOpen(false)}
-          subscriber={{ id: detail.subject.subscriber_id, name: detail.subject.name }}
+          subscriber={{ id: detail.subject.subscriber_id, name: detail.subject.name, msisdn: detail.subject.msisdn }}
           cases={[{ id: detail.id, title: detail.title }]}
         />
       )}

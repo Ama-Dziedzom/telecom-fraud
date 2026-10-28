@@ -210,5 +210,8 @@ export const LEVELS: Record<Level["id"], Level> = {
   },
 };
 
-/** Fill per bucket (0 → coolest), from the design’s legend. */
-export const BUCKETS = ["#E7E4F0", "#FBE3DE", "#F4B6AB", "#E57E6C", "#C93F2F"];
+/**
+ * Fill per bucket (0 → coolest). Density is the sequential blue ramp (seq-1…5);
+ * red is kept for the one hotspot to act on, drawn as a ring on its pin.
+ */
+export const BUCKETS = ["var(--color-seq-1)", "var(--color-seq-2)", "var(--color-seq-3)", "var(--color-seq-4)", "var(--color-seq-5)"];

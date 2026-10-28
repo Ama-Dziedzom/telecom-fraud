@@ -8,7 +8,8 @@ import { BUCKETS, LEVELS, type Level, type Pin } from "./geo";
 /** What the map draws: how hot each boundary is (0–4), the hotspot pins and the agents. Names come from the page. */
 export type Layers = {
   shapes: Array<{ id: string; intensity: number }>;
-  pins: Array<{ id: string; name: string; alerts: number }>;
+  /** `hot` = the hotspot to act on (the hottest area): the only red on the map, as a ring. */
+  pins: Array<{ id: string; name: string; alerts: number; hot?: boolean }>;
   agents: Array<{ code: string; hot: boolean }>;
 };
 
@@ -24,7 +25,7 @@ function leader(pin: Pin, name: string, value: number) {
   return { cx, cy, tx, ty: ly + 13 };
 }
 
-/** G21–G25 · The map canvas: boundaries coloured by bucket, hotspots with labels, zoom and drag. */
+/** G21–G25 · The map canvas: boundaries in the blue density ramp, hotspots with labels (a red ring only on the one to act on), zoom and drag. */
 export function HeatMap({
   level,
   layers,
@@ -74,7 +75,7 @@ export function HeatMap({
   return (
     <div
       ref={box}
-      className="relative h-[640px] min-w-0 flex-1 touch-none overflow-hidden rounded-xl border border-border-subtle bg-[#eef0f6] select-none"
+      className="relative h-[640px] min-w-0 flex-1 touch-none overflow-hidden rounded-lg border border-border-default bg-surface-sunken select-none"
       style={{ height: H * fit }}
       onPointerDown={(e) => {
         if ((e.target as HTMLElement).closest("button")) return;
@@ -114,7 +115,7 @@ export function HeatMap({
                     className="absolute block"
                     style={{
                       inset: s.inset,
-                      background: focused ? "#E9E6FA" : BUCKETS[bucket],
+                      background: focused ? "var(--color-border-default)" : BUCKETS[bucket],
                       maskImage: `url(${s.src})`,
                       maskSize: "100% 100%",
                       WebkitMaskImage: `url(${s.src})`,
@@ -126,7 +127,10 @@ export function HeatMap({
                     <img
                       alt=""
                       src={s.src.replace(/\.svg$/, "-outline.svg")}
-                      className={cn("block size-full max-w-none", focused && "[filter:drop-shadow(0_0_1px_#5347CE)_drop-shadow(0_0_1px_#5347CE)]")}
+                      className={cn(
+                        "block size-full max-w-none",
+                        focused && "[filter:drop-shadow(0_0_1px_var(--color-brand-primary))_drop-shadow(0_0_1px_var(--color-brand-primary))]",
+                      )}
                     />
                   </div>
                 </div>
@@ -138,7 +142,11 @@ export function HeatMap({
           ))}
           {geo.places.map((p) =>
             p.kind === "caps" ? (
-              <span key={p.name + p.x} className="absolute text-overline whitespace-nowrap text-text-tertiary uppercase opacity-80" style={{ left: p.x, top: p.y, letterSpacing: "1.4px" }}>
+              <span
+                key={p.name + p.x}
+                className="absolute text-overline whitespace-nowrap text-text-tertiary uppercase opacity-80"
+                style={{ left: p.x, top: p.y, letterSpacing: "1.4px" }}
+              >
                 {p.name}
               </span>
             ) : p.kind === "sea" || p.kind === "water" ? (
@@ -160,8 +168,11 @@ export function HeatMap({
                 <span
                   key={a.id}
                   title={a.id}
-                  className="absolute flex size-5 items-center justify-center rounded-[6px] border-2 border-white"
-                  style={{ left: a.x, top: a.y, background: hot ? "#c2410c" : "#a8a5bd" }}
+                  className={cn(
+                    "absolute flex size-5 items-center justify-center rounded-[6px] border-2 border-surface-base",
+                    hot ? "bg-chart-1 outline-2 outline-offset-1 outline-critical-solid" : "bg-chart-6",
+                  )}
+                  style={{ left: a.x, top: a.y }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img alt="" src="/figma/map/agent-building.svg" className="size-[11px]" />
@@ -176,7 +187,7 @@ export function HeatMap({
                   const p = pins.get(pin.id);
                   if (!p) return null;
                   const l = leader(pin, p.name, p.alerts);
-                  return <line key={pin.id} x1={l.cx} y1={l.cy} x2={l.tx} y2={l.ty} stroke="#1D1948" strokeWidth={1} />;
+                  return <line key={pin.id} x1={l.cx} y1={l.cy} x2={l.tx} y2={l.ty} stroke="var(--color-text-primary)" strokeWidth={1} />;
                 })}
               </svg>
               {geo.pins.map((pin) => {
@@ -187,25 +198,26 @@ export function HeatMap({
                   <span key={pin.id}>
                     <button
                       type="button"
-                      aria-label={`${p.name}: ${p.alerts} alerts${pin.drill ? ", zoom in" : ""}`}
+                      aria-label={`${p.name}: ${p.alerts} alerts${p.hot ? ", act on this one" : ""}${pin.drill ? ", zoom in" : ""}`}
                       onClick={() => (pin.drill ? onDrill(pin.drill) : onPin(pin.id))}
                       className={cn(
                         "absolute flex items-center justify-center rounded-full text-caption font-medium text-text-inverse",
-                        ring ? "border-[1.5px] border-[#1D1948] bg-white/40" : "border-2 border-white bg-[#1D1948] shadow-sm",
+                        ring ? "border-[1.5px] border-surface-inverse bg-surface-base/40" : "border-2 border-surface-base bg-surface-inverse shadow-sm",
+                        p.hot && "outline-2 outline-offset-1 outline-critical-solid",
                       )}
                       style={{ left: pin.x, top: pin.y, width: pin.size, height: pin.size }}
                     >
-                      {ring ? <span className="size-1.5 rounded-full bg-[#1D1948]" /> : pin.size >= 24 ? p.alerts : null}
+                      {ring ? <span className="size-1.5 rounded-full bg-surface-inverse" /> : pin.size >= 24 ? p.alerts : null}
                     </button>
                     <button
                       type="button"
                       tabIndex={-1}
                       onClick={() => (pin.drill ? onDrill(pin.drill) : onPin(pin.id))}
-                      className="absolute flex items-center gap-1.5 rounded-md bg-surface-base px-2 py-1 text-caption font-medium whitespace-nowrap text-text-primary shadow-sm"
+                      className="absolute flex items-center gap-1.5 rounded bg-surface-base px-2 py-1 text-caption whitespace-nowrap text-text-primary shadow-sm"
                       style={{ left: pin.label[0], top: pin.label[1] }}
                     >
                       {p.name}
-                      <span className="font-mono text-mono-s text-critical-fg">{p.alerts}</span>
+                      <span className={p.hot ? "text-critical-fg" : "text-text-secondary"}>{p.alerts}</span>
                     </button>
                   </span>
                 );
@@ -230,27 +242,38 @@ export function HeatMap({
       {/* Chrome — not scaled with the map. */}
       <div className="absolute top-4 left-4 flex flex-col gap-2">
         {children}
-        <div className="flex w-fit gap-0.5 rounded-[10px] border border-border-subtle bg-surface-base p-1 shadow-sm">
+        {/* Foundations · Legend item (1319:167790) chips that toggle each layer. */}
+        <div className="flex w-fit gap-0.5 rounded-lg border border-border-default bg-surface-base p-1 shadow-sm">
           {geo.layers.map((layer, i) => (
             <button
               key={layer}
               type="button"
               aria-pressed={on(layer)}
               onClick={() => setVisible((v) => ({ ...v, [layer]: !on(layer) }))}
-              className={cn("flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-caption font-medium", on(layer) ? "bg-surface-sunken text-text-primary" : "text-text-tertiary")}
+              className={cn("flex items-center gap-1.5 rounded-md px-2.5 py-1 text-caption", on(layer) ? "bg-surface-sunken text-text-primary" : "text-text-tertiary")}
             >
-              <span className={cn("size-2.5", i === 0 ? "rounded-[3px] bg-[#E57E6C]" : i === 1 ? "rounded-full bg-[#1D1948]" : "rounded-[3px] bg-[#c2410c]")} />
+              <span className={cn("size-2.5", i === 0 ? "rounded-[3px] bg-seq-4" : i === 1 ? "rounded-full bg-surface-inverse" : "rounded-[3px] bg-chart-1")} />
               {layer}
             </button>
           ))}
         </div>
       </div>
-      <div className="absolute top-4 right-4 flex w-8 flex-col overflow-hidden rounded-[10px] border border-border-subtle bg-surface-base shadow-sm">
-        <button type="button" aria-label="Zoom in" onClick={() => setZoom((z) => Math.min(2.5, z + 0.25))} className="flex size-8 items-center justify-center text-title text-text-secondary hover:bg-surface-raised">
+      <div className="absolute top-4 right-4 flex w-8 flex-col overflow-hidden rounded-lg border border-border-default bg-surface-base shadow-sm">
+        <button
+          type="button"
+          aria-label="Zoom in"
+          onClick={() => setZoom((z) => Math.min(2.5, z + 0.25))}
+          className="flex size-8 items-center justify-center text-title text-text-secondary hover:bg-surface-raised"
+        >
           +
         </button>
         <span className="h-px bg-border-subtle" />
-        <button type="button" aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(1, z - 0.25))} className="flex size-8 items-center justify-center text-title text-text-secondary hover:bg-surface-raised">
+        <button
+          type="button"
+          aria-label="Zoom out"
+          onClick={() => setZoom((z) => Math.max(1, z - 0.25))}
+          className="flex size-8 items-center justify-center text-title text-text-secondary hover:bg-surface-raised"
+        >
           −
         </button>
         <span className="h-px bg-border-subtle" />
@@ -263,7 +286,7 @@ export function HeatMap({
         {level === "country" ? "16 regions" : level === "ashanti" ? "43 districts" : "14 districts"} · boundaries 2019
       </p>
 
-      <div className="absolute bottom-3 left-3 flex w-[230px] flex-col gap-1.5 rounded-xl border border-border-subtle bg-surface-base px-3 py-2.5 shadow-sm">
+      <div className="absolute bottom-3 left-3 flex w-[230px] flex-col gap-1.5 rounded-lg border border-border-default bg-surface-base px-3 py-2.5 shadow-sm">
         <p className="text-caption font-medium text-text-primary">{legendTitle}</p>
         <div className="flex gap-0.5">
           {BUCKETS.map((c) => (
@@ -278,12 +301,16 @@ export function HeatMap({
           ))}
         </div>
         <p className="flex items-center gap-1.5 text-[11px] text-text-secondary">
-          <span className={cn("size-2.5 rounded-full", level === "ashanti" ? "border-[1.5px] border-[#1D1948]" : "bg-[#1D1948]")} />
+          <span className={cn("size-2.5 rounded-full", level === "ashanti" ? "border-[1.5px] border-surface-inverse" : "bg-surface-inverse")} />
           {level === "country" ? "Hotspot town · size = alerts" : level === "ashanti" ? "Town · ring size = alerts" : "Neighbourhood · size = alerts"}
+        </p>
+        <p className="flex items-center gap-1.5 text-[11px] text-text-secondary">
+          <span className="size-2.5 rounded-full border-2 border-critical-solid" />
+          Red ring · the hotspot to act on
         </p>
         {level === "kumasi" && (
           <p className="flex items-center gap-1.5 text-[11px] text-text-secondary">
-            <span className="size-2.5 rounded-[3px] bg-[#c2410c]" />
+            <span className="size-2.5 rounded-[3px] bg-chart-1" />
             Mobile money agent
           </p>
         )}

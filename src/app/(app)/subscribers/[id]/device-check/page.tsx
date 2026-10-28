@@ -1,78 +1,88 @@
 "use client";
 
-import { Card } from "@/components/app/Card";
-import { CheckLayout, LinkedNumbers, Verdict } from "@/components/subscriber/CheckLayout";
-import { Badge } from "@/components/ui/Badge";
+import { Card, CardMeta } from "@/components/app/Card";
+import { CheckLayout, LinkedNumbers } from "@/components/subscriber/CheckLayout";
+import { PartyRow } from "@/components/subscriber/ProfileParts";
+import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
-import { Icon } from "@/components/ui/Icon";
+import { useSubscriber } from "@/lib/api/fd";
 import { phoneLabel, useDeviceCheck, type DeviceCheck } from "@/lib/api/subscribers";
 import { cn } from "@/lib/cn";
-import { formatClock, formatWhen, useNow } from "@/lib/time";
+import { formatClock, formatWhen, TZ, useNow } from "@/lib/time";
 import { useParams, useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
 
 /** Full IMEIs are grouped TAC · serial · check digit; masked ones (“3569…4417”) are shown as sent. */
 const spaced = (imei: string) => (/^\d{15}$/.test(imei) ? `${imei.slice(0, 2)} ${imei.slice(2, 8)} ${imei.slice(8, 14)} ${imei.slice(14)}` : imei);
 
-/** The 15 digit tiles; masked digits show as dots so the check digit stays last. */
+/** The 15 digits; masked digits show as dots so the check digit stays last. */
 function digitsOf(imei: string) {
   const [head, tail = ""] = imei.replace(/\s/g, "").split(/…|\*+/);
   if (!tail) return head.split("");
   return [...head.split(""), ...Array.from({ length: Math.max(0, 15 - head.length - tail.length) }, () => "•"), ...tail.split("")];
 }
 
-/** “IMEI from Phone B · first seen on this SIM today at 08:39” */
+/** “IMEI from Phone B · first seen on this SIM today 08:39” */
 function source(d: DeviceCheck, now: number) {
   const from = d.from_phone !== null ? `IMEI from ${phoneLabel(d.from_phone)}` : "IMEI from the phone";
   const when = formatWhen(d.first_seen_on_sim_at, now, { withTime: true });
   return when.startsWith("Today")
-    ? `${from} · first seen on this SIM today at ${formatClock(d.first_seen_on_sim_at)}`
-    : `${from} · in use on this SIM since ${new Date(d.first_seen_on_sim_at).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}`;
+    ? `${from} · first seen on this SIM today ${formatClock(d.first_seen_on_sim_at)}`
+    : `${from} · on this SIM since ${new Date(d.first_seen_on_sim_at).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: TZ })}`;
 }
 
-/** What the TAC (first 8 digits) says about the phone. */
-function tacNote(d: DeviceCheck) {
-  if (!d.tac) return "";
-  const { brand, model, year, matches_reported_model } = d.tac;
-  if (matches_reported_model) return `${brand} ${model}, as reported by the phone`;
-  const reported = d.model?.replace(new RegExp(`^${brand}\\s*`, "i"), "");
-  return `Number belongs to ${brand}${reported ? `: the phone says ${reported} but the TAC is for a ${year} model` : ""}`;
-}
-
-function Check({ state, title, detail }: { state: "pass" | "fail" | "warn" | "pending"; title: string; detail: string }) {
-  const tile = { pass: "bg-success-bg", fail: "bg-critical-bg", warn: "bg-medium-bg", pending: "bg-neutral-bg" }[state];
-  const icon = {
-    pass: "app/icon-check-success-16",
-    fail: "app/icon-x-critical-16",
-    warn: "app/icon-alert-triangle-medium-16",
-    pending: "app/icon-circle-dashed-16",
-  }[state];
+/** One group of digit boxes with its underline and caption. */
+function DigitGroup({ digits, caption, tone = "neutral" }: { digits: string[]; caption: string; tone?: "neutral" | "critical" }) {
   return (
-    <li className="flex items-center gap-3 py-3">
-      <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-[10px]", tile)}>
-        <Icon name={icon} size={16} />
-      </span>
-      <span className="flex flex-col gap-0.5">
-        <span className="text-label-m text-text-primary">{title}</span>
-        <span className="text-body-s text-text-secondary">{detail}</span>
-      </span>
-    </li>
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-1.5">
+        {digits.map((d, i) => (
+          <span
+            key={i}
+            className={cn(
+              "flex h-12 w-10 items-center justify-center rounded-md font-mono text-[18px] font-medium",
+              tone === "critical" ? "border-[1.5px] border-critical-solid bg-critical-bg text-critical-fg" : "border border-border-default bg-surface-raised text-text-primary",
+            )}
+          >
+            {d}
+          </span>
+        ))}
+      </div>
+      <span className={cn("h-0.5 w-full", tone === "critical" ? "bg-critical-solid" : "bg-border-strong")} />
+      <span className="text-caption whitespace-nowrap text-text-secondary">{caption}</span>
+    </div>
   );
 }
 
-/** C23–C25 · Device check: IMEI valid, invalid, or registry unavailable */
+const RESULT: Record<string, { label: string; tone: BadgeTone }> = {
+  passed: { label: "Passed", tone: "success" },
+  failed: { label: "Failed", tone: "critical" },
+  mismatch: { label: "Mismatch", tone: "high" },
+  clear: { label: "Clear", tone: "success" },
+  listed: { label: "Listed", tone: "critical" },
+  pending: { label: "Not checked", tone: "neutral" },
+};
+
+/** C23–C25 · Device check: IMEI fails Luhn, IMEI valid, or the registry is unavailable */
 export default function DeviceCheckPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { mutate } = useSWRConfig();
   const now = useNow();
   const { data, isLoading } = useDeviceCheck(id);
+  const { data: sub } = useSubscriber(id);
+  const openCase = sub?.cases.find((c) => c.status !== "closed");
   const partial = data?.registry === "unavailable";
-  const invalid = data && !data.luhn.valid;
-  const lastTry = data?.registry_last_try ? formatClock(data.registry_last_try) : "";
+  const invalid = !!data && !data.luhn.valid;
+  // TODO(api): 0.2 doesn’t say when the registry was last tried (C25).
+  const timedOut = data?.registry_last_try ? `Registry timed out ${formatClock(data.registry_last_try)}` : "Registry didn’t respond";
 
   const digits = data ? digitsOf(data.imei) : [];
   const others = data?.other_sims.data ?? [];
+  const tac = data?.tac;
+  const reported = data?.model && tac ? data.model.replace(new RegExp(`^${tac.brand}\\s*`, "i"), "") : null;
+
   return (
     <CheckLayout
       subscriberId={id}
@@ -89,130 +99,91 @@ export default function DeviceCheckPage() {
       }
       subtitle={data ? source(data, now) : undefined}
       evidenceTitle="Device check"
+      secondary={
+        invalid ? (
+          // Blocking an IMEI is a protective action: it goes through the case.
+          <Button variant="danger-outline" size="md" onClick={() => router.push(openCase ? `/cases/${openCase.id}?protect=1` : `/subscribers/${id}`)}>
+            Block IMEI
+          </Button>
+        ) : undefined
+      }
       loading={isLoading || !data}
     >
       {data && (
         <>
-          {invalid ? (
-            <Verdict
-              tone="critical"
-              icon="app/icon-fingerprint-critical-22"
-              title="This IMEI is fake or has been changed"
-              actions={
-                <Button variant="danger" size="md" onClick={() => router.push(`/subscribers/${id}`)} iconLeft={<Icon name="app/icon-ban-white-18" size={18} />}>
-                  Block this IMEI
+          {partial ? (
+            <Banner
+              tone="warning"
+              title="GSMA stolen-device registry didn’t respond"
+              action={
+                <Button variant="ghost" size="sm" onClick={() => mutate(`/subscribers/${id}/device-check`)}>
+                  Retry
                 </Button>
               }
             >
-              Its last digit doesn’t add up, so no manufacturer issued this number. Fraudsters change IMEIs to get around device blocks.
-            </Verdict>
-          ) : partial ? (
-            <Verdict
-              tone="medium"
-              icon="app/icon-fingerprint-medium-22"
-              title="Only partly checked"
-              actions={
-                <Button variant="secondary" size="md" onClick={() => mutate(`/subscribers/${id}/device-check`)} iconLeft={<Icon name="app/icon-refresh-primary-18" size={18} />}>
-                  Retry now
-                </Button>
-              }
-            >
-              The number itself is valid, but the GSMA device registry didn’t answer, so model and stolen-list checks are still pending. We’ll retry every 2 minutes.
-            </Verdict>
+              The {tac ? "Luhn and model checks" : "Luhn check"} still ran. Retry the stolen-list check before you decide.
+            </Banner>
+          ) : invalid ? (
+            <Banner tone="error" title="This IMEI is fake or has been changed">
+              Its last digit doesn’t add up, so no manufacturer issued it. Fraudsters change IMEIs to get around device blocks.
+            </Banner>
           ) : (
-            <Verdict tone="success" icon="app/icon-shield-check-success-22" title="This phone checks out">
-              Valid IMEI, the model matches what the phone reports, and it isn’t on the stolen list.
-            </Verdict>
+            <Banner tone="success" title="This IMEI checks out">
+              Valid check digit, the model matches, and it is not on the stolen list.
+            </Banner>
           )}
 
-          <Card title={`IMEI ${spaced(data.imei)}`} icon="app/icon-fingerprint-secondary-18">
-            <div className="flex items-center gap-1.5">
-              {digits.map((d, i) => (
-                <span key={i} className={cn("flex items-center", i === 8 || i === 14 ? "pl-3" : undefined)}>
-                  <span
-                    className={cn(
-                      "flex h-[60px] w-12 items-center justify-center rounded-lg border font-mono text-[26px] leading-8 font-medium",
-                      i < 8
-                        ? "border-border-subtle bg-brand-primary-subtle text-text-primary"
-                        : i < 14
-                          ? "border-border-subtle bg-surface-raised text-text-primary"
-                          : data.luhn.valid
-                            ? "border-success-fg bg-success-bg text-success-fg"
-                            : "border-critical-fg bg-critical-bg text-critical-fg",
-                    )}
-                  >
-                    {d}
-                  </span>
-                </span>
-              ))}
-            </div>
-            <div className="flex gap-6">
-              {[
-                ["w-[426px]", "bg-brand-primary", `Make & model (TAC) · ${partial ? "waiting for registry" : data.tac?.brand ?? "unknown"}`],
-                ["w-[318px]", "bg-border-strong", "Serial number"],
-                ["w-12", data.luhn.valid ? "bg-success-fg" : "bg-critical-fg", "Check digit"],
-              ].map(([w, bar, label]) => (
-                <span key={label} className={cn("flex flex-col gap-0.5", w)}>
-                  <span className={cn("h-[3px] rounded-[2px]", bar)} />
-                  <span className="text-caption font-medium whitespace-nowrap text-text-secondary">{label}</span>
-                </span>
-              ))}
-            </div>
-            <p className="flex w-fit items-center gap-2.5 rounded-[10px] bg-surface-sunken px-4 py-3 text-body-m text-text-secondary">
-              <Icon name="app/icon-info-secondary-16" size={16} />
-              {data.luhn.valid ? (
-                <>
-                  Check digit is <span className="font-mono text-mono-m text-success-fg">{data.luhn.actual_digit}</span> it matches the Luhn check on the first 14 digits.
-                </>
-              ) : (
-                <>
-                  The check digit should be <span className="font-mono text-mono-m text-success-fg">{data.luhn.expected_digit}</span> (Luhn check on the first 14 digits). This phone
-                  reports <span className="font-mono text-mono-m text-critical-fg">{data.luhn.actual_digit}</span>.
-                </>
+          <Card title={`IMEI ${spaced(data.imei)}`}>
+            <div className="flex flex-col gap-3 pb-1">
+              <div className="flex items-start gap-6">
+                <DigitGroup digits={digits.slice(0, 8)} caption={`Make and model (TAC) · ${tac?.brand ?? (partial ? "waiting for registry" : "unknown")}`} />
+                <DigitGroup digits={digits.slice(8, 14)} caption="Serial number" />
+                <DigitGroup digits={digits.slice(14)} caption="Check digit" tone={invalid ? "critical" : "neutral"} />
+              </div>
+              {invalid && !partial && (
+                <Banner tone="info" title={`The check digit should be ${data.luhn.expected_digit}`}>
+                  Worked out from the first 14 digits (Luhn check). This phone reports {data.luhn.actual_digit}.
+                </Banner>
               )}
-            </p>
+            </div>
           </Card>
 
-          <div className="flex items-stretch gap-4">
-            <Card title="Device checks" icon="app/icon-shield-secondary-18" className="min-w-0 flex-1">
+          <div className="flex items-stretch gap-6">
+            <Card title="Device checks" className="min-w-0 flex-1">
               <ul className="flex flex-col">
-                <Check
-                  state={data.luhn.valid ? "pass" : "fail"}
+                <PartyRow
                   title="Number is valid (Luhn check)"
-                  detail={data.luhn.valid ? `Passed · check digit ${data.luhn.actual_digit}` : `Failed · check digit is ${data.luhn.actual_digit}, should be ${data.luhn.expected_digit}`}
+                  sub={invalid ? `Check digit is ${data.luhn.actual_digit}, should be ${data.luhn.expected_digit}` : `Check digit ${data.luhn.actual_digit} matches`}
+                  aside={<Badge {...RESULT[invalid ? "failed" : "passed"]} />}
                 />
-                <Check
-                  state={partial ? "pending" : data.tac?.matches_reported_model ? "pass" : "warn"}
+                <PartyRow
                   title="Model matches the number"
-                  detail={partial ? `Couldn’t reach the GSMA registry${lastTry ? ` · last try ${lastTry}` : ""}` : tacNote(data)}
-                />
-                <Check
-                  state={partial ? "pending" : data.stolen?.listed ? "fail" : "pass"}
-                  title="Not on the GSMA stolen list"
-                  detail={
-                    partial
-                      ? `Couldn’t reach the GSMA registry${lastTry ? ` · last try ${lastTry}` : ""}`
-                      : data.stolen?.listed
-                        ? "Listed as stolen"
-                        : `Not listed · checked ${data.stolen ? formatClock(data.stolen.checked_at) : ""}`
+                  sub={
+                    !tac
+                      ? timedOut
+                      : tac.matches_reported_model
+                        ? `${tac.brand} ${tac.model} · TAC agrees`
+                        : `Phone says ${reported ?? "another model"}, number is for a ${tac.year} model`
                   }
+                  aside={<Badge {...RESULT[!tac ? "pending" : tac.matches_reported_model ? "passed" : "mismatch"]} />}
+                />
+                <PartyRow
+                  title="Not on the GSMA stolen list"
+                  sub={partial || !data.stolen ? timedOut : data.stolen.listed ? "Listed as stolen" : `Checked ${formatClock(data.stolen.checked_at)}`}
+                  aside={<Badge {...RESULT[partial || !data.stolen ? "pending" : data.stolen.listed ? "listed" : "clear"]} />}
                 />
               </ul>
             </Card>
             <Card
-              title={invalid ? "Same IMEI on other SIMs" : "Other SIMs on this phone"}
-              icon="app/icon-sim-18"
-              aside={<Badge label={`${others.length || 1} SIM${others.length > 1 ? "s" : ""} · ${data.other_sims.window_days} days`} tone={others.length ? "high" : "success"} />}
+              title="Same IMEI on other SIMs"
+              aside={<CardMeta>{others.length ? `${others.length} SIM${others.length > 1 ? "s" : ""} · ${data.other_sims.window_days} days` : "Only this SIM"}</CardMeta>}
               className="min-w-0 flex-1"
             >
               {others.length ? (
                 <LinkedNumbers rows={others} />
-              ) : (
-                <p className="flex items-center gap-2.5 py-3 text-body-m text-text-secondary">
-                  <Icon name="app/icon-check-circle-success-18" size={18} />
-                  None in {data.other_sims.window_days} days: only her SIM has been in this phone.
-                </p>
-              )}
+              ) : sub ? (
+                <LinkedNumbers rows={[{ msisdn: sub.msisdn, iccid: sub.sim.iccid, case: null }]} self={sub.msisdn} />
+              ) : null}
             </Card>
           </div>
         </>

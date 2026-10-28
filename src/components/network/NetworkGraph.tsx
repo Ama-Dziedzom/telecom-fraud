@@ -5,14 +5,11 @@ import type { Network, NetworkEdge, NetworkNode } from "@/lib/api/cases";
 import { cn } from "@/lib/cn";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-/** Entity colours — the same in the legend, node rings and glyphs. */
-export const TYPE_COLOR: Record<NetworkNode["type"], string> = {
-  subscriber: "#d63c3c",
-  wallet: "#5347ce",
-  device: "#c98a1b",
-  agent: "#c2410c",
-  case: "#1d1948",
-};
+/**
+ * Direction v2 colour rule for the graph: red only where money moves to a mule
+ * wallet or a confirmed ring (and the subject it left); grey for everything else.
+ */
+export const isRed = (n: NetworkNode, seed: string) => n.id === seed || n.risk === "confirmed" || n.relation === "mule";
 const GLYPH: Record<NetworkNode["type"], string> = {
   subscriber: "app/glyph-user",
   wallet: "app/glyph-wallet",
@@ -41,18 +38,13 @@ export function nodeRole(n: NetworkNode) {
   return [role, ...(n.case_ids ?? [])].join(" · ");
 }
 
+/** The one-line key under the graph. */
 export function Legend() {
-  return (
-    <div className="flex items-center gap-3.5">
-      {(Object.keys(TYPE_COLOR) as NetworkNode["type"][]).map((t) => (
-        <span key={t} className="flex items-center gap-1.5 text-caption text-text-secondary">
-          <span className="size-2.5 rounded-full" style={{ background: TYPE_COLOR[t] }} />
-          {t[0].toUpperCase() + t.slice(1)}
-        </span>
-      ))}
-    </div>
-  );
+  return <p className="text-caption text-text-secondary">Red: money moving to a mule wallet or a confirmed ring. Grey: everything else.</p>;
 }
+
+/** “+233 54 *** 3457” → “054 *** 3457” on the canvas. */
+const shortLabel = (label: string) => label.replace(/^\+233\s?(\d{2})\s?/, "0$1 ");
 
 type Placed = NetworkNode & { x: number; y: number; col: number; seed: boolean };
 
@@ -104,10 +96,9 @@ function edgePath(a: Placed, b: Placed) {
   return `M ${from.x} ${from.y} C ${from.x + dx} ${from.y}, ${to.x - dx} ${to.y}, ${to.x} ${to.y}`;
 }
 
-const formatAmount = (e: NetworkEdge) =>
-  e.amount ? (e.amount.amount_minor / 100).toLocaleString("en-GB", { maximumFractionDigits: 0 }) : null;
+const formatAmount = (e: NetworkEdge) => (e.amount ? (e.amount.amount_minor / 100).toLocaleString("en-GB", { maximumFractionDigits: 0 }) : null);
 
-/** C8/G28 · Graph of who and what is connected. Click a node to focus it. */
+/** C8/G28/G29 · Graph of who and what is connected. Click a node to focus it. */
 export function NetworkGraph({
   network,
   seed,
@@ -130,6 +121,8 @@ export function NetworkGraph({
   const box = useRef<HTMLDivElement>(null);
   const { placed, width } = useMemo(() => layout(network, seed, { colWidth, height, pad: compact ? 40 : 80 }), [network, seed, colWidth, height, compact]);
   const byId = new Map(placed.map((n) => [n.id, n]));
+  const red = (n: Placed) => isRed(n, seed);
+  const redEdge = (a: Placed, b: Placed) => red(a) && red(b);
 
   // Start fitted to the canvas width; +/− zoom from there.
   const [fit, setFit] = useState(1);
@@ -170,14 +163,14 @@ export function NetworkGraph({
                 const b = byId.get(e.to);
                 if (!a || !b) return null;
                 const hot = edgeLit(e);
-                const money = MONEY.has(e.kind);
+                const r = redEdge(a, b);
                 return (
                   <path
                     key={i}
                     d={edgePath(a, b)}
                     fill="none"
-                    stroke={hot ? "#5347ce" : money ? "#b9b4ea" : e.kind === "in_case" ? "#8b8b93" : "#e8b4b4"}
-                    strokeWidth={hot ? 2.5 : 1.5}
+                    stroke={r ? "var(--color-critical-solid)" : hot ? "var(--color-text-secondary)" : "var(--color-border-strong)"}
+                    strokeWidth={r ? 2 : hot ? 1.5 : 1}
                     strokeDasharray={e.kind === "in_case" ? "4 4" : undefined}
                     opacity={focus && !hot ? 0.4 : 1}
                   />
@@ -191,23 +184,25 @@ export function NetworkGraph({
                 const label = formatAmount(e) ?? (e.kind === "swapped_by" ? "SIM swap" : null);
                 if (!a || !b || !label) return null;
                 const hot = edgeLit(e);
+                // The first red hop carries the currency (“GHS 7,200”); the rest just the amount.
+                const r = redEdge(a, b);
+                const first = r && e.from === seed && e.amount;
                 return (
                   <span
                     key={`l${i}`}
                     className={cn(
-                      "absolute -translate-x-1/2 -translate-y-1/2 rounded-md border bg-surface-base px-1.5 py-px font-mono text-mono-s",
-                      hot ? "border-brand-primary text-text-brand" : "border-border-subtle text-text-secondary",
-                      e.kind === "swapped_by" && "border-high-border text-high-fg",
+                      "absolute -translate-x-1/2 -translate-y-1/2 rounded border bg-surface-base px-1.5 py-px text-caption",
+                      r ? "border-critical-border text-critical-fg" : "border-border-default text-text-secondary",
                     )}
                     style={{ left: (a.x + b.x) / 2, top: (a.y + b.y) / 2, opacity: focus && !hot ? 0.4 : 1 }}
                   >
-                    {label}
+                    {first ? `${e.amount!.currency} ${label}` : label}
                   </span>
                 );
               })}
             {placed.map((n) => {
-              const size = n.seed ? (compact ? 40 : 56) : compact ? 36 : n.type === "case" ? 50 : 44;
-              const color = n.type === "subscriber" && !n.seed ? "#e07a7a" : TYPE_COLOR[n.type];
+              const size = compact ? 32 : 40;
+              const r = red(n);
               const isSelected = n.id === selected;
               return (
                 <div key={n.id} className="absolute" style={{ left: n.x, top: n.y, opacity: lit(n.id) ? 1 : 0.4 }}>
@@ -216,16 +211,14 @@ export function NetworkGraph({
                     onClick={() => onSelect?.(isSelected ? null : n.id)}
                     aria-pressed={isSelected}
                     aria-label={`${n.type} ${n.label}`}
-                    className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full"
-                    style={{
-                      width: size,
-                      height: size,
-                      border: `${isSelected ? 3 : 1.5}px solid ${isSelected ? "#5347ce" : color}`,
-                      background: n.type === "case" ? color : `color-mix(in srgb, ${color} 14%, white)`,
-                      boxShadow: isSelected ? "0 0 0 4px rgb(84 71 207 / 0.3)" : undefined,
-                    }}
+                    className={cn(
+                      "icon-tint absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[1.5px]",
+                      r ? "border-critical-solid bg-critical-bg text-critical-fg" : "border-border-strong bg-surface-raised text-text-secondary",
+                      isSelected && "shadow-focus",
+                    )}
+                    style={{ width: size, height: size }}
                   >
-                    <Icon name={n.seed && n.type === "subscriber" ? "app/glyph-user-24" : GLYPH[n.type]} size={n.seed ? 24 : 18} />
+                    <Icon name={GLYPH[n.type]} size={compact ? 14 : 16} />
                   </button>
                   <span
                     className={cn(
@@ -235,8 +228,8 @@ export function NetworkGraph({
                     )}
                     style={compact && !n.seed && n.col > 0 ? { left: size / 2 + 8, top: 0 } : { top: size / 2 + 4 }}
                   >
-                    <span className={cn("font-mono text-mono-s", isSelected ? "text-text-brand" : "text-text-primary")}>{n.label}</span>
-                    {!compact && n.relation && <span className="text-text-tertiary">{nodeRole(n)}</span>}
+                    <span className={cn("text-body-s", isSelected ? "text-text-brand" : "text-text-primary")}>{shortLabel(n.label)}</span>
+                    {!compact && n.relation && <span className={r ? "text-critical-fg" : "text-text-secondary"}>{nodeRole(n)}</span>}
                   </span>
                 </div>
               );
@@ -250,15 +243,15 @@ export function NetworkGraph({
             type="button"
             aria-label="Zoom in"
             onClick={() => setZoom((z) => Math.min(2, z + 0.2))}
-            className="flex size-10 items-center justify-center rounded-[10px] border border-border-default bg-surface-base hover:bg-surface-raised"
+            className="flex size-8 items-center justify-center rounded-lg border border-border-default bg-surface-base hover:bg-surface-raised"
           >
-            <Icon name="app/icon-zoom-in-20" size={20} />
+            <Icon name="app/icon-zoom-in-20" size={16} />
           </button>
           <button
             type="button"
             aria-label="Zoom out"
             onClick={() => setZoom((z) => Math.max(0.5, z - 0.2))}
-            className="flex size-10 items-center justify-center rounded-[10px] border border-border-subtle bg-surface-base text-h3 text-text-secondary hover:bg-surface-raised"
+            className="flex size-8 items-center justify-center rounded-lg border border-border-default bg-surface-base text-title text-text-secondary hover:bg-surface-raised"
           >
             −
           </button>
@@ -266,9 +259,9 @@ export function NetworkGraph({
             type="button"
             aria-label="Fit to screen"
             onClick={() => setZoom(1)}
-            className="flex size-10 items-center justify-center rounded-[10px] border border-border-default bg-surface-base hover:bg-surface-raised"
+            className="flex size-8 items-center justify-center rounded-lg border border-border-default bg-surface-base hover:bg-surface-raised"
           >
-            <Icon name="app/icon-fit-20" size={20} />
+            <Icon name="app/icon-fit-20" size={16} />
           </button>
         </div>
       )}

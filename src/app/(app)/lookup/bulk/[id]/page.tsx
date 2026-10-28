@@ -4,20 +4,28 @@ import { AppHeader } from "@/components/app/AppHeader";
 import { PageBody, PageHead } from "@/components/app/AppShell";
 import { Skeleton } from "@/components/app/Card";
 import { RiskScore } from "@/components/app/indicators";
+import { localMsisdn } from "@/components/cases/CaseTable";
+import { BulkAction, BulkBar, CheckCell, DataTable, Pagination, Td, Th, rowClass } from "@/components/cases/Table";
 import { WatchModal } from "@/components/lookup/LookupModals";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
-import { Checkbox } from "@/components/ui/Choice";
-import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
 import { useApi, type Page } from "@/lib/api/fd";
 import { TZ } from "@/lib/time";
-import { cn } from "@/lib/cn";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
-type Row = { id: string; msisdn: string; ghana_card: string; activated_on: string; recent: boolean; calls_per_day: number; risk_score: number; suggested: boolean };
+type Row = {
+  id: string;
+  msisdn: string;
+  ghana_card: string;
+  activated_on: string;
+  recent: boolean;
+  calls_per_day: number;
+  risk_score: number;
+  suggested: boolean;
+};
 type Bulk = Page<Row> & {
   id: string;
   status: "running" | "done";
@@ -33,11 +41,13 @@ type Bulk = Page<Row> & {
 const activated = (r: Row) =>
   new Date(r.activated_on).toLocaleDateString("en-GB", r.recent ? { month: "short", year: "numeric", timeZone: TZ } : { year: "numeric", timeZone: TZ });
 
-/** G19 · Bulk lookup results — sorted by risk, with the pattern called out and a bulk bar. */
+/** G19 · Bulk lookup results — sorted by risk, with the pattern called out and the bulk action bar over the table. */
 export default function BulkResultsPage() {
   const { id } = useParams<{ id: string }>();
   const toast = useToast();
-  const { data } = useApi<Bulk>(`/lookups/bulk/${id}`, { refreshInterval: (b) => (b?.status === "running" ? 2000 : 0) });
+  const { data } = useApi<Bulk>(`/lookups/bulk/${id}`, {
+    refreshInterval: (b) => (b?.status === "running" ? 2000 : 0),
+  });
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [watching, setWatching] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -53,9 +63,14 @@ export default function BulkResultsPage() {
   };
 
   const exportCsv = () => {
-    const body = ["number,ghana_card,activated,calls_per_day,risk", ...rows.map((r) => [r.msisdn, r.ghana_card, r.activated_on, r.calls_per_day, r.risk_score].join(","))].join("\n");
+    const body = ["number,ghana_card,activated,calls_per_day,risk", ...rows.map((r) => [r.msisdn, r.ghana_card, r.activated_on, r.calls_per_day, r.risk_score].join(","))].join(
+      "\n",
+    );
     const url = URL.createObjectURL(new Blob([body], { type: "text/csv" }));
-    Object.assign(document.createElement("a"), { href: url, download: `${data?.file_name.replace(/\.csv$/, "") ?? "bulk"}-results.csv` }).click();
+    Object.assign(document.createElement("a"), {
+      href: url,
+      download: `${data?.file_name.replace(/\.csv$/, "") ?? "bulk"}-results.csv`,
+    }).click();
     URL.revokeObjectURL(url);
   };
 
@@ -64,13 +79,24 @@ export default function BulkResultsPage() {
     setAdding(true);
     try {
       // TODO(api): bulk rows carry no entity ID, so the row IDs are sent.
-      await apiFetch("POST", `/cases/${data.case_id}/entities`, { entity_ids: Array.from(selected), note: `From bulk lookup ${data.id} (${data.file_name})` });
-      toast({ tone: "success", title: `${selected.size} numbers added to ${data.case_id}`, body: "They’re on the case network and in Evidence as a lookup export." });
+      await apiFetch("POST", `/cases/${data.case_id}/entities`, {
+        entity_ids: Array.from(selected),
+        note: `From bulk lookup ${data.id} (${data.file_name})`,
+      });
+      toast({
+        tone: "success",
+        title: `${selected.size} numbers added to ${data.case_id}`,
+        body: "They’re on the case network and in Evidence as a lookup export.",
+      });
       setPicked(new Set());
     } finally {
       setAdding(false);
     }
   };
+
+  // “6 selected · All on Ghana Cards GHA-71…-2 or GHA-88…-9” when the picked rows share cards.
+  const cards = Array.from(new Set(rows.filter((r) => selected.has(r.id)).map((r) => r.ghana_card)));
+  const sorted = rows.slice().sort((a, b) => b.risk_score - a.risk_score);
 
   return (
     <>
@@ -80,72 +106,87 @@ export default function BulkResultsPage() {
           title={data ? `Bulk lookup · ${data.total} numbers` : "Bulk lookup"}
           subtitle={data ? `${data.file_name} · for ${data.case_id} · ${data.skipped} rows skipped` : " "}
           actions={
-            <Button variant="secondary" size="md" onClick={exportCsv} disabled={!rows.length} iconLeft={<Icon name="app/icon-download-18" size={18} />}>
+            <Button variant="secondary" size="md" onClick={exportCsv} disabled={!rows.length}>
               Export
             </Button>
           }
         />
         {data?.pattern && (
-          <Banner tone="warning" title={data.pattern.title}>
+          <Banner tone="warning" icon="app/icon-alert-triangle-medium-16" title={data.pattern.title.replace(/^Pattern: /, "")}>
             {data.pattern.detail}
           </Banner>
         )}
         {!data ? (
-          <Skeleton className="h-[320px] w-full rounded-xl" />
+          <Skeleton className="h-[320px] w-full rounded-lg" />
         ) : (
-          <>
-            <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface-base">
-              <table className="w-full text-left">
-                <thead className="border-b border-border-subtle bg-surface-raised">
-                  <tr className="text-overline text-text-tertiary uppercase">
-                    <th className="w-[54px] py-[11px] pl-5">
-                      <Checkbox label="Select all" hideLabel checked={all} indeterminate={selected.size > 0 && !all} onChange={(e) => setPicked(new Set(e.target.checked ? rows.map((r) => r.id) : []))} />
-                    </th>
-                    <th className="py-[11px] font-bold">Number</th>
-                    <th className="py-[11px] font-bold">Ghana Card</th>
-                    <th className="py-[11px] font-bold">Activated</th>
-                    <th className="py-[11px] font-bold">Usage</th>
-                    <th className="w-[160px] py-[11px] pr-5 font-bold">Risk</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id} className={cn("border-b border-border-subtle last:border-b-0", selected.has(r.id) && "bg-brand-primary-subtle/50")}>
-                      <td className="py-3 pl-5">
-                        <Checkbox label={`Select ${r.msisdn}`} hideLabel checked={selected.has(r.id)} onChange={(e) => toggle(r.id, e.target.checked)} />
-                      </td>
-                      <td className="py-3 font-mono text-mono-m font-semibold text-text-primary">{r.msisdn}</td>
-                      <td className="py-3 font-mono text-mono-s text-text-secondary">{r.ghana_card}</td>
-                      <td className={cn("py-3 text-body-s", r.recent ? "text-medium-fg" : "text-text-secondary")}>{activated(r)}</td>
-                      <td className="py-3 text-body-s text-text-secondary">{r.calls_per_day.toLocaleString("en-GB")} calls/day</td>
-                      <td className="py-3 pr-5">
+          <div className="flex flex-col gap-4">
+            {selected.size > 0 && (
+              <BulkBar
+                count={selected.size}
+                detail={cards.length && cards.length <= 2 ? `All on Ghana ${cards.length === 1 ? "Card" : "Cards"} ${cards.join(" or ")}` : undefined}
+                onClear={() => setPicked(new Set())}
+              >
+                <BulkAction onClick={() => setWatching(true)}>Add to watchlist</BulkAction>
+                <BulkAction loading={adding} onClick={addToCase}>
+                  Add to {data.case_id}
+                </BulkAction>
+              </BulkBar>
+            )}
+            <DataTable footer={<Pagination summary={`Showing 1-${rows.length} of ${data.total}`} />}>
+              <colgroup>
+                <col className="w-12" />
+                <col />
+                <col className="w-[20%]" />
+                <col className="w-[16%]" />
+                <col className="w-[12%]" />
+                <col className="w-[140px]" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <CheckCell
+                    head
+                    label="Select all"
+                    checked={all}
+                    indeterminate={selected.size > 0 && !all}
+                    onChange={(on) => setPicked(new Set(on ? rows.map((r) => r.id) : []))}
+                  />
+                  <Th>Number</Th>
+                  <Th>Ghana Card</Th>
+                  <Th>Activated</Th>
+                  <Th align="right">Calls a day</Th>
+                  <Th sorted>Risk</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((r) => {
+                  const on = selected.has(r.id);
+                  return (
+                    <tr key={r.id} onClick={() => toggle(r.id, !on)} className={rowClass(on)}>
+                      <CheckCell label={`Select ${r.msisdn}`} checked={on} onChange={(v) => toggle(r.id, v)} />
+                      <Td>{localMsisdn(r.msisdn)}</Td>
+                      <Td>{r.ghana_card.replace("…", "***")}</Td>
+                      <Td>{activated(r)}</Td>
+                      <Td align="right">{r.calls_per_day.toLocaleString("en-GB")}</Td>
+                      <Td clip={false}>
                         <RiskScore score={r.risk_score} />
-                      </td>
+                      </Td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-caption text-text-secondary">
-              Showing {rows.length} of {data.total} · sorted by risk
-            </p>
-          </>
+                  );
+                })}
+              </tbody>
+            </DataTable>
+          </div>
         )}
       </PageBody>
 
-      {data && selected.size > 0 && (
-        <div role="toolbar" aria-label="Bulk actions" className="fixed bottom-16 left-[calc(50%+150px)] z-30 flex w-[720px] -translate-x-1/2 items-center gap-3 rounded-xl bg-brand-ink px-4 py-3 shadow-lg">
-          <span className="flex-1 text-label-m text-text-inverse">{selected.size} selected</span>
-          <Button variant="secondary" size="md" onClick={() => setWatching(true)} iconLeft={<Icon name="app/icon-eye-primary-18" size={18} />}>
-            Add to watchlist
-          </Button>
-          <Button size="md" loading={adding} onClick={addToCase} iconLeft={<Icon name="app/icon-folder-white-18" size={18} />}>
-            Add to {data.case_id}
-          </Button>
-        </div>
-      )}
       {watching && data && (
-        <WatchModal title={`Watch ${selected.size} numbers`} subtitle={`From ${data.file_name} · ${data.case_id}`} entityIds={Array.from(selected)} caseId={data.case_id} onClose={() => setWatching(false)} />
+        <WatchModal
+          title={`Watch ${selected.size} numbers`}
+          subtitle={`From ${data.file_name} · ${data.case_id}`}
+          entityIds={Array.from(selected)}
+          caseId={data.case_id}
+          onClose={() => setWatching(false)}
+        />
       )}
     </>
   );

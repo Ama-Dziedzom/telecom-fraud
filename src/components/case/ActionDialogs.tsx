@@ -1,14 +1,11 @@
 "use client";
 
 import { RequestError } from "@/components/auth/RequestError";
-import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { CheckCard, Checkbox, OptionCard } from "@/components/ui/Choice";
-import { KeyValueList } from "@/components/ui/Drawer";
 import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
-import { Segmented } from "@/components/ui/Segmented";
 import { FieldLabel, Select, TextArea, TextField } from "@/components/ui/TextField";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
@@ -17,8 +14,9 @@ import { fraudTypeLabel } from "@/lib/api/fd";
 import { roleLabel } from "@/lib/auth/api";
 import { cn } from "@/lib/cn";
 import { formatClock, formatMoney, now as appNow } from "@/lib/time";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useSWRConfig } from "swr";
+import { Chips, DetailRows, StatTile, firstName, localMsisdn, table } from "./parts";
 
 /** Busy/error state + refresh the case afterwards, the same for every dialog. */
 function useCaseSubmit(caseId: string) {
@@ -42,40 +40,12 @@ function useCaseSubmit(caseId: string) {
   return { busy, failure, run };
 }
 
-function Chips<T extends string>({ value, onChange, options, tone }: { value: T; onChange: (v: T) => void; options: Array<[T, string]>; tone?: (v: T) => "critical" | "brand" }) {
-  return (
-    <div className="flex flex-wrap gap-2" role="radiogroup">
-      {options.map(([id, label]) => {
-        const on = id === value;
-        const t = tone?.(id) ?? "brand";
-        return (
-          <button
-            key={id}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            onClick={() => onChange(id)}
-            className={cn(
-              "h-9 rounded-full border px-3.5 text-label-m",
-              on && t === "brand" && "border-brand-primary bg-brand-primary text-text-inverse",
-              on && t === "critical" && "border-critical-fg bg-critical-bg text-critical-fg",
-              !on && "border-border-default bg-surface-base text-text-primary hover:bg-surface-raised",
-            )}
-          >
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 // ─── D7 · Log a call with the subscriber ──────────────────────────────────
 
 const OUTCOMES: Array<["reached" | "no_answer" | "wrong_number" | "call_back_later", string]> = [
   ["reached", "Reached"],
   ["no_answer", "No answer"],
-  ["wrong_number", "Wrong number"],
+  ["wrong_number", "Wrong person"],
   ["call_back_later", "Call back later"],
 ];
 
@@ -97,12 +67,11 @@ export function CallLogModal({ detail, onClose }: { detail: CaseDetail; onClose:
   const spoken = contact?.language?.split(/,\s*/)[0];
   const [language, setLanguage] = useState(LANGUAGES.includes(spoken ?? "") ? spoken! : "English");
   const [outcome, setOutcome] = useState<(typeof OUTCOMES)[number][0]>("reached");
-  const first = detail.subject.name.split(" ")[0];
-  const transfers = detail.what_happened.find((s) => s.kind === "payments_out")?.label.match(/\d+/)?.[0] ?? "";
+  const transfers = detail.what_happened.find((s) => s.kind === "payments_out")?.label.match(/\d+/)?.[0];
   const questions = [
-    { id: "asked_for_new_sim", text: "Did they request the SIM swap?" },
-    { id: "made_transfers", text: `Do they recognise the ${transfers} transfers?`.replace("  ", " ") },
-    { id: "asked_for_pin", text: "Did anyone ask for their PIN or ID recently?" },
+    { id: "asked_for_new_sim", text: "Did they ask for the SIM swap?" },
+    { id: "made_transfers", text: transfers ? `Do they recognise the ${transfers} transfers?` : "Do they recognise the transfers?" },
+    { id: "asked_for_pin", text: "Has anyone asked for their PIN or ID recently?" },
   ];
   const [answers, setAnswers] = useState<Array<{ checked: boolean; answer: Answer | null }>>(questions.map(() => ({ checked: false, answer: null })));
   const [summary, setSummary] = useState("");
@@ -121,7 +90,7 @@ export function CallLogModal({ detail, onClose }: { detail: CaseDetail; onClose:
       });
     });
     if (ok) {
-      toast({ tone: "success", title: "Call logged", body: outcome === "reached" ? `It’s on the timeline. Next: request a reversal.` : "It’s on the timeline." });
+      toast({ tone: "success", title: "Call logged", body: outcome === "reached" ? "It’s on the timeline. Next: request a reversal." : "It’s on the timeline." });
       onClose();
     }
   };
@@ -130,9 +99,7 @@ export function CallLogModal({ detail, onClose }: { detail: CaseDetail; onClose:
     <Modal
       open
       onClose={onClose}
-      width={620}
-      icon="app/icon-phone-brand-22"
-      tone="brand"
+      width={560}
       title="Log a call"
       description={`${detail.id} · ${detail.subject.name} · ${formatClock(appNow())}`}
       actions={
@@ -146,10 +113,10 @@ export function CallLogModal({ detail, onClose }: { detail: CaseDetail; onClose:
         </>
       }
     >
-      <div className="flex gap-4">
-        <Select label="Number called" value={number} onChange={(e) => setNumber(e.target.value as typeof number)} iconLeft={<Icon name="app/icon-phone-16" size={16} />}>
+      <div className="flex gap-3">
+        <Select label="Number called" value={number} onChange={(e) => setNumber(e.target.value as typeof number)}>
           {alt && <option value="alternate">{alt} · alternate</option>}
-          <option value="registered">{contact?.registered ?? detail.subject.msisdn} · registered (compromised)</option>
+          <option value="registered">{localMsisdn(contact?.registered ?? detail.subject.msisdn)} · registered</option>
         </Select>
         <Select label="Language" value={language} onChange={(e) => setLanguage(e.target.value)}>
           {LANGUAGES.map((l) => (
@@ -159,52 +126,50 @@ export function CallLogModal({ detail, onClose }: { detail: CaseDetail; onClose:
       </div>
       <div className="flex flex-col gap-2">
         <FieldLabel>Outcome</FieldLabel>
-        <Chips value={outcome} onChange={setOutcome} options={OUTCOMES} />
+        <Chips label="Outcome" value={outcome} onChange={setOutcome} options={OUTCOMES} />
       </div>
       {outcome === "reached" && (
         <div className="flex flex-col gap-2">
-          <FieldLabel>Key answers</FieldLabel>
+          <FieldLabel>What they said</FieldLabel>
           {questions.map((q, i) => (
-            <div key={q.id} className="flex flex-col gap-1.5 rounded-[10px]">
-              <CheckCard
-                checked={answers[i].checked}
-                onChange={(e) => setAnswers((a) => a.map((x, j) => (j === i ? { ...x, checked: e.target.checked } : x)))}
-                title={q.text}
-                description={
-                  answers[i].checked ? (
-                    <span role="radiogroup" aria-label={`Answer: ${q.text}`} className="flex gap-1.5" onClick={(e) => e.preventDefault()}>
-                      {ANSWERS.map(([id, label]) => (
-                        <button
-                          key={id}
-                          type="button"
-                          role="radio"
-                          aria-checked={answers[i].answer === id}
-                          onClick={() => setAnswers((a) => a.map((x, j) => (j === i ? { ...x, answer: id } : x)))}
-                          className={cn(
-                            "h-7 rounded-full border px-2.5 text-label-s",
-                            answers[i].answer === id ? "border-brand-primary bg-brand-primary text-text-inverse" : "border-border-default bg-surface-base text-text-primary",
-                          )}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </span>
-                  ) : (
-                    "Tick when asked"
-                  )
-                }
-              />
-            </div>
+            <CheckCard
+              key={q.id}
+              checked={answers[i].checked}
+              onChange={(e) => setAnswers((a) => a.map((x, j) => (j === i ? { ...x, checked: e.target.checked } : x)))}
+              title={q.text}
+              description={
+                answers[i].checked ? (
+                  <span role="radiogroup" aria-label={`Answer: ${q.text}`} className="mt-1 flex gap-1.5" onClick={(e) => e.preventDefault()}>
+                    {ANSWERS.map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={answers[i].answer === id}
+                        onClick={() => setAnswers((a) => a.map((x, j) => (j === i ? { ...x, answer: id } : x)))}
+                        className={cn(
+                          "h-7 rounded-lg border px-2.5 text-label-s",
+                          answers[i].answer === id ? "border-brand-primary-subtle-hover bg-surface-base text-text-brand" : "border-border-default bg-surface-base text-text-primary",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </span>
+                ) : (
+                  "Tick when asked"
+                )
+              }
+            />
           ))}
         </div>
       )}
       <TextArea
         label="Summary"
-        required
-        rows={2}
+        rows={3}
         value={summary}
         onChange={(e) => setSummary(e.target.value)}
-        placeholder={`What did ${first} say?`}
+        placeholder={`What did ${firstName(detail.subject.name)} say?`}
         error={tried && !summary.trim() ? "Add a short summary: it goes on the case record." : undefined}
       />
       <RequestError error={failure} />
@@ -215,9 +180,9 @@ export function CallLogModal({ detail, onClose }: { detail: CaseDetail; onClose:
 // ─── D8 · Request reversal from MoMo ops ──────────────────────────────────
 
 const WHERE: Record<string, { label: (t: Transaction) => string; tone: "medium" | "critical" | "success"; recoverable: boolean }> = {
-  agent_holds: { label: () => "Cash-out · agent holds it", tone: "medium", recoverable: true },
+  agent_holds: { label: () => "Cashed out · agent holds it", tone: "medium", recoverable: true },
   cashed_out: { label: (t) => `Cashed out ${formatClock(Date.parse(t.at) + 12 * 60_000)}`, tone: "critical", recoverable: false },
-  in_wallet: { label: () => "Still in wallet", tone: "success", recoverable: true },
+  in_wallet: { label: () => "Still in the wallet", tone: "success", recoverable: true },
 };
 
 export function ReversalModal({ detail, preselect, onClose }: { detail: CaseDetail; preselect?: Transaction[]; onClose: () => void }) {
@@ -236,6 +201,7 @@ export function ReversalModal({ detail, preselect, onClose }: { detail: CaseDeta
   const likely = requested.filter((t) => t.where_now === "in_wallet");
   const gone = rows.filter((t) => t.where_now === "cashed_out");
   const all = rows.length > 0 && requested.length === rows.length;
+  const wallets = new Set(likely.map((t) => t.counterparty)).size;
 
   const toggle = (id: string, on: boolean) => {
     const next = new Set(chosen);
@@ -260,27 +226,25 @@ export function ReversalModal({ detail, preselect, onClose }: { detail: CaseDeta
     <Modal
       open
       onClose={onClose}
-      width={640}
-      icon="app/icon-refresh-brand-22"
-      tone="brand"
+      width={800}
       title="Request reversal"
-      description="Goes to MoMo operations · they reply within 2 hours on working days"
+      description="Goes to MoMo operations. They reply within 2 hours on working days."
       actions={
         <>
           <Button variant="secondary" size="md" onClick={onClose}>
             Cancel
           </Button>
-          <Button size="md" onClick={send} loading={busy} disabled={!requested.length} iconLeft={<Icon name="app/icon-send-white-18" size={18} />}>
+          <Button size="md" onClick={send} loading={busy} disabled={!requested.length}>
             Send request · {formatMoney(sum(requested), "GHS")}
           </Button>
         </>
       }
     >
-      <div className="overflow-hidden rounded-xl border border-border-subtle">
-        <table className="w-full text-left">
-          <thead className="border-b border-border-subtle bg-surface-raised">
-            <tr className="text-overline text-text-tertiary uppercase">
-              <th className="w-11 py-2.5 pl-4">
+      <div className={table.wrap}>
+        <table className="w-full">
+          <thead>
+            <tr className={table.head}>
+              <th className="w-12 pl-4">
                 <Checkbox
                   label="Select all"
                   hideLabel
@@ -289,50 +253,41 @@ export function ReversalModal({ detail, preselect, onClose }: { detail: CaseDeta
                   onChange={(e) => setPicked(new Set(e.target.checked ? rows.map((t) => t.id) : []))}
                 />
               </th>
-              <th className="py-2.5 font-bold">Time</th>
-              <th className="py-2.5 font-bold">To</th>
-              <th className="py-2.5 font-bold">Where the money is</th>
-              <th className="py-2.5 pr-4 text-right font-bold">GHS</th>
+              <th className="w-[84px] font-normal">Time</th>
+              <th className="font-normal">To</th>
+              <th className="font-normal">Where the money is</th>
+              <th className="pr-4 text-right font-normal">Amount</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((t) => {
               const where = WHERE[t.where_now ?? "in_wallet"] ?? WHERE.in_wallet;
+              const on = chosen.has(t.id);
               return (
-                <tr key={t.id} className={cn("border-b border-border-subtle last:border-b-0", chosen.has(t.id) && "bg-brand-primary-subtle/50")}>
-                  <td className="py-2.5 pl-4">
-                    <Checkbox label={`Select ${t.id}`} hideLabel checked={chosen.has(t.id)} onChange={(e) => toggle(t.id, e.target.checked)} />
+                <tr key={t.id} className={cn(table.row, "text-body-s text-text-primary", on && "bg-brand-primary-subtle-hover hover:bg-brand-primary-subtle-hover")}>
+                  <td className="pl-4">
+                    <Checkbox label={`Select ${t.id}`} hideLabel checked={on} onChange={(e) => toggle(t.id, e.target.checked)} />
                   </td>
-                  <td className="py-2.5 font-mono text-mono-s text-text-primary">{formatClock(t.at)}</td>
-                  <td className="py-2.5 font-mono text-mono-m text-text-primary">{t.counterparty}</td>
-                  <td className="py-2.5">
+                  <td>{formatClock(t.at)}</td>
+                  <td>{t.counterparty}</td>
+                  <td>
                     <Badge label={where.label(t)} tone={where.tone} />
                   </td>
-                  <td className="py-2.5 pr-4 text-right font-mono text-mono-m text-text-primary">
-                    -{(t.amount.amount_minor / 100).toLocaleString("en-GB", { minimumFractionDigits: 2 })}
-                  </td>
+                  <td className="pr-4 text-right tabular-nums">{formatMoney(t.amount.amount_minor, t.amount.currency)}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      <div className="flex rounded-xl bg-surface-sunken px-4 py-3">
-        {[
-          ["Requested", formatMoney(sum(requested), "GHS"), "text-text-primary"],
-          ["Likely recoverable", `≈ ${formatMoney(sum(likely), "GHS")}`, "text-success-fg"],
-          ["Already cashed out", formatMoney(sum(gone), "GHS"), "text-critical-fg"],
-        ].map(([k, v, tone]) => (
-          <div key={k} className="flex flex-1 flex-col gap-0.5">
-            <span className="text-caption text-text-secondary">{k}</span>
-            <span className={cn("text-h3", tone)}>{v}</span>
-          </div>
-        ))}
+      <div className="flex gap-3">
+        <StatTile label="Requested" value={formatMoney(sum(requested), "GHS")} sub={`${requested.length} ${requested.length === 1 ? "transfer" : "transfers"}`} />
+        <StatTile label="Likely recoverable" value={formatMoney(sum(likely), "GHS")} sub={`Still in ${wallets} ${wallets === 1 ? "wallet" : "wallets"}`} />
+        <StatTile label="Already cashed out" value={formatMoney(sum(gone), "GHS")} sub="Not requested" />
       </div>
       <TextArea
         label="Note for MoMo ops"
-        required
-        rows={2}
+        rows={3}
         value={note}
         onChange={(e) => setNote(e.target.value)}
         placeholder="Why these payments should come back"
@@ -356,7 +311,7 @@ export function EscalateModal({ detail, prefill, onClose }: { detail: CaseDetail
   const [question, setQuestion] = useState(prefill ?? "");
   const [include, setInclude] = useState(true);
   const [tried, setTried] = useState(false);
-  const first = supervisor?.name.split(" ")[0] ?? "your supervisor";
+  const first = firstName(supervisor?.name) || "your supervisor";
   const tooShort = question.trim().length < 20;
   const items = (evidence?.data.length ?? 0) + (detail.counts?.transactions ? 1 : 0);
 
@@ -376,8 +331,8 @@ export function EscalateModal({ detail, prefill, onClose }: { detail: CaseDetail
     if (ok) {
       toast({
         tone: "success",
-        title: `Escalated to ${to === "supervisor" ? supervisor?.name ?? "your supervisor" : to === "legal" ? "Legal & compliance" : "MoMo operations"}`,
-        body: "They’ve been notified in-app and by email.",
+        title: `Escalated to ${to === "supervisor" ? (supervisor?.name ?? "your supervisor") : to === "legal" ? "Legal and compliance" : "MoMo operations"}`,
+        body: "They’ve been notified in the app and by email.",
       });
       onClose();
     }
@@ -387,9 +342,7 @@ export function EscalateModal({ detail, prefill, onClose }: { detail: CaseDetail
     <Modal
       open
       onClose={onClose}
-      width={600}
-      icon="app/icon-escalate-brand-22"
-      tone="brand"
+      width={560}
       title={`Escalate ${detail.id}`}
       description="The case stays with you."
       actions={
@@ -397,7 +350,7 @@ export function EscalateModal({ detail, prefill, onClose }: { detail: CaseDetail
           <Button variant="secondary" size="md" onClick={onClose}>
             Cancel
           </Button>
-          <Button size="md" onClick={send} loading={busy} iconLeft={<Icon name="app/icon-escalate-white-18" size={18} />}>
+          <Button size="md" onClick={send} loading={busy}>
             Escalate
           </Button>
         </>
@@ -405,22 +358,27 @@ export function EscalateModal({ detail, prefill, onClose }: { detail: CaseDetail
     >
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-2">
-          <FieldLabel required>Escalate to</FieldLabel>
+          <FieldLabel>Escalate to</FieldLabel>
         </legend>
         <OptionCard
           name="to"
           checked={to === "supervisor"}
           onChange={() => setTo("supervisor")}
           title="Fraud supervisor"
-          description={supervisor ? `${supervisor.name} · ${supervisor.on_shift ? "on shift" : "off shift"}${supervisor.typical_reply_minutes ? ` · usually replies in ~${supervisor.typical_reply_minutes} min` : ""}` : "On shift now"}
+          description={
+            supervisor
+              ? `${supervisor.name} · ${supervisor.on_shift ? "on shift" : "off shift"}${supervisor.typical_reply_minutes ? ` · usually replies in ${supervisor.typical_reply_minutes} min` : ""}`
+              : "On shift now"
+          }
           indent
         />
-        <OptionCard name="to" checked={to === "legal"} onChange={() => setTo("legal")} title="Legal & compliance" description="For police referrals or regulator notices" indent />
-        <OptionCard name="to" checked={to === "momo_ops"} onChange={() => setTo("momo_ops")} title="MoMo operations" description="For reversals and agent investigations" indent />
+        <OptionCard name="to" checked={to === "legal"} onChange={() => setTo("legal")} title="Legal and compliance" description="Police referrals and regulator notices" indent />
+        <OptionCard name="to" checked={to === "momo_ops"} onChange={() => setTo("momo_ops")} title="MoMo operations" description="Reversals and agent investigations" indent />
       </fieldset>
       <div className="flex flex-col gap-2">
-        <FieldLabel required>Priority</FieldLabel>
+        <FieldLabel>Priority</FieldLabel>
         <Chips
+          label="Priority"
           value={priority}
           onChange={setPriority}
           options={[
@@ -428,25 +386,29 @@ export function EscalateModal({ detail, prefill, onClose }: { detail: CaseDetail
             ["high", "High"],
             ["normal", "Normal"],
           ]}
-          tone={(v) => (v === "urgent" ? "critical" : "brand")}
         />
       </div>
       <TextArea
         label="Why are you escalating?"
-        required
         rows={3}
         value={question}
         onChange={(e) => setQuestion(e.target.value)}
-        placeholder="e.g. Agent AG-2231 may be involved, need approval to suspend the agent."
-        error={tried && tooShort ? `Give ${first} enough to act without re-reading the case (20+ characters).` : undefined}
+        placeholder="e.g. Agent AG-2231 may be involved; need approval to suspend the agent"
+        error={tried && tooShort ? `Give ${first} enough to act without re-reading the case (20+ characters)` : undefined}
       />
-      <Checkbox label={`Include evidence and transactions (${items} items)`} checked={include} onChange={(e) => setInclude(e.target.checked)} />
+      <CheckCard checked={include} onChange={(e) => setInclude(e.target.checked)} title="Include evidence and transactions" description={`${items} ${items === 1 ? "item" : "items"}`} />
       <RequestError error={failure} />
     </Modal>
   );
 }
 
 // ─── D14 · Request an agent suspension ────────────────────────────────────
+
+const DURATION: Array<["1" | "7" | "30", string]> = [
+  ["1", "24 hours"],
+  ["7", "7 days"],
+  ["30", "30 days"],
+];
 
 export function AgentSuspensionModal({ detail, agentCode, onClose }: { detail: CaseDetail; agentCode: string; onClose: () => void }) {
   const toast = useToast();
@@ -457,7 +419,8 @@ export function AgentSuspensionModal({ detail, agentCode, onClose }: { detail: C
   const [duration, setDuration] = useState<"1" | "7" | "30">("7");
   const [why, setWhy] = useState("");
   const [tried, setTried] = useState(false);
-  const first = supervisor?.name.split(" ")[0] ?? "your supervisor";
+  const first = firstName(supervisor?.name) || "your supervisor";
+  const span = DURATION.find(([d]) => d === duration)?.[1] ?? `${duration} days`;
 
   const send = async () => {
     setTried(true);
@@ -469,12 +432,12 @@ export function AgentSuspensionModal({ detail, agentCode, onClose }: { detail: C
         to_user_id: supervisor?.id,
         kind: "agent_suspension",
         priority: "urgent",
-        question: `Suspend agent ${agentCode} for ${duration === "1" ? "24 hours" : `${duration} days`}: ${why}`,
+        question: `Suspend agent ${agentCode} for ${span}: ${why}`,
         include_evidence: true,
       });
     });
     if (ok) {
-      toast({ tone: "success", title: `Sent to ${first}`, body: `Suspension of ${agentCode} for ${duration === "1" ? "24 hours" : `${duration} days`} is waiting for approval.` });
+      toast({ tone: "success", title: `Sent to ${first}`, body: `Suspension of ${agentCode} for ${span} is waiting for approval.` });
       onClose();
     }
   };
@@ -483,48 +446,33 @@ export function AgentSuspensionModal({ detail, agentCode, onClose }: { detail: C
     <Modal
       open
       onClose={onClose}
-      width={540}
-      icon="app/icon-shield-brand-22"
-      tone="brand"
-      title={`Request suspension of agent ${agentCode}`}
+      title={`Suspend agent ${agentCode}`}
       description={`Your supervisor approves agent suspensions. ${first} is notified now.`}
       actions={
         <>
           <Button variant="secondary" size="md" onClick={onClose}>
             Cancel
           </Button>
-          <Button size="md" onClick={send} loading={busy} iconLeft={<Icon name="app/icon-send-white-18" size={18} />}>
+          <Button size="md" onClick={send} loading={busy}>
             Send to {first}
           </Button>
         </>
       }
     >
-      <KeyValueList
+      <DetailRows
         rows={[
           ["Swaps today", agent ? `${agent.swaps_today ?? agent.sim_swaps_by_day.at(-1)?.count ?? 0}${agent.swaps_became_fraud ? ` · ${agent.swaps_became_fraud} became fraud` : ""}` : "…"],
           ["ID mismatches", agent?.id_mismatches ?? "…"],
-          ["Customers served (30d)", agent?.customers_30d ?? "…"],
+          ["Customers served (30 days)", agent?.customers_30d ?? "…"],
         ]}
       />
       <div className="flex flex-col gap-2">
         <FieldLabel>Suggested duration</FieldLabel>
-        <div className="w-fit">
-          <Segmented
-            label="Suggested duration"
-            value={duration}
-            onChange={setDuration}
-            options={[
-              { id: "1", label: "24 hours" },
-              { id: "7", label: "7 days" },
-              { id: "30", label: "30 days" },
-            ]}
-          />
-        </div>
+        <Chips label="Suggested duration" value={duration} onChange={setDuration} options={DURATION} />
       </div>
       <TextArea
         label="Why"
-        required
-        rows={2}
+        rows={3}
         value={why}
         onChange={(e) => setWhy(e.target.value)}
         placeholder="What makes this agent a risk?"
@@ -537,7 +485,7 @@ export function AgentSuspensionModal({ detail, agentCode, onClose }: { detail: C
 
 // ─── D15 · Hand the case to a colleague ───────────────────────────────────
 
-/** “Agent cash-out, SIM swap to MoMo”. */
+/** “SIM swap to MoMo, Agent cash-out”. */
 const skillsOf = (p: Colleague) => p.skills.map(fraudTypeLabel).join(", ");
 
 export function HandToColleagueModal({ detail, onClose }: { detail: CaseDetail; onClose: () => void }) {
@@ -545,13 +493,15 @@ export function HandToColleagueModal({ detail, onClose }: { detail: CaseDetail; 
   const { data } = useColleagues();
   const { busy, failure, run } = useCaseSubmit(detail.id);
   const [query, setQuery] = useState("");
+  const full = (p: Colleague) => (p.open_cases ?? 0) >= (p.case_limit ?? Infinity);
+  const available = (p: Colleague) => p.on_shift && p.status !== "on_leave" && !full(p);
   const analysts = (data?.data ?? [])
     .filter((p) => p.open_cases !== undefined)
     .filter((p) => !query || `${p.name} ${skillsOf(p)}`.toLowerCase().includes(query.toLowerCase()))
-    // Who has capacity now: on shift first, then fewest open cases.
-    .sort((a, b) => Number(b.on_shift) - Number(a.on_shift) || (a.open_cases ?? 0) - (b.open_cases ?? 0));
+    // Who has capacity now: available first, then fewest open cases.
+    .sort((a, b) => Number(available(b)) - Number(available(a)) || (a.open_cases ?? 0) - (b.open_cases ?? 0));
   const [to, setTo] = useState<string | null>(null);
-  const chosen = analysts.find((p) => p.id === (to ?? analysts[0]?.id));
+  const chosen = analysts.find((p) => p.id === (to ?? analysts.find(available)?.id));
   const [note, setNote] = useState("");
   const [tried, setTried] = useState(false);
 
@@ -562,25 +512,19 @@ export function HandToColleagueModal({ detail, onClose }: { detail: CaseDetail; 
       await apiFetch("POST", `/cases/${detail.id}/handover`, { to_user_id: chosen.id, note });
     });
     if (ok) {
-      toast({ tone: "success", title: `Offered to ${chosen.name.split(" ")[0]}`, body: "The case stays with you until they accept." });
+      toast({ tone: "success", title: `Offered to ${firstName(chosen.name)}`, body: "The case stays with you until they accept." });
       onClose();
     }
   };
 
-  const capacity = (p: (typeof analysts)[number]): ReactNode => {
-    if (p.status === "on_leave") return <Badge label="On leave" tone="neutral" />;
-    if (!p.on_shift) return <Badge label="Off shift" tone="neutral" />;
-    const full = (p.open_cases ?? 0) >= (p.case_limit ?? Infinity);
-    return <span className={cn("text-caption", full ? "text-critical-fg" : "text-text-secondary")}>{p.open_cases} open{full ? " (at limit)" : ""}</span>;
-  };
+  const status = (p: Colleague) =>
+    p.status === "on_leave" ? "on leave" : !p.on_shift ? "off shift" : full(p) ? "at their limit" : `on shift${p.shift ? ` until ${p.shift.split("-")[1]}` : ""}`;
 
   return (
     <Modal
       open
       onClose={onClose}
       width={560}
-      icon="app/icon-users-brand-22"
-      tone="brand"
       title={`Hand ${detail.id} to a colleague`}
       description="Sorted by who has capacity now"
       actions={
@@ -588,8 +532,8 @@ export function HandToColleagueModal({ detail, onClose }: { detail: CaseDetail; 
           <Button variant="secondary" size="md" onClick={onClose}>
             Cancel
           </Button>
-          <Button size="md" onClick={send} loading={busy} disabled={!chosen} iconLeft={<Icon name="app/icon-users-white-18" size={18} />}>
-            Hand to {chosen?.name.split(" ")[0] ?? "…"}
+          <Button size="md" onClick={send} loading={busy} disabled={!chosen}>
+            Hand to {firstName(chosen?.name) || "…"}
           </Button>
         </>
       }
@@ -598,38 +542,37 @@ export function HandToColleagueModal({ detail, onClose }: { detail: CaseDetail; 
         size="md"
         type="search"
         aria-label="Search analysts"
-        placeholder="Search analysts…"
+        placeholder="Search analysts"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        iconLeft={<Icon name="app/icon-search-18" size={18} />}
+        iconLeft={<Icon name="app/icon-search-tertiary-16" size={16} />}
       />
-      <div role="radiogroup" className="flex flex-col gap-2">
+      <div role="radiogroup" aria-label="Colleague" className="flex flex-col gap-2">
         {analysts.map((p) => {
-          const full = (p.open_cases ?? 0) >= (p.case_limit ?? Infinity);
+          const ok = available(p);
           const on = chosen?.id === p.id;
           return (
             <label
               key={p.id}
               className={cn(
-                "flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3",
-                on ? "border-[1.5px] border-brand-primary bg-brand-primary-subtle" : "border-border-default",
-                (!p.on_shift || full) && !on && "opacity-70",
+                "flex items-start gap-2.5 rounded-xl border px-4 py-3.5",
+                on ? "border-[1.5px] border-brand-primary bg-brand-primary-subtle" : "border-border-default bg-surface-base",
+                ok ? "cursor-pointer" : "cursor-not-allowed bg-surface-raised opacity-60",
               )}
             >
               <input
                 type="radio"
                 name="colleague"
                 checked={on}
-                disabled={!p.on_shift || full}
+                disabled={!ok}
                 onChange={() => setTo(p.id)}
-                className="size-[18px] shrink-0 cursor-pointer appearance-none rounded-full border-[1.25px] border-border-strong bg-surface-base checked:border-[5px] checked:border-brand-primary disabled:cursor-not-allowed"
+                className="mt-px size-[18px] shrink-0 cursor-pointer appearance-none rounded-full border-[1.25px] border-border-strong bg-surface-base checked:border-[5px] checked:border-brand-primary disabled:cursor-not-allowed"
               />
-              <Avatar initials={p.initials} size={32} />
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className={cn("text-label-m", p.on_shift ? "text-text-primary" : "text-text-secondary")}>{p.name}</span>
-                <span className="truncate text-caption text-text-secondary">{[roleLabel(p.role), skillsOf(p), p.shift].filter(Boolean).join(" · ")}</span>
+              <span className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className="text-body-m text-text-primary">{p.name}</span>
+                <span className="truncate text-body-s text-text-secondary">{[roleLabel(p.role), skillsOf(p), status(p)].filter(Boolean).join(" · ")}</span>
               </span>
-              {capacity(p)}
+              <Badge label={p.on_shift ? `${p.open_cases} open` : p.status === "on_leave" ? "On leave" : "Off shift"} tone="brand" />
             </label>
           );
         })}
@@ -637,14 +580,16 @@ export function HandToColleagueModal({ detail, onClose }: { detail: CaseDetail; 
       <div className="flex flex-col gap-1.5">
         <TextArea
           label="Handover note"
-          required
-          rows={2}
+          rows={3}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Where things stand and what’s next"
           error={tried && !note.trim() ? "Tell them where things stand." : undefined}
         />
-        <p className="text-caption text-text-secondary">They’ll see this at the top of the case.</p>
+        <p className="flex items-center gap-1.5 text-caption text-text-secondary">
+          <Icon name="app/icon-info-secondary-16" size={14} />
+          They’ll see this at the top of the case
+        </p>
       </div>
       <RequestError error={failure} />
     </Modal>

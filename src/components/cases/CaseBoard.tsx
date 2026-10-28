@@ -1,11 +1,10 @@
 "use client";
 
 import { Skeleton } from "@/components/app/Card";
-import { Avatar } from "@/components/ui/Avatar";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
-import { Icon } from "@/components/ui/Icon";
-import { useApi, type CaseSummary, type Money, type PersonRef, type SubscriberRef } from "@/lib/api/fd";
-import { formatClock, formatMoney, TZ, useNow } from "@/lib/time";
+import { useApi, type CaseSummary, type PersonRef, type SubscriberRef } from "@/lib/api/fd";
+import { formatClock, formatMoney, formatSpan, TZ, useNow } from "@/lib/time";
+import { localMsisdn } from "./CaseTable";
 import Link from "next/link";
 import { useMemo } from "react";
 
@@ -19,15 +18,29 @@ type BoardCase = Omit<CaseSummary, "stage" | "subscriber" | "region" | "sla_due_
   watch_days_left?: number;
   closed_at?: string;
 };
-type BoardProspect = { id: string; kind: "prospect"; title: string; owner: PersonRef; started_at: string; matches_count: number };
-type Stage = { stage: string; total: number; items: Array<BoardCase | BoardProspect> };
+type BoardProspect = {
+  id: string;
+  kind: "prospect";
+  title: string;
+  owner: PersonRef;
+  started_at: string;
+  matches_count: number;
+};
+type Stage = {
+  stage: string;
+  total: number;
+  items: Array<BoardCase | BoardProspect>;
+};
 
-const STAGE: Record<string, { label: string; icon: string; description: string }> = {
-  prospect: { label: "Prospect", icon: "app/icon-search-brand-20", description: "A hunch, no alert yet. Hunt before it becomes a loss." },
-  investigate: { label: "Investigate", icon: "app/icon-folder-high-16", description: "Gathering evidence and protecting money." },
-  decide: { label: "Decide", icon: "app/icon-check-square-medium-16", description: "Waiting on supervisor sign-off." },
-  monitor: { label: "Monitor", icon: "app/icon-activity-info-22", description: "Closed, but we watch for a repeat for 30-90 days." },
-  closed: { label: "Closed", icon: "app/icon-check-circle-success-22", description: "This week. Outcome final." },
+const STAGE: Record<string, { label: string; description: string }> = {
+  prospect: { label: "Prospect", description: "A hunch, no alert yet" },
+  investigate: {
+    label: "Investigate",
+    description: "Gathering evidence, protecting money",
+  },
+  decide: { label: "Decide", description: "Waiting on supervisor sign-off" },
+  monitor: { label: "Monitor", description: "Closed, watched for a repeat" },
+  closed: { label: "Closed", description: "This week · outcome final" },
 };
 /** The board has one column for Investigate and Act (protecting money is part of investigating). */
 const COLUMN: Record<string, string> = { act: "investigate" };
@@ -37,37 +50,88 @@ const dayOf = (t: number | string) => new Date(t).toLocaleDateString("en-CA", { 
 function dueText(iso: string, now: number) {
   if (dayOf(iso) === dayOf(now)) return formatClock(iso);
   if (dayOf(iso) === dayOf(now + 86_400_000)) return "tmrw";
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: TZ });
+  return new Date(iso).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: TZ,
+  });
 }
 /** “Today”, a weekday within the week, then “12 Oct”. */
 function closedText(iso: string, now: number) {
   if (dayOf(iso) === dayOf(now)) return "Today";
-  if (now - Date.parse(iso) < 6 * 86_400_000) return new Date(iso).toLocaleDateString("en-GB", { weekday: "short", timeZone: TZ });
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: TZ });
+  if (now - Date.parse(iso) < 6 * 86_400_000)
+    return new Date(iso).toLocaleDateString("en-GB", {
+      weekday: "short",
+      timeZone: TZ,
+    });
+  return new Date(iso).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: TZ,
+  });
 }
+/** “SLA 18m”, “SLA 1h 40m”, “SLA breached”. */
 function slaText(iso: string, now: number) {
   const left = Date.parse(iso) - now;
-  return `SLA ${Math.max(1, Math.round(left / 3_600_000))}${left > 86_400_000 ? "d" : "h"}`;
+  return left < 0 ? "SLA breached" : `SLA ${formatSpan(left).replace(/ 00m$/, "")}`;
+}
+/** “opened 2 days ago”. */
+function openedText(iso: string, now: number) {
+  const days = Math.floor((now - Date.parse(iso)) / 86_400_000);
+  return days < 1 ? "opened today" : days === 1 ? "opened yesterday" : `opened ${days} days ago`;
 }
 
-/** Badge and note under the title, by stage. */
-function cardFace(item: BoardCase | BoardProspect, now: number): { badge: string; tone: BadgeTone; owner: PersonRef | null; money: Money | null; note: string } {
+/** Badge and the meta line under the title, by stage (the app writes these; the API sends codes and numbers). */
+function cardFace(item: BoardCase | BoardProspect, now: number): { badge: string; tone: BadgeTone; meta: Array<string | null> } {
   if (item.kind === "prospect") {
-    return { badge: "Hunch", tone: "neutral", owner: item.owner, money: null, note: `${item.matches_count} ${item.matches_count === 1 ? "match" : "matches"} found` };
+    const found = item.matches_count ? `${item.matches_count} ${item.matches_count === 1 ? "match" : "matches"} found` : openedText(item.started_at, now);
+    return {
+      badge: "Hunch",
+      tone: "neutral",
+      meta: [item.owner.initials, found],
+    };
   }
-  const money = item.money_at_stake.amount_minor ? item.money_at_stake : null;
-  const base = { owner: item.assignee, money };
-  if (item.stage === "monitor") return { ...base, badge: "Watching", tone: "info", note: item.watch_days_left != null ? `${item.watch_days_left} days left` : "" };
-  if (item.stage === "closed") return { ...base, badge: "Closed", tone: "success", note: item.closed_at ? closedText(item.closed_at, now) : "" };
+  const who = item.assignee?.initials ?? null;
+  const money = item.money_at_stake.amount_minor ? formatMoney(item.money_at_stake.amount_minor, item.money_at_stake.currency) : null;
+  if (item.stage === "monitor")
+    return {
+      badge: "No repeats",
+      tone: "success",
+      meta: [who, item.watch_days_left != null ? `${item.watch_days_left} days left` : null],
+    };
+  if (item.stage === "closed")
+    return {
+      badge: "Closed",
+      tone: "success",
+      meta: [who, item.closed_at ? closedText(item.closed_at, now) : null],
+    };
   if (item.stage === "decide") {
-    const note = item.reviewer && item.decision_due_at ? `${item.reviewer.name.split(" ")[0]} · due ${dueText(item.decision_due_at, now)}` : item.sla_due_at ? slaText(item.sla_due_at, now) : "";
-    return { ...base, badge: "Pending", tone: "medium", note };
+    const due =
+      item.reviewer && item.decision_due_at
+        ? `${item.reviewer.name.split(" ")[0]}, due ${dueText(item.decision_due_at, now)}`
+        : item.sla_due_at
+          ? slaText(item.sla_due_at, now)
+          : null;
+    return { badge: "Pending", tone: "neutral", meta: [who, money, due] };
   }
-  return { ...base, badge: String(item.risk_score), tone: item.risk_score >= 90 ? "critical" : "high", note: item.sla_due_at ? slaText(item.sla_due_at, now) : "" };
+  const tone: BadgeTone = item.risk_score >= 90 ? "critical" : item.risk_score >= 70 ? "high" : "medium";
+  return {
+    badge: tone === "critical" ? "Critical" : tone === "high" ? "High" : "Medium",
+    tone,
+    meta: [who, money, item.sla_due_at ? slaText(item.sla_due_at, now) : null],
+  };
 }
 
-/** G2 · The stage board. TODO(api): moving a card (PATCH stage on drop) isn’t in 0.2. */
-export function CaseBoard() {
+const matches = (item: BoardCase | BoardProspect, q: string) => {
+  const s = q.trim().toLowerCase();
+  if (!s) return true;
+  const digits = s.replace(/\D/g, "");
+  const msisdn = item.kind !== "prospect" && item.subscriber ? localMsisdn(item.subscriber.msisdn).replace(/\D/g, "") : "";
+  return item.id.toLowerCase().includes(s) || item.title.toLowerCase().includes(s) || (!!digits && msisdn.includes(digits));
+};
+
+/** G2 · The stage board — one panel per stage, Case cards (1342:228523). TODO(api): moving a card (PATCH stage on drop) isn’t in 0.2. */
+export function CaseBoard({ q = "" }: { q?: string }) {
   const now = useNow();
   const { data, isLoading } = useApi<{ stages: Stage[] }>("/cases?group_by=stage");
   const columns = useMemo(() => {
@@ -75,19 +139,29 @@ export function CaseBoard() {
     for (const s of data?.stages ?? []) {
       const id = COLUMN[s.stage] ?? s.stage;
       const col = out.get(id);
-      out.set(id, col ? { stage: id, total: col.total + s.total, items: [...col.items, ...s.items] } : { ...s, stage: id });
+      out.set(
+        id,
+        col
+          ? {
+              stage: id,
+              total: col.total + s.total,
+              items: [...col.items, ...s.items],
+            }
+          : { ...s, stage: id },
+      );
     }
     return Array.from(out.values());
   }, [data]);
 
   if (isLoading || !data) {
     return (
-      <div className="grid grid-cols-5 gap-4" aria-busy>
+      <div className="grid grid-cols-5 items-start gap-4" aria-busy>
         {Array.from({ length: 5 }, (_, i) => (
-          <div key={i} className="flex flex-col gap-2.5">
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-[110px] w-full rounded-xl" />
-            <Skeleton className="h-[110px] w-full rounded-xl" />
+          <div key={i} className="flex flex-col gap-2 rounded-lg bg-surface-raised p-2.5">
+            <Skeleton className="m-1 h-4 w-24" />
+            <Skeleton className="m-1 h-3 w-36" />
+            <Skeleton className="h-[88px] w-full rounded-lg" />
+            <Skeleton className="h-[88px] w-full rounded-lg" />
           </div>
         ))}
       </div>
@@ -96,45 +170,46 @@ export function CaseBoard() {
 
   return (
     <div className="grid grid-cols-5 items-start gap-4">
-      {columns.map((s) => (
-        <section key={s.stage} aria-label={STAGE[s.stage]?.label} className="flex min-w-0 flex-col gap-2.5">
-          <header className="flex flex-col gap-1">
-            <h3 className="flex items-center gap-2 text-title text-text-primary">
-              <Icon name={STAGE[s.stage]?.icon ?? "app/icon-folder-high-16"} size={16} />
-              {s.stage === "monitor" ? (
-                <Link href="/cases/monitoring" className="rounded hover:underline">
-                  {STAGE[s.stage].label}
+      {columns.map((s) => {
+        const items = s.items.filter((i) => matches(i, q));
+        const more = q.trim() ? 0 : s.total - items.length;
+        const label = STAGE[s.stage]?.label ?? s.stage;
+        return (
+          <section key={s.stage} aria-label={label} className="flex min-w-0 flex-col gap-2 rounded-lg border border-border-subtle bg-surface-raised p-2.5">
+            <header className="flex flex-col gap-1 px-1 pt-1 pb-1">
+              <h3 className="flex items-center gap-2 text-label-s text-text-primary">
+                {s.stage === "monitor" ? (
+                  <Link href="/cases/monitoring" className="rounded hover:underline">
+                    {label}
+                  </Link>
+                ) : (
+                  label
+                )}
+                <Badge label={String(s.total)} tone="neutral" />
+              </h3>
+              <p className="text-caption text-text-secondary">{STAGE[s.stage]?.description}</p>
+            </header>
+            {items.map((item) => {
+              const face = cardFace(item, now);
+              return (
+                <Link
+                  key={item.id}
+                  href={item.kind === "prospect" ? `/prospect/${item.id}` : `/cases/${item.id}`}
+                  className="flex flex-col gap-1.5 rounded-lg border border-border-default bg-surface-base px-2.5 py-2.5 hover:border-border-strong"
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-mono-m text-text-primary">{item.id}</span>
+                    <Badge label={face.badge} tone={face.tone} />
+                  </span>
+                  <span className="text-body-s text-text-primary">{item.title.replace(/, /g, " · ")}</span>
+                  <span className="text-caption text-text-secondary">{face.meta.filter(Boolean).join(" · ")}</span>
                 </Link>
-              ) : (
-                (STAGE[s.stage]?.label ?? s.stage)
-              )}
-              <span className="rounded-full bg-surface-sunken px-1.5 text-caption font-medium text-text-tertiary">{s.total}</span>
-            </h3>
-            <p className="min-h-10 text-caption text-text-secondary">{STAGE[s.stage]?.description}</p>
-          </header>
-          {s.items.map((item) => {
-            const c = { id: item.id, title: item.title, ...cardFace(item, now) };
-            return (
-              <Link
-                key={c.id}
-                href={item.kind === "prospect" ? `/prospect/${c.id}` : `/cases/${c.id}`}
-                className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface-base px-3.5 py-3 hover:border-border-default hover:shadow-sm"
-              >
-                <span className="flex items-center gap-2">
-                  <span className="font-mono text-mono-s text-text-secondary">{c.id}</span>
-                  <Badge label={c.badge} tone={c.tone} />
-                </span>
-                <span className="text-label-m text-text-primary">{c.title}</span>
-                <span className="flex items-center gap-2 text-caption text-text-secondary">
-                  {c.owner && <Avatar initials={c.owner.initials} />}
-                  <span className="font-mono text-mono-s text-text-primary">{c.money ? formatMoney(c.money.amount_minor, c.money.currency) : "–"}</span>
-                  {c.note}
-                </span>
-              </Link>
-            );
-          })}
-        </section>
-      ))}
+              );
+            })}
+            {more > 0 && <p className="px-1 pb-1 text-caption text-text-secondary">{more} more</p>}
+          </section>
+        );
+      })}
     </div>
   );
 }

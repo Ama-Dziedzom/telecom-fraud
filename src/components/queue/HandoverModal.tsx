@@ -2,14 +2,12 @@
 
 import { RequestError } from "@/components/auth/RequestError";
 import { SeverityBadge, riskTone } from "@/components/app/indicators";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
-import { TextField } from "@/components/ui/TextField";
+import { Select, TextArea } from "@/components/ui/TextField";
 import { fraudTypeLabel, type CaseSummary } from "@/lib/api/fd";
 import type { User } from "@/lib/auth/api";
-import { shiftName, submitHandover, type HandoverChoice, type SubmittedHandover } from "@/lib/api/local";
+import { submitHandover, type HandoverChoice, type SubmittedHandover } from "@/lib/api/local";
 import { formatClock, now } from "@/lib/time";
 import { useState } from "react";
 
@@ -25,7 +23,7 @@ const SENT_AS: Record<Choice, HandoverChoice> = {
 
 const KEEP_LABELS: Record<Exclude<Choice, "hand">, string> = {
   keep_supervisor: "Keep: waiting on supervisor",
-  keep_tomorrow: "Keep: I’ll fix tomorrow",
+  keep_tomorrow: "Keep: finish tomorrow",
   keep_decision: "Keep: pending decision",
   keep: "Keep with me",
 };
@@ -38,13 +36,14 @@ function defaultChoice(c: CaseSummary): Choice {
   return "hand";
 }
 
-/** A5 · Hand over shift — one note and a choice per open case for the next shift (POST /handovers/shift). */
+/** A5 · Hand over shift — one choice per open case and a note for the next shift (POST /handovers/shift). */
 export function HandoverModal({
   open,
   onClose,
   cases,
   next,
   resolvedToday,
+  previous,
   onSubmitted,
 }: {
   open: boolean;
@@ -52,20 +51,27 @@ export function HandoverModal({
   cases: CaseSummary[];
   next: NonNullable<User["next_shift"]>;
   resolvedToday?: number;
+  /** Today’s handover, when editing it (A6 · Edit handover). */
+  previous?: SubmittedHandover | null;
   onSubmitted: (handover: SubmittedHandover) => void;
 }) {
   const [choices, setChoices] = useState<Record<string, Choice>>(() =>
-    Object.fromEntries(cases.map((c) => [c.id, defaultChoice(c)])),
+    Object.fromEntries(
+      cases.map((c) => {
+        // Records stored by older builds may lack `cases`.
+        const sent = previous?.cases?.find((x) => x.case_id === c.id)?.choice;
+        return [c.id, sent === "hand_over" ? "hand" : sent === "keep" ? "keep" : defaultChoice(c)];
+      }),
+    ),
   );
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(previous?.note ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
 
   const choiceFor = (c: CaseSummary) => choices[c.id] ?? defaultChoice(c);
   const handed = cases.filter((c) => choiceFor(c) === "hand");
   const first = next.user.name.split(" ")[0];
-  const startsAt = formatClock(next.starts_at);
-  const nextShift = shiftName(next.shift);
+  const startsAt = Number.isNaN(Date.parse(next.starts_at)) ? null : formatClock(next.starts_at);
 
   const submit = async () => {
     setSubmitting(true);
@@ -88,75 +94,66 @@ export function HandoverModal({
     }
   };
 
+  const meta = [
+    startsAt ? `${next.user.name} takes over at ${startsAt}` : `${next.user.name} takes over next`,
+    resolvedToday !== undefined && `${resolvedToday} resolved today`,
+    `${cases.length} open`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <Modal
       open={open}
       onClose={onClose}
-      width={720}
-      icon="app/icon-users-brand-22"
-      tone="brand"
+      width={560}
       title="Hand over your shift"
-      description={`${first} takes over at ${startsAt}. Handed-over cases move to their queue with your note.`}
+      description={meta}
       actions={
         <>
           <Button variant="secondary" size="md" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            size="md"
-            onClick={submit}
-            loading={submitting}
-            iconLeft={<Icon name="app/icon-users-white-18" size={18} />}
-          >
+          <Button size="md" onClick={submit} loading={submitting}>
             {handed.length ? `Hand over ${handed.length} ${handed.length === 1 ? "case" : "cases"}` : "Send handover note"}
           </Button>
         </>
       }
     >
-      <div className="flex flex-wrap items-center gap-3">
-        {resolvedToday !== undefined && <Badge label={`${resolvedToday} resolved today`} tone="success" />}
-        <Badge label={`${cases.length} open`} tone="neutral" />
-        <Badge label={`${handed.length} handed to ${nextShift} shift`} tone="brand" />
-      </div>
-
       <RequestError error={failure} />
 
-      <ul className="flex flex-col rounded-xl border border-border-default">
-        {cases.map((c) => {
-          const choice = choiceFor(c);
-          return (
-            <li key={c.id} className="flex items-center gap-3 border-b border-border-subtle px-3.5 py-3 last:border-b-0">
-              <span className="font-mono text-mono-m text-text-primary">{c.id}</span>
-              <span className="truncate text-body-s text-text-secondary">{fraudTypeLabel(c.fraud_type)}</span>
-              <SeverityBadge severity={riskTone(c.risk_score)} />
-              <span className="flex-1" />
-              <label className="relative flex h-9 w-[250px] shrink-0 items-center gap-2 rounded-lg border border-border-default bg-surface-base px-3 focus-within:border-border-focus focus-within:shadow-focus">
-                <span className="sr-only">What happens to {c.id}</span>
-                <Icon name={choice === "hand" ? "app/icon-users-secondary-16" : "app/icon-user-secondary-16"} size={16} />
-                <select
-                  value={choice}
-                  onChange={(e) => setChoices((prev) => ({ ...prev, [c.id]: e.target.value as Choice }))}
-                  className="min-w-0 flex-1 cursor-pointer appearance-none bg-transparent text-body-s text-text-primary outline-none focus-visible:shadow-none"
-                >
-                  <option value="hand">
-                    Hand to {first} ({nextShift})
+      {cases.length > 0 && (
+        <ul className="-mt-2 flex flex-col">
+          {cases.map((c) => (
+            /* Handover case row (1319:173886) */
+            <li key={c.id} className="flex items-center gap-3 border-b border-border-default py-2.5">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="font-mono text-mono-m text-text-primary">{c.id}</span>
+                <span className="min-w-0 flex-1 truncate text-body-s text-text-secondary">{fraudTypeLabel(c.fraud_type)}</span>
+                <SeverityBadge severity={riskTone(c.risk_score)} />
+              </div>
+              <Select
+                aria-label={`What happens to ${c.id}`}
+                value={choiceFor(c)}
+                onChange={(e) => setChoices((prev) => ({ ...prev, [c.id]: e.target.value as Choice }))}
+                className="w-[212px] shrink-0"
+              >
+                <option value="hand">Hand to {first}</option>
+                {(Object.keys(KEEP_LABELS) as Array<keyof typeof KEEP_LABELS>).map((k) => (
+                  <option key={k} value={k}>
+                    {KEEP_LABELS[k]}
                   </option>
-                  {(Object.keys(KEEP_LABELS) as Array<keyof typeof KEEP_LABELS>).map((k) => (
-                    <option key={k} value={k}>
-                      {KEEP_LABELS[k]}
-                    </option>
-                  ))}
-                </select>
-                <Icon name="app/icon-chevron-down-16" size={16} className="pointer-events-none shrink-0" />
-              </label>
+                ))}
+              </Select>
             </li>
-          );
-        })}
-      </ul>
+          ))}
+        </ul>
+      )}
 
-      <TextField
-        label="Note for the next shift"
+      <TextArea
+        label={`Note for ${first}`}
         name="handover-note"
+        rows={4}
         placeholder="What should they know first?"
         value={note}
         onChange={(e) => setNote(e.target.value)}

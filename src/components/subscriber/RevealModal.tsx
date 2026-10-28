@@ -12,13 +12,24 @@ import { useState } from "react";
 
 const REASONS: Array<[RevealReason, string]> = [
   ["investigating_case", "Investigating an open case"],
-  ["call_subscriber_back", "Calling the subscriber back"],
+  ["call_subscriber_back", "Confirming identity on a call"],
   ["regulator_request", "Regulator or police request"],
 ];
-/** “investigating an open case”, for the reveal banner. */
+/** “confirm identity on a call”, for the C15 banner (“You revealed them to …”). */
+const PURPOSE: Record<RevealReason, string> = {
+  investigating_case: "investigate an open case",
+  call_subscriber_back: "confirm identity on a call",
+  regulator_request: "answer a regulator or police request",
+};
+export const revealPurpose = (reason: RevealReason) => PURPOSE[reason] ?? reason.replace(/_/g, " ");
+/** “investigating an open case” */
 export const revealReasonLabel = (reason: RevealReason) => (REASONS.find(([id]) => id === reason)?.[1] ?? reason.replace(/_/g, " ")).toLowerCase();
 
-/** C14 · Reveal personal details — reason required, audited, visible for 15 minutes. */
+/**
+ * C14 · Reveal personal details — a reason is required, it’s logged and
+ * visible to the supervisor, and details show for 15 minutes. An open case
+ * goes with the request (the first in `cases`).
+ */
 export function RevealModal({
   open,
   onClose,
@@ -28,22 +39,26 @@ export function RevealModal({
 }: {
   open: boolean;
   onClose: () => void;
-  subscriber: { id: string; name: string };
+  /** `msisdn` (masked) completes the sub-line: “Kojo M. · 054 *** 3457”. */
+  subscriber: { id: string; name: string; msisdn?: string };
   cases: Array<{ id: string; title: string }>;
   onRevealed?: () => void;
 }) {
   const stepUp = useStepUp();
-  const [reason, setReason] = useState<RevealReason>(REASONS[0][0]);
-  const [caseId, setCaseId] = useState(cases[0]?.id ?? "");
+  const [reason, setReason] = useState<RevealReason | "">("");
   const [note, setNote] = useState("");
+  const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  const missing = tried && !reason;
 
   const submit = async () => {
+    setTried(true);
+    if (!reason) return;
     setBusy(true);
     setFailure(null);
     try {
-      await stepUp(() => reveal(subscriber.id, { reason, case_id: caseId, note: note || undefined }));
+      await stepUp(() => reveal(subscriber.id, { reason, case_id: cases[0]?.id, note: note || undefined }));
       onRevealed?.();
       onClose();
     } catch (err) {
@@ -57,52 +72,47 @@ export function RevealModal({
     <Modal
       open={open}
       onClose={onClose}
-      width={520}
-      icon="app/icon-eye-brand-22"
-      tone="brand"
-      title="Reveal personal details?"
-      description={`Full number, name, date of birth and Ghana Card number for ${subscriber.name}. This is logged against your name.`}
+      width={480}
+      title="Reveal personal details"
+      description={[subscriber.name, subscriber.msisdn].filter(Boolean).join(" · ")}
       actions={
         <>
           <Button variant="secondary" size="md" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            size="md"
-            onClick={submit}
-            loading={busy}
-            disabled={!caseId}
-            iconLeft={<Icon name="app/icon-eye-white-18" size={18} />}
-          >
+          <Button size="md" onClick={submit} loading={busy}>
             Reveal for 15 min
           </Button>
         </>
       }
     >
-      <Select label="Reason" required value={reason} onChange={(e) => setReason(e.target.value as RevealReason)}>
-        {REASONS.map(([id, label]) => (
-          <option key={id} value={id}>
-            {label}
+      <div className="flex flex-col gap-1.5">
+        <Select
+          label="Reason"
+          value={reason}
+          aria-invalid={missing || undefined}
+          aria-describedby={missing ? "reveal-reason-error" : undefined}
+          onChange={(e) => setReason(e.target.value as RevealReason)}
+        >
+          <option value="" disabled>
+            Choose a reason
           </option>
-        ))}
-      </Select>
-      <Select
-        label="Linked case"
-        required
-        value={caseId}
-        onChange={(e) => setCaseId(e.target.value)}
-        iconLeft={<Icon name="app/icon-folder-secondary-16" size={16} />}
-      >
-        {cases.length === 0 && <option value="">No open case on this subscriber</option>}
-        {cases.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.id} · {c.title}
-          </option>
-        ))}
-      </Select>
-      <TextArea label="Note" optional rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
-      <Banner tone="info" title="Visible for 15 minutes">
-        Details mask again automatically, or when you leave this page.
+          {REASONS.map(([id, label]) => (
+            <option key={id} value={id}>
+              {label}
+            </option>
+          ))}
+        </Select>
+        {missing && (
+          <p id="reveal-reason-error" role="alert" className="flex items-center gap-1.5 text-caption text-critical-fg">
+            <Icon name="app/icon-alert-circle-critical-14" size={14} />
+            Choose a reason to reveal
+          </p>
+        )}
+      </div>
+      <TextArea label="Note" optional rows={3} placeholder="What do you need it for?" value={note} onChange={(e) => setNote(e.target.value)} />
+      <Banner tone="info" title="Logged and visible to your supervisor">
+        Details show for 15 min, then hide again.
       </Banner>
       <RequestError error={failure} />
     </Modal>

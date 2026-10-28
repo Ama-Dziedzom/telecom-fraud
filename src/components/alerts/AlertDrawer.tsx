@@ -3,12 +3,11 @@
 import { Tabs } from "@/components/app/Card";
 import { SeverityBadge } from "@/components/app/indicators";
 import { useShell } from "@/components/app/AppShell";
-import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
+import { Banner } from "@/components/ui/Banner";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
-import { Icon } from "@/components/ui/Icon";
-import { Menu, MenuDivider, MenuItem, MenuLabel } from "@/components/ui/Menu";
+import { Menu, MenuItem } from "@/components/ui/Menu";
 import { useToast } from "@/components/ui/Toast";
 import { ApiError, apiFetch, isProblem } from "@/lib/api/client";
 import {
@@ -20,8 +19,7 @@ import {
   type Alert,
   type PersonRef,
 } from "@/lib/api/fd";
-import { formatAgo, formatClock, formatMoney } from "@/lib/time";
-import Link from "next/link";
+import { formatAgo, formatMoney } from "@/lib/time";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ActivityTab, Glance, KycTab, Recommendation, RulesRow, TransactionsTab, WhatHappened } from "./AlertTabs";
@@ -45,7 +43,12 @@ const STATUS_BADGE: Partial<Record<Alert["status"], { label: string; tone: "info
   locked: { label: "Being triaged", tone: "neutral" },
 };
 
-/** B4–B7, B13, B20 · Alert drawer: story, activity, transactions, KYC & SIM, and the triage actions. */
+const SEVERITY_LABEL = { critical: "Critical", high: "High", medium: "Medium", low: "Low" } as const;
+
+/** The first clause of engine text (“Same mule wallet, same pattern…” → “Same mule wallet”). */
+const firstClause = (text: string) => text.split(/[,.;]/)[0].trim();
+
+/** B4–B7, B13, B20 · Alert drawer: summary, activity, transactions, KYC & SIM, and the triage actions. */
 export function AlertDrawer({
   alert,
   all,
@@ -88,9 +91,7 @@ export function AlertDrawer({
   }, [alert.id, open]);
 
   const related = relatedAlerts(alert, all);
-  const newRecipients = new Set(
-    transactions?.data.filter((t) => t.counterparty_new).map((t) => t.counterparty),
-  );
+  const newRecipients = new Set(transactions?.data.filter((t) => t.counterparty_new).map((t) => t.counterparty));
   const options = protectOptions(detail, subscriber, newRecipients.size);
   const suggestion = detail?.suggested_case ?? null;
   const locked = Boolean(lockedBy);
@@ -134,20 +135,7 @@ export function AlertDrawer({
 
   const money = alert.money_out;
   const windowMin = transactions?.totals.window_minutes;
-  const tabs = (
-    <Tabs
-      label="Alert details"
-      value={tab}
-      onChange={setTab}
-      tabs={[
-        { id: "summary", label: "Summary" },
-        { id: "activity", label: "Activity", count: activity?.data.length },
-        { id: "transactions", label: "Transactions", count: transactions?.totals.total },
-        { id: "kyc", label: "KYC & SIM" },
-      ]}
-    />
-  );
-
+  const caseId = alert.case_id ?? suggestion?.case_id;
   const first = lockedBy?.by.name.split(" ")[0];
 
   return (
@@ -155,44 +143,43 @@ export function AlertDrawer({
       <Drawer
         open
         onClose={onClose}
-        width={locked ? 560 : 640}
+        width={560}
         badges={
           <>
             <SeverityBadge severity={alert.severity} size="md" />
-            {status && <Badge label={status.label} tone={status.tone} size="md" dot={alert.status === "new"} />}
-            <span className="font-mono text-mono-s text-text-tertiary">
-              {alert.id} · {formatClock(alert.created_at)} today
-            </span>
+            {status && <Badge label={status.label} tone={status.tone} size="md" />}
           </>
         }
         title={alert.title}
-        subtitle={[alert.subscriber.msisdn, alert.region, subscriber && `Tier ${subscriber.wallet.tier} MoMo wallet`]
+        subtitle={[alert.id, alert.subscriber.msisdn, alert.region, subscriber && `Tier ${subscriber.wallet.tier} MoMo wallet`]
           .filter(Boolean)
           .join(" · ")}
-        headerActions={
-          !locked && (
-            <Link
-              href={`/subscribers/${alert.subscriber.subscriber_id}`}
-              aria-label="Open subscriber profile"
-              className="flex size-10 items-center justify-center rounded-[10px] border border-border-default bg-surface-base hover:bg-surface-raised"
-            >
-              <Icon name="app/icon-external-20" size={20} />
-            </Link>
-          )
+        tabs={
+          <Tabs
+            label="Alert details"
+            value={tab}
+            onChange={setTab}
+            tabs={[
+              { id: "summary", label: "Summary" },
+              { id: "activity", label: "Activity", count: activity?.data.length },
+              { id: "transactions", label: "Transactions", count: transactions?.totals.total },
+              { id: "kyc", label: "KYC & SIM" },
+            ]}
+          />
         }
-        tabs={tabs}
         footer={
           locked ? (
+            // B20 · Alert already being triaged
             <>
               {/* TODO(api): no messaging endpoint yet. */}
-              <Button variant="secondary" size="md" disabled title="Messaging colleagues isn’t available yet" iconLeft={<Icon name="app/icon-message-18" size={18} />}>
+              <Button variant="ghost" size="md" disabled title="Messaging colleagues isn’t available yet">
                 Ask {first}
               </Button>
               <span className="flex-1" />
               <Button variant="secondary" size="md" onClick={takeOver}>
                 Take over
               </Button>
-              <Button size="md" disabled iconLeft={<Icon name="app/icon-plus-primary-18" size={18} />}>
+              <Button size="md" disabled>
                 Open a case
               </Button>
             </>
@@ -203,71 +190,48 @@ export function AlertDrawer({
               </span>
               <span className="flex-1" />
               {alert.case_id && (
-                <ButtonLink href={`/cases/${alert.case_id}`} size="md" iconRight={<Icon name="app/icon-arrow-right-white-16" size={16} />}>
+                <ButtonLink href={`/cases/${alert.case_id}`} size="md">
                   Open {alert.case_id}
                 </ButtonLink>
               )}
             </>
           ) : (
             <>
-              <Button variant="secondary" size="md" onClick={() => setDialog("dismiss")} iconLeft={<Icon name="app/icon-x-primary-18" size={18} />}>
+              <Button variant="ghost" size="md" onClick={() => setDialog("dismiss")}>
                 Dismiss
               </Button>
               <span className="flex-1" />
-              <Button variant="secondary" size="md" onClick={() => setDialog("attach")} iconLeft={<Icon name="app/icon-folder-primary-18" size={18} />}>
-                Add to case
-              </Button>
+              {/* B13 · Protect options */}
               <Menu
-                label="Protect now"
+                label="Protect"
                 side="top"
+                width={315}
                 trigger={(t) => (
-                  <Button
-                    variant="danger-outline"
-                    size="md"
-                    onClick={t.toggle}
-                    aria-expanded={t["aria-expanded"]}
-                    aria-haspopup="menu"
-                    iconLeft={<Icon name="app/icon-shield-critical-18" size={18} />}
-                    iconRight={<Icon name="app/icon-chevron-down-critical-18" size={18} />}
-                  >
-                    Protect now
+                  <Button variant="danger-outline" size="md" onClick={t.toggle} aria-expanded={t["aria-expanded"]} aria-haspopup="menu">
+                    Protect
                   </Button>
                 )}
               >
-                {(close) => (
-                  <>
-                    <MenuLabel>Stop the loss</MenuLabel>
-                    {(["freeze_wallet", "suspend_sim", "block_recipients"] as const).map((k) => (
-                      <MenuItem
-                        key={k}
-                        icon={options[k].icon}
-                        title={k === "block_recipients" && newRecipients.size ? `Block recipient wallets (${newRecipients.size})` : options[k].title}
-                        description={options[k].menu}
-                        onSelect={() => {
-                          close();
-                          openProtect(k);
-                        }}
-                      />
-                    ))}
-                    <MenuDivider />
+                {(close) =>
+                  (["freeze_wallet", "suspend_sim", "block_recipients", "send_safety_sms"] as const).map((k) => (
                     <MenuItem
-                      icon={options.send_safety_sms.icon}
-                      title={options.send_safety_sms.title}
-                      description={options.send_safety_sms.menu}
+                      key={k}
+                      icon={options[k].icon}
+                      title={options[k].menuTitle}
+                      description={options[k].menu}
                       onSelect={() => {
                         close();
-                        setDialog({ protect: ["send_safety_sms"] });
+                        if (k === "send_safety_sms") setDialog({ protect: ["send_safety_sms"] });
+                        else openProtect(k);
                       }}
                     />
-                  </>
-                )}
+                  ))
+                }
               </Menu>
-              <Button
-                variant={tab === "summary" && suggestion ? "secondary" : "primary"}
-                size="md"
-                onClick={() => setDialog("promote")}
-                iconLeft={<Icon name={tab === "summary" && suggestion ? "app/icon-plus-primary-18" : "app/icon-plus-white-18"} size={18} />}
-              >
+              <Button variant="secondary" size="md" onClick={() => setDialog("attach")}>
+                Add to case
+              </Button>
+              <Button size="md" onClick={() => setDialog("promote")}>
                 Open a case
               </Button>
             </>
@@ -277,38 +241,38 @@ export function AlertDrawer({
         {tab === "summary" && (
           <>
             {lockedBy && (
-              <div className="flex items-start gap-3 rounded-[10px] border border-medium-border bg-medium-bg px-3.5 py-3">
-                <Avatar initials={lockedBy.by.initials} />
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-label-m text-medium-fg">{lockedBy.by.name} is triaging this alert</p>
-                  <p className="text-body-s text-text-primary">
-                    {lockedBy.since ? `Opened ${formatAgo(lockedBy.since, now)} · ` : ""}actions are locked so you don’t both act on it
-                  </p>
-                </div>
-              </div>
+              <Banner tone="info" title={`${lockedBy.by.name} is triaging this alert`}>
+                {lockedBy.since ? `Opened ${formatAgo(lockedBy.since, now)}. ` : ""}Actions are locked so you don’t both act on it.
+              </Banner>
             )}
-            <div className="flex gap-2">
-              <Glance label="Risk" value={`${alert.risk_score} / 100`} tone={alert.risk_score >= 70 ? "critical" : "medium"} />
+            <div className="flex gap-3">
+              <Glance
+                label="Risk"
+                value={alert.risk_score}
+                sub={[SEVERITY_LABEL[alert.severity], detail && `${detail.rules_fired.length} ${detail.rules_fired.length === 1 ? "rule" : "rules"}`]
+                  .filter(Boolean)
+                  .join(" · ")}
+              />
               <Glance
                 label="Money out"
-                value={money ? `${formatMoney(money.amount_minor, money.currency)}${windowMin ? ` · ${windowMin} min` : ""}` : "None yet"}
-                tone={money ? "high" : "neutral"}
+                value={money ? formatMoney(money.amount_minor, money.currency) : "None yet"}
+                sub={money && windowMin ? `In ${windowMin} min` : undefined}
               />
               <Glance
                 label="Looks like"
-                value={alert.case_id ? `In ${alert.case_id}` : suggestion ? `Part of ${suggestion.case_id}` : "A new pattern"}
-                tone={suggestion || alert.case_id ? "brand" : "neutral"}
+                value={caseId ?? "New"}
+                brand={Boolean(caseId)}
+                sub={alert.case_id ? "Already linked" : suggestion ? firstClause(suggestion.why) : "No similar case yet"}
               />
             </div>
             {detail ? (
               <>
                 {detail.what_happened.length > 0 && <WhatHappened steps={detail.what_happened} moneyOut={alert.money_out} now={now} />}
                 <RulesRow rules={detail.rules_fired} />
-                {suggestion && open && (
+                {suggestion && open && !locked && (
                   <Recommendation
                     suggestion={suggestion}
                     busy={attaching}
-                    locked={locked}
                     onAttach={attachSuggested}
                     onProtect={() => openProtect("freeze_wallet")}
                   />
@@ -324,9 +288,11 @@ export function AlertDrawer({
         {tab === "kyc" && <KycTab subscriberId={alert.subscriber.subscriber_id} now={now} />}
       </Drawer>
 
+      {/* B8 · Dismiss needs a reason → B9 · undo for 10 s */}
       {dialog === "dismiss" && (
         <DismissModal
           alert={alert}
+          rules={detail?.rules_fired}
           open
           onClose={() => setDialog(null)}
           onDone={(reason, feedback) => {
@@ -336,7 +302,7 @@ export function AlertDrawer({
             toast({
               tone: "success",
               title: "Alert dismissed",
-              body: `${alert.id} · reason: ${dismissReasonLabel(reason)}.${feedback ? ` Feedback sent to ${alert.rule_ids[0]}.` : ""}`,
+              body: [alert.id, dismissReasonLabel(reason), feedback && `feedback sent to ${alert.rule_ids[0]}`].filter(Boolean).join(" · "),
               action: {
                 label: "Undo",
                 onClick: () => {
@@ -352,6 +318,7 @@ export function AlertDrawer({
           }}
         />
       )}
+      {/* B10 · Open a case → B11 · Case created */}
       {dialog === "promote" && (
         <PromoteModal
           alert={alert}
@@ -359,31 +326,33 @@ export function AlertDrawer({
           related={related}
           me={user ? { name: user.name, shift: user.shift } : null}
           onClose={() => setDialog(null)}
-          onDone={(caseId, linked) => {
-            patchAlert(alert.id, { status: "promoted", case_id: caseId });
-            related.slice(0, linked).forEach((a) => patchAlert(a.id, { status: "attached", case_id: caseId }));
+          onDone={(created, linked) => {
+            patchAlert(alert.id, { status: "promoted", case_id: created });
+            related.slice(0, linked).forEach((a) => patchAlert(a.id, { status: "attached", case_id: created }));
             setDialog(null);
             onClose();
             toast({
               tone: "success",
-              title: `Case ${caseId} opened and assigned to you`,
-              body: linked ? `${alert.id} and ${linked} earlier ${linked === 1 ? "alert is" : "alerts are"} linked.` : `${alert.id} is linked.`,
-              action: { label: "Open case", onClick: () => router.push(`/cases/${caseId}`) },
+              title: `Case ${created} opened and assigned to you`,
+              body: linked ? `${alert.id} and ${linked} earlier ${linked === 1 ? "alert" : "alerts"} are linked` : `${alert.id} is linked`,
+              action: { label: "Open case", onClick: () => router.push(`/cases/${created}`) },
             });
           }}
         />
       )}
+      {/* B12 · Add to an existing case */}
       {dialog === "attach" && (
         <AttachModal
           alert={alert}
           open
           onClose={() => setDialog(null)}
-          onDone={(caseId) => {
+          onDone={(target) => {
             setDialog(null);
-            void attach(caseId);
+            void attach(target);
           }}
         />
       )}
+      {/* B14 · Protect confirm */}
       {dialog && typeof dialog === "object" && (
         <ProtectModal
           alert={alert}

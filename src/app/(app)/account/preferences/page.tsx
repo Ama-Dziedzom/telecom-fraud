@@ -1,14 +1,14 @@
 "use client";
 
-import { AccountFrame } from "@/components/account/AccountFrame";
-import { Card, Skeleton } from "@/components/app/Card";
-import { Button } from "@/components/ui/Button";
-import { Icon } from "@/components/ui/Icon";
-import { Segmented } from "@/components/ui/Segmented";
+import { AccountFrame, SettingRow } from "@/components/account/AccountFrame";
+import { Card, CardMeta, Skeleton } from "@/components/app/Card";
+import { Chips } from "@/components/shell/Chips";
+import { Select } from "@/components/ui/TextField";
+import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
 import { useApi } from "@/lib/api/fd";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 
 type Prefs = {
   start_page: "queue" | "alerts" | "cases" | "overview";
@@ -19,130 +19,111 @@ type Prefs = {
   critical_sound: boolean;
 };
 
-function Row({ title, detail, children }: { title: string; detail: string; children: ReactNode }) {
+const START: Array<[Prefs["start_page"], string]> = [
+  ["queue", "My queue"],
+  ["alerts", "Live alerts"],
+  ["cases", "Cases"],
+  ["overview", "Overview"],
+];
+const MONEY: Array<[Prefs["money_format"], string]> = [
+  ["code", "GHS 18,400.00"],
+  ["symbol", "GH₵ 18,400.00"],
+];
+
+/** Select, 40 high and 220 wide, for a setting row. */
+function Pick<T extends string>({ label, value, onChange, options }: { label: string; value: T; onChange: (v: T) => void; options: Array<[T, string]> }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border-subtle py-3.5 last:border-b-0">
-      <span className="flex flex-col">
-        <span className="text-body-m font-medium text-text-primary">{title}</span>
-        <span className="text-caption text-text-secondary">{detail}</span>
-      </span>
-      {children}
-    </div>
+    <Select aria-label={label} value={value} onChange={(e) => onChange(e.target.value as T)} className="w-[220px] shrink-0">
+      {options.map(([id, text]) => (
+        <option key={id} value={id}>
+          {text}
+        </option>
+      ))}
+    </Select>
   );
 }
 
-function Pick({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: Array<[string, string]> }) {
-  return (
-    <label className="relative flex h-10 w-[240px] items-center rounded-lg border border-border-default bg-surface-base pr-8 pl-3 focus-within:border-border-focus focus-within:shadow-focus">
-      <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} className="min-w-0 flex-1 appearance-none bg-transparent text-body-m text-text-primary outline-none focus-visible:shadow-none">
-        {options.map(([id, text]) => (
-          <option key={id} value={id}>
-            {text}
-          </option>
-        ))}
-      </select>
-      <Icon name="app/icon-chevron-down-16" size={16} className="pointer-events-none absolute right-3" />
-    </label>
-  );
-}
-
-/** I10 · Account · preferences. */
+/** I10 · Account · preferences — saves as you go. */
 export default function PreferencesPage() {
   const toast = useToast();
   const { data } = useApi<Prefs>("/me/preferences");
   const [edits, setEdits] = useState<Partial<Prefs>>({});
-  const [busy, setBusy] = useState(false);
   const p = data ? { ...data, ...edits } : null;
-  const set = <K extends keyof Prefs>(k: K, v: Prefs[K]) => setEdits((e) => ({ ...e, [k]: v }));
 
-  const save = async () => {
-    setBusy(true);
+  /** PATCH one setting; put it back if the server says no. */
+  const set = async <K extends keyof Prefs>(k: K, v: Prefs[K], done: string) => {
+    const before = edits[k];
+    setEdits((e) => ({ ...e, [k]: v }));
     try {
-      await apiFetch("PATCH", "/me/preferences", edits);
-      toast({ tone: "success", title: "Preferences saved" });
-      setEdits({});
-    } finally {
-      setBusy(false);
+      await apiFetch("PATCH", "/me/preferences", { [k]: v });
+      toast({ tone: "success", title: "Saved", body: done });
+    } catch {
+      setEdits((e) => ({ ...e, [k]: before }));
+      toast({ title: "Couldn’t save that change", body: "Check your connection and try again." });
     }
   };
 
   return (
     <AccountFrame>
-      <Card title="Preferences" icon="app/icon-sliders-18">
+      <Card title="Preferences" aside={<CardMeta>Changes save as you go</CardMeta>}>
         {!p ? (
           <Skeleton className="h-[300px] w-full" />
         ) : (
           <div className="flex flex-col">
-            <Row title="Start page" detail="Where you land after signing in">
+            <SettingRow title="Start page" detail="Where you land after signing in">
               <Pick
                 label="Start page"
                 value={p.start_page}
-                onChange={(v) => set("start_page", v as Prefs["start_page"])}
-                options={[
-                  ["queue", "My queue"],
-                  ["alerts", "Live alerts"],
-                  ["cases", "Cases"],
-                  ["overview", "Overview"],
-                ]}
+                options={START}
+                onChange={(v) => void set("start_page", v, `You’ll start on ${START.find(([id]) => id === v)?.[1]}.`)}
               />
-            </Row>
-            <Row title="Table density" detail="Comfortable shows more context per row">
-              <Segmented
+            </SettingRow>
+            <SettingRow title="Table density" detail="Comfortable shows more context per row">
+              <Chips
+                mode="choice"
                 label="Table density"
                 value={p.density}
-                onChange={(v) => set("density", v)}
+                onChange={(v) => void set("density", v, `Tables are now ${v}.`)}
                 options={[
                   { id: "comfortable", label: "Comfortable" },
                   { id: "compact", label: "Compact" },
                 ]}
               />
-            </Row>
-            <Row title="Time format" detail="Used everywhere, including exports">
-              <Segmented
+            </SettingRow>
+            <SettingRow title="Time format" detail="Used everywhere, including reports">
+              <Chips
+                mode="choice"
                 label="Time format"
                 value={p.time_format}
-                onChange={(v) => set("time_format", v)}
+                onChange={(v) => void set("time_format", v, `Times now show in ${v === "24h" ? "24" : "12"}-hour format.`)}
                 options={[
                   { id: "24h", label: "24-hour" },
                   { id: "12h", label: "12-hour" },
                 ]}
               />
-            </Row>
-            <Row title="Language" detail="Twi and Ewe coming soon">
-              <Pick label="Language" value={p.locale} onChange={(v) => set("locale", v)} options={[["en-GH", "English (Ghana)"]]} />
-            </Row>
-            <Row title="Show amounts as" detail="Currency for all money values">
+            </SettingRow>
+            <SettingRow title="Language" detail="Twi and Ewe coming soon">
+              <Pick label="Language" value={p.locale} options={[["en-GH", "English (Ghana)"]]} onChange={(v) => void set("locale", v, "Language saved.")} />
+            </SettingRow>
+            <SettingRow title="Show amounts as" detail="Format for all money values">
               <Pick
                 label="Show amounts as"
                 value={p.money_format}
-                onChange={(v) => set("money_format", v as Prefs["money_format"])}
-                options={[
-                  ["code", "GHS 18,400.00"],
-                  ["symbol", "GH₵ 18,400.00"],
-                ]}
+                options={MONEY}
+                onChange={(v) => void set("money_format", v, `Amounts now show as ${MONEY.find(([id]) => id === v)?.[1]}.`)}
               />
-            </Row>
-            <Row title="Sound for critical alerts" detail="Plays once when a 90+ alert arrives">
-              <span className="relative flex h-5 w-9 shrink-0">
-                <input
-                  type="checkbox"
-                  role="switch"
-                  aria-label="Sound for critical alerts"
-                  checked={p.critical_sound}
-                  onChange={(e) => set("critical_sound", e.target.checked)}
-                  className="peer h-5 w-9 cursor-pointer appearance-none rounded-full bg-border-strong transition-colors checked:bg-brand-primary focus-visible:shadow-focus"
-                />
-                <span className="pointer-events-none absolute top-0.5 left-0.5 size-4 rounded-full bg-surface-base shadow-sm transition-transform peer-checked:translate-x-4" />
-              </span>
-            </Row>
+            </SettingRow>
+            <SettingRow title="Sound for critical alerts" detail="Plays once when a 90+ alert arrives">
+              <Toggle
+                label={<span className="sr-only">Sound for critical alerts</span>}
+                checked={p.critical_sound}
+                onChange={(e) => void set("critical_sound", e.target.checked, e.target.checked ? "Critical alerts play a sound." : "Critical alerts are silent.")}
+                className="gap-0"
+              />
+            </SettingRow>
           </div>
         )}
       </Card>
-      <div className="flex justify-end">
-        <Button size="md" onClick={save} loading={busy} disabled={!Object.keys(edits).length}>
-          Save changes
-        </Button>
-      </div>
     </AccountFrame>
   );
 }

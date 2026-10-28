@@ -1,21 +1,28 @@
 "use client";
 
 import { AlertDrawer } from "@/components/alerts/AlertDrawer";
-import { AlertFilterButton, NO_FILTER, matchesFilter, type AlertFilter } from "@/components/alerts/AlertFilters";
+import {
+  AlertFilterButton,
+  NO_FILTER,
+  SegmentChips,
+  ToolbarSearch,
+  matchesFilter,
+  type AlertFilter,
+} from "@/components/alerts/AlertFilters";
 import { AttachModal, DismissModal, PromoteModal } from "@/components/alerts/TriageModals";
 import { AppHeader } from "@/components/app/AppHeader";
 import { PageBody, PageHead, useFeed, useShell } from "@/components/app/AppShell";
 import { Skeleton } from "@/components/app/Card";
-import { SeverityBadge, riskText } from "@/components/app/indicators";
-import { Badge } from "@/components/ui/Badge";
+import { SeverityBadge } from "@/components/app/indicators";
+import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Banner } from "@/components/ui/Banner";
-import { Button, ButtonLink } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Choice";
 import { Icon } from "@/components/ui/Icon";
 import { Menu, MenuItem } from "@/components/ui/Menu";
-import { Segmented } from "@/components/ui/Segmented";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
+import { useCase } from "@/lib/api/cases";
 import {
   fraudTypeLabel,
   isOpenAlert,
@@ -28,39 +35,52 @@ import {
   type Severity,
 } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
-import { formatAgo, formatClock, formatMoney, formatSpan, useNow } from "@/lib/time";
+import { formatClock, useNow } from "@/lib/time";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 type SeverityTab = "all" | Severity;
 type RowAction = "dismiss" | "promote" | "attach";
+type SortKey = "time" | "risk";
 
-const SEVERITY_TABS: Array<{ id: SeverityTab; label: string; dot?: string }> = [
+const PAGE_SIZE = 9;
+
+const SEVERITY_TABS: Array<{ id: SeverityTab; label: string; severity?: Severity }> = [
   { id: "all", label: "All" },
-  { id: "critical", label: "Critical", dot: "bg-critical-fg" },
-  { id: "high", label: "High", dot: "bg-high-fg" },
-  { id: "medium", label: "Medium", dot: "bg-medium-fg" },
-  { id: "low", label: "Low", dot: "bg-success-fg" },
+  { id: "critical", label: "Critical", severity: "critical" },
+  { id: "high", label: "High", severity: "high" },
+  { id: "medium", label: "Medium", severity: "medium" },
+  { id: "low", label: "Low", severity: "low" },
 ];
 
-/** What a closed row says in the Status column. */
-function ClosedStatus({ alert }: { alert: Alert }) {
-  const label = { auto_case: "Auto-case", promoted: "Case", attached: "Added to", dismissed: "Dismissed" }[
-    alert.status as "auto_case"
-  ];
+const STATUS: Record<Alert["status"], { label: string; tone: BadgeTone }> = {
+  new: { label: "New", tone: "info" },
+  seen: { label: "Seen", tone: "neutral" },
+  locked: { label: "Being triaged", tone: "neutral" },
+  auto_case: { label: "Auto-case", tone: "brand" },
+  promoted: { label: "Case", tone: "brand" },
+  attached: { label: "Added to", tone: "neutral" },
+  dismissed: { label: "Dismissed", tone: "neutral" },
+};
+
+/** Status link — the pill, and the case the alert went to in brand mono (opens the case). */
+function StatusCell({ alert }: { alert: Alert }) {
+  const s = STATUS[alert.status] ?? { label: alert.status, tone: "neutral" as const };
   return (
-    <span className="flex items-center gap-1.5">
-      <Badge label={label ?? alert.status} tone={alert.status === "auto_case" || alert.status === "promoted" ? "brand" : "neutral"} />
-      {alert.case_id && <span className="font-mono text-mono-s text-text-brand">{alert.case_id}</span>}
+    <span className="flex items-center gap-2">
+      <Badge label={s.label} tone={s.tone} />
+      {alert.case_id && !isOpenAlert(alert) && (
+        <Link
+          href={`/cases/${alert.case_id}`}
+          onClick={(e) => e.stopPropagation()}
+          className="rounded font-mono text-mono-s text-text-brand hover:underline"
+        >
+          {alert.case_id}
+        </Link>
+      )}
     </span>
   );
-}
-
-function OpenStatus({ alert }: { alert: Alert }) {
-  if (alert.status === "new") return <Badge label="New" tone="info" dot />;
-  if (alert.status === "locked") return <Badge label="Being triaged" tone="neutral" dot />;
-  return <Badge label="Seen" tone="neutral" dot />;
 }
 
 /** CSV of what’s on screen, for “Export”. */
@@ -78,36 +98,112 @@ function exportCsv(rows: Alert[]) {
   URL.revokeObjectURL(url);
 }
 
-/** B2 · The critical alert that just opened a case, as a banner on this page. */
+/** B2 · The critical alert that just opened a case, as a banner on this page (B3’s toast stays away from here). */
 function CriticalBanner({ alertId, caseId, onOpen }: { alertId: string; caseId: string; onOpen: () => void }) {
   const { data: detail } = useAlert(alertId);
-  const swap = detail?.what_happened.find((s) => s.kind === "sim_swap");
-  const payments = detail?.what_happened.find((s) => s.kind === "payments_out");
+  const { data: opened } = useCase(caseId);
+  const due = opened?.sla?.first_response_due_at;
   return (
     <Banner
       tone="error"
-      icon="icon-alert-triangle-critical-24"
       title={`Critical alert: case ${caseId} opened and assigned to you`}
       action={
-        <ButtonLink
-          href={`/cases/${caseId}`}
-          variant="danger"
-          size="md"
-          onClick={onOpen}
-          iconRight={<Icon name="app/icon-arrow-right-white-16" size={16} />}
-        >
+        <Link href={`/cases/${caseId}`} onClick={onOpen} className="shrink-0 rounded px-2 text-label-s text-text-brand hover:underline">
           Open {caseId}
-        </ButtonLink>
+        </Link>
       }
     >
-      {[
-        swap && `SIM swapped at ${swap.detail.replace("Agent ", "agent ")} at ${formatClock(swap.at)}.`,
-        payments?.amount && `${formatMoney(payments.amount.amount_minor, payments.amount.currency)} sent since ${formatClock(payments.at)}.`,
-        "First response due within 15 minutes.",
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      {detail &&
+        [`${detail.title} on ${detail.subscriber.msisdn}`, `risk ${detail.risk_score}`, due && `first response due ${formatClock(due)}`]
+          .filter(Boolean)
+          .join(" · ")}
     </Banner>
+  );
+}
+
+/** Table header cell — Caption sentence case; the sorted column is Caption Medium, primary. */
+function HeaderCell({
+  children,
+  sort,
+  onSort,
+  className,
+}: {
+  children?: ReactNode;
+  sort?: "sorted" | "sortable";
+  onSort?: () => void;
+  className?: string;
+}) {
+  const sorted = sort === "sorted";
+  return (
+    <th
+      scope="col"
+      aria-sort={sorted ? "descending" : undefined}
+      className={cn("h-10 px-4 text-left text-caption font-normal", sorted ? "font-medium text-text-primary" : "text-text-secondary", className)}
+    >
+      {sort ? (
+        <button type="button" onClick={onSort} className="flex items-center gap-1 rounded">
+          {children}
+          <Icon name={sorted ? "app/icon-sort-desc-primary-14" : "app/icon-sort-tertiary-14"} size={14} />
+        </button>
+      ) : (
+        children
+      )}
+    </th>
+  );
+}
+
+/** Pagination — the table’s last row: “Showing 1-9 of 23”, previous, pages, next. One page: just the count. */
+function Pagination({ page, pages, total, onPage }: { page: number; pages: number; total: number; onPage: (p: number) => void }) {
+  const from = page * PAGE_SIZE + 1;
+  const to = Math.min(total, (page + 1) * PAGE_SIZE);
+  const numbers =
+    pages <= 7
+      ? Array.from({ length: pages }, (_, i) => i)
+      : Array.from(new Set([0, page - 1, page, page + 1, pages - 1])).filter((p) => p >= 0 && p < pages);
+  return (
+    <nav aria-label="Pages" className="flex h-14 items-center gap-1 border-t border-border-default pr-3 pl-4">
+      <p className="flex-1 text-body-s text-text-secondary">
+        {pages > 1 ? `Showing ${from}-${to} of ${total}` : `${total} ${total === 1 ? "alert" : "alerts"}`}
+      </p>
+      {pages > 1 && (
+        <>
+          <button
+            type="button"
+            aria-label="Previous page"
+            disabled={page === 0}
+            onClick={() => onPage(page - 1)}
+            className="flex size-8 items-center justify-center rounded-lg enabled:hover:bg-surface-sunken disabled:cursor-not-allowed"
+          >
+            <Icon name={page === 0 ? "app/icon-chevron-left-disabled-16" : "app/icon-chevron-left-16"} size={16} />
+          </button>
+          {numbers.map((p, i) => (
+            <span key={p} className="flex items-center gap-1">
+              {i > 0 && p - numbers[i - 1] > 1 && <span className="px-1 text-body-s text-text-tertiary">…</span>}
+              <button
+                type="button"
+                aria-current={p === page ? "page" : undefined}
+                onClick={() => onPage(p)}
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-lg",
+                  p === page ? "bg-brand-primary-subtle text-label-s text-text-brand" : "text-body-s text-text-secondary hover:bg-surface-sunken",
+                )}
+              >
+                {p + 1}
+              </button>
+            </span>
+          ))}
+          <button
+            type="button"
+            aria-label="Next page"
+            disabled={page === pages - 1}
+            onClick={() => onPage(page + 1)}
+            className="flex size-8 items-center justify-center rounded-lg enabled:hover:bg-surface-sunken disabled:cursor-not-allowed"
+          >
+            <Icon name={page === pages - 1 ? "app/icon-chevron-left-disabled-16" : "app/icon-chevron-right-primary-16"} size={16} className={cn("shrink-0", page === pages - 1 && "rotate-180")} />
+          </button>
+        </>
+      )}
+    </nav>
   );
 }
 
@@ -126,7 +222,8 @@ export default function LiveAlertsPage() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<AlertFilter>(NO_FILTER);
   const [myRegions, setMyRegions] = useState(false);
-  const [showDismissed, setShowDismissed] = useState(false);
+  const [sort, setSort] = useState<SortKey>("time");
+  const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState<RowAction | null>(null);
   const [rowAction, setRowAction] = useState<RowAction | null>(null);
@@ -136,18 +233,30 @@ export default function LiveAlertsPage() {
     () => (data?.data ?? []).slice().sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)),
     [data],
   );
-  const visible = all.filter((a) => showDismissed || a.status !== "dismissed");
   const openAlerts = all.filter(isOpenAlert);
-  const dismissedToday = all.filter((a) => a.status === "dismissed").length;
 
   const q = query.trim().toLowerCase();
-  const rows = visible.filter(
-    (a) =>
-      (severity === "all" || a.severity === severity) &&
-      matchesFilter(a, filter) &&
-      (!myRegions || !user?.regions || user.regions.includes(regionOf(a.region))) &&
-      (!q || [a.id, a.title, a.subscriber.msisdn, a.region, ...a.rule_ids].some((v) => v.toLowerCase().includes(q))),
-  );
+  const rows = all
+    .filter(
+      (a) =>
+        a.status !== "dismissed" &&
+        (severity === "all" || a.severity === severity) &&
+        matchesFilter(a, filter) &&
+        (!myRegions || !user?.regions || user.regions.includes(regionOf(a.region))) &&
+        (!q || [a.id, a.title, a.subscriber.msisdn, a.region, ...a.rule_ids].some((v) => v.toLowerCase().includes(q))),
+    )
+    .sort((a, b) => (sort === "risk" ? b.risk_score - a.risk_score : 0));
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const current = Math.min(page, pages - 1);
+  const pageRows = rows.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
+  /** Any change to what’s listed starts again on page 1. */
+  const refine =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      set(v);
+      setPage(0);
+    };
+
   const severityCount = (s: Severity) => openAlerts.filter((a) => a.severity === s).length;
   const openDrawer = (id: string | null, action: RowAction | null = null) => {
     setRowAction(action);
@@ -162,8 +271,8 @@ export default function LiveAlertsPage() {
   const drawerAlert = listed ?? (unlisted?.id === openId ? unlisted : undefined);
 
   const picked = rows.filter((a) => selected.has(a.id) && isOpenAlert(a));
-  const selectable = rows.filter(isOpenAlert);
-  const allPicked = selectable.length > 0 && picked.length === selectable.length;
+  const selectable = pageRows.filter(isOpenAlert);
+  const allPicked = selectable.length > 0 && selectable.every((a) => selected.has(a.id));
   const toggle = (id: string, on: boolean) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -173,43 +282,23 @@ export default function LiveAlertsPage() {
     });
   const sameAs = <T,>(get: (a: Alert) => T) => picked.length > 1 && picked.every((a) => get(a) === get(picked[0]));
   const commonality = [
-    sameAs((a) => a.fraud_type) && `all ${fraudTypeLabel(picked[0].fraud_type)}`,
+    sameAs((a) => a.fraud_type) && `All ${fraudTypeLabel(picked[0].fraud_type)}`,
     sameAs((a) => a.rule_ids[0]) && picked[0].rule_ids[0],
     sameAs((a) => a.region) && picked[0].region,
   ].filter(Boolean);
 
-  const lastEvent = feed.lastEventAt ? formatSpan(now - feed.lastEventAt) : null;
-  const subtitle =
-    feed.status === "reconnecting" ? (
-      <span className="flex items-center gap-2">
-        <span className="size-2 rounded-full bg-medium-fg" />
-        Stream paused at {formatClock(feed.since ?? now)} · reconnecting
-      </span>
-    ) : feed.status === "paused" ? (
-      <span className="flex items-center gap-2">
-        <span className="size-2 rounded-full bg-text-tertiary" />
-        Paused by you · {openAlerts.length} open · new alerts are held until you resume
-      </span>
-    ) : (
-      <span className="flex items-center gap-2">
-        <span className="size-2 rounded-full bg-success-fg" />
-        Streaming · {openAlerts.length} open{lastEvent ? ` · updated ${lastEvent} ago` : ""}
-      </span>
-    );
-
-  // B2 · also say it where the analyst is looking: bottom-right, with a shortcut.
-  const critical = feed.critical;
-  useEffect(() => {
-    if (!critical?.case_id) return;
-    toast({
-      title: `Critical: case ${critical.case_id} opened automatically`,
-      body: `Risk ${critical.risk_score} · assigned to you.`,
-      action: { label: "Open case", onClick: () => router.push(`/cases/${critical.case_id}`) },
-    });
-  }, [critical, toast, router]);
-
-  const allClear = !isLoading && openAlerts.length === 0 && !showDismissed;
   const disconnected = feed.status === "reconnecting";
+  const lastUpdate = formatClock(feed.lastEventAt ?? now);
+  const subtitle =
+    disconnected
+      ? `Disconnected · ${openAlerts.length} open · last update ${formatClock(feed.since ?? feed.lastEventAt ?? now)}`
+      : feed.status === "paused"
+        ? `Paused · ${openAlerts.length} open · new alerts are held until you resume`
+        : `Streaming · ${openAlerts.length} open · updated ${lastUpdate}`;
+
+  const allClear = !isLoading && openAlerts.length === 0;
+  // TODO(api): alerts carry no triaged-at time, so “last alert” is the newest alert’s arrival.
+  const lastAlertAt = all[0]?.created_at;
 
   return (
     <>
@@ -220,31 +309,31 @@ export default function LiveAlertsPage() {
           subtitle={subtitle}
           actions={
             <>
-              {disconnected ? (
-                <Button variant="secondary" size="md" onClick={feed.reconnect} iconLeft={<Icon name="app/icon-refresh-16" size={18} />}>
-                  Reconnect
-                </Button>
-              ) : (
-                <Button
-                  variant="secondary"
-                  size="md"
-                  onClick={() => feed.setPaused(feed.status !== "paused")}
-                  iconLeft={<Icon name="app/icon-pause-18" size={18} />}
-                >
+              {!disconnected && (
+                <Button variant="secondary" size="md" onClick={() => feed.setPaused(feed.status !== "paused")}>
                   {feed.status === "paused" ? "Resume stream" : "Pause stream"}
                 </Button>
               )}
-              <Button variant="secondary" size="md" onClick={() => exportCsv(rows)} disabled={!rows.length} iconLeft={<Icon name="app/icon-download-18" size={18} />}>
+              <Button variant="secondary" size="md" onClick={() => exportCsv(rows)} disabled={!rows.length}>
                 Export
               </Button>
             </>
           }
         />
 
+        {/* B19 · Stream disconnected */}
         {disconnected && (
-          <Banner tone="error" title={`Live updates stopped at ${formatClock(feed.since ?? now)}`}>
-            We’re trying to reconnect{feed.attempt ? ` (attempt ${feed.attempt})` : ""}. Alerts below may be out of date. Don’t treat a quiet
-            list as “all clear”.
+          <Banner
+            tone="error"
+            title="Live stream disconnected"
+            action={
+              <button type="button" onClick={feed.reconnect} className="shrink-0 rounded px-2 text-label-s text-text-brand hover:underline">
+                Retry now
+              </button>
+            }
+          >
+            {/* TODO(api): the stream gives no retry schedule, so there’s no “in 8 s” countdown. */}
+            Reconnecting{feed.attempt > 1 ? ` (attempt ${feed.attempt})` : ""}. You are seeing alerts up to {formatClock(feed.since ?? now)}.
           </Banner>
         )}
         {feed.critical?.case_id && !disconnected && (
@@ -252,260 +341,265 @@ export default function LiveAlertsPage() {
         )}
 
         {picked.length > 0 ? (
-          <div className="flex items-center gap-3 rounded-xl bg-brand-ink px-4 py-2.5" role="toolbar" aria-label="Bulk actions">
+          /* B15 · Bulk triage */
+          <div
+            role="toolbar"
+            aria-label="Bulk actions"
+            className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-primary bg-brand-primary-subtle py-2.5 pr-3 pl-4"
+          >
             <Checkbox
-              label={`${picked.length} selected`}
+              label="Clear selection"
               hideLabel
               checked={allPicked}
               indeterminate={!allPicked}
               onChange={() => setSelected(new Set())}
             />
-            <p className="text-label-m text-text-inverse">
-              {picked.length} {picked.length === 1 ? "alert" : "alerts"} selected
-              {commonality.length > 0 && <span className="text-body-s text-[#c9c6e6]"> · {commonality.join(" · ")}</span>}
+            <p className="flex items-center gap-2">
+              <span className="text-label-s text-text-primary">
+                {picked.length} {picked.length === 1 ? "alert" : "alerts"} selected
+              </span>
+              {commonality.length > 0 && <span className="text-body-s text-text-secondary">{commonality.join(" · ")}</span>}
             </p>
             <span className="flex-1" />
-            {[
-              ["promote", "app/icon-folder-white-18", picked.length > 1 ? `Open one case for all ${picked.length}` : "Open a case"],
-              ["attach", "app/icon-plus-white-18", "Add to a case"],
-              ["dismiss", "app/icon-x-white-18", `Dismiss ${picked.length}…`],
-            ].map(([id, icon, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setBulk(id as RowAction)}
-                className="flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-label-s text-text-inverse hover:bg-white/15"
-              >
-                <Icon name={icon} size={16} />
-                {label}
-              </button>
-            ))}
-            <button type="button" aria-label="Clear selection" onClick={() => setSelected(new Set())} className="flex size-8 items-center justify-center rounded-lg hover:bg-white/10">
-              <Icon name="app/icon-x-lilac-18" size={18} />
+            <Button variant="secondary" size="sm" onClick={() => setBulk("promote")}>
+              {picked.length > 1 ? `Open one case for all ${picked.length}` : "Open a case"}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setBulk("attach")}>
+              Add to a case
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setBulk("dismiss")}>
+              Dismiss {picked.length}
+            </Button>
+            <button
+              type="button"
+              aria-label="Clear selection"
+              onClick={() => setSelected(new Set())}
+              className="flex size-8 items-center justify-center rounded-lg hover:bg-brand-primary-subtle-hover"
+            >
+              <Icon name="app/icon-x-primary-18" size={16} />
             </button>
           </div>
         ) : (
-          <div className="flex flex-wrap items-center gap-3">
-            <Segmented
-              label="Severity"
-              value={severity}
-              onChange={setSeverity}
-              options={SEVERITY_TABS.map((t) => ({
-                ...t,
-                count: t.id === "all" ? openAlerts.length : severityCount(t.id),
-              }))}
+          <div className="flex flex-wrap items-center gap-2">
+            <ToolbarSearch
+              label="Search alerts"
+              placeholder="Search alerts by MSISDN, rule or ID"
+              value={query}
+              onChange={refine(setQuery)}
             />
-            <span className="flex-1" />
-            <label className="flex h-10 w-[320px] items-center gap-2.5 rounded-lg border border-border-default bg-surface-base px-3.5 focus-within:border-border-focus focus-within:shadow-focus">
-              <Icon name="app/icon-search-18" size={18} />
-              <input
-                type="search"
-                aria-label="Search alerts"
-                placeholder="Search alerts by MSISDN, rule or ID"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="min-w-0 flex-1 bg-transparent text-body-m text-text-primary outline-none placeholder:text-text-tertiary focus-visible:shadow-none"
-              />
-            </label>
             <AlertFilterButton
               value={filter}
-              onChange={setFilter}
+              onChange={refine(setFilter)}
               alerts={openAlerts}
               onSaveView={() =>
                 // TODO(api): saved views have no endpoint yet (also needed by G5).
                 toast({ title: "Saved views are coming soon", body: "Your filters are applied for now." })
               }
             />
+            <span aria-hidden className="h-5 w-px bg-border-strong" />
+            <SegmentChips
+              label="Severity"
+              value={severity}
+              onChange={refine(setSeverity)}
+              options={SEVERITY_TABS.map((t) => ({ ...t, count: t.id === "all" ? openAlerts.length : severityCount(t.id) }))}
+            />
+            <span className="flex-1" />
             <Toggle
               label="My regions only"
               checked={myRegions}
               disabled={!user?.regions}
               title={user?.regions ? user.regions.join(", ") : undefined}
-              onChange={(e) => setMyRegions(e.target.checked)}
+              onChange={(e) => refine(setMyRegions)(e.target.checked)}
             />
           </div>
         )}
 
-        {allClear ? (
-          <section className="flex flex-col items-center gap-3 rounded-xl border border-border-subtle bg-surface-base px-8 py-24 text-center">
-            <span className="flex size-[52px] items-center justify-center rounded-[14px] bg-success-bg">
-              <Icon name="app/icon-shield-check-success-22" size={22} />
-            </span>
-            <h2 className="text-title text-text-primary">All clear: no open alerts</h2>
-            <p className="max-w-[420px] text-body-s text-text-secondary">
-              Every alert has been triaged. New ones appear here the moment they’re detected
-              {feed.status === "live" && lastEvent ? ` (stream is live, last check ${lastEvent} ago)` : ""}.
-            </p>
-            <div className="mt-1 flex gap-2.5">
-              <Button variant="secondary" size="md" onClick={() => setShowDismissed(true)} disabled={!dismissedToday}>
-                View dismissed today ({dismissedToday})
-              </Button>
-              <ButtonLink href="/queue" size="md">
-                Go to my queue
-              </ButtonLink>
-            </div>
-          </section>
-        ) : (
-          <div className={cn("overflow-hidden rounded-xl border border-border-subtle bg-surface-base", disconnected && "opacity-60")}>
-            <table className="w-full table-fixed text-left">
-              <thead className="border-b border-border-subtle bg-surface-raised">
-                <tr className="text-overline text-text-tertiary uppercase">
-                  <th className="w-[54px] py-[11px] pl-5">
+        <div className="overflow-hidden rounded-lg border border-border-default bg-surface-base">
+          <table className="w-full table-fixed">
+            <thead className="border-b border-border-default bg-surface-raised">
+              <tr>
+                {!allClear && (
+                  <th scope="col" className="h-10 w-12 pr-2 pl-4">
                     <Checkbox
-                      label="Select all open alerts"
+                      label="Select all open alerts on this page"
                       hideLabel
                       checked={allPicked}
                       indeterminate={picked.length > 0 && !allPicked}
-                      onChange={(e) => setSelected(e.target.checked ? new Set(selectable.map((a) => a.id)) : new Set())}
+                      onChange={(e) =>
+                        setSelected((prev) => {
+                          const next = new Set(prev);
+                          selectable.forEach((a) => (e.target.checked ? next.add(a.id) : next.delete(a.id)));
+                          return next;
+                        })
+                      }
                     />
                   </th>
-                  <th className="w-[100px] py-[11px] font-bold">Time</th>
-                  <th className="w-[166px] py-[11px] font-bold">Risk</th>
-                  <th className="py-[11px] font-bold">Signal</th>
-                  <th className="w-[206px] py-[11px] font-bold">Subscriber</th>
-                  <th className="w-[206px] py-[11px] font-bold">Status</th>
-                  <th className="w-[170px] py-[11px] pr-5">
-                    <span className="sr-only">Actions</span>
-                  </th>
+                )}
+                <HeaderCell className="w-[88px]" sort={sort === "time" ? "sorted" : "sortable"} onSort={() => setSort("time")}>
+                  Time
+                </HeaderCell>
+                <HeaderCell className="w-[140px]" sort={sort === "risk" ? "sorted" : "sortable"} onSort={() => setSort("risk")}>
+                  Risk
+                </HeaderCell>
+                <HeaderCell>Signal</HeaderCell>
+                <HeaderCell className="w-[220px]">Subscriber</HeaderCell>
+                <HeaderCell className="w-[240px]">Status</HeaderCell>
+                <th scope="col" className="w-14">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading &&
+                Array.from({ length: 6 }, (_, i) => (
+                  <tr key={i} className="border-b border-border-default last:border-b-0">
+                    <td colSpan={7} className="h-16 px-4">
+                      <Skeleton className="h-8 w-full" />
+                    </td>
+                  </tr>
+                ))}
+              {/* B18 · All clear */}
+              {allClear && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-9">
+                    <div className="flex flex-col items-center gap-1 text-center">
+                      <span className="mb-3 flex size-9 items-center justify-center rounded-lg border border-border-default bg-surface-base">
+                        <Icon name="app/icon-check-circle-secondary-18" size={18} />
+                      </span>
+                      <p className="text-title text-text-primary">No new alerts</p>
+                      <p className="text-caption text-text-secondary">
+                        {[lastAlertAt && `Last alert at ${formatClock(lastAlertAt)}`, feed.status === "live" ? "the stream is live" : "the stream is paused"]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {isLoading &&
-                  Array.from({ length: 6 }, (_, i) => (
-                    <tr key={i} className="border-b border-border-subtle">
-                      <td colSpan={7} className="px-5 py-4">
-                        <Skeleton className="h-8 w-full" />
-                      </td>
-                    </tr>
-                  ))}
-                {rows.map((a) => {
+              )}
+              {!allClear &&
+                pageRows.map((a) => {
                   const isOpen = isOpenAlert(a);
-                  const fresh = a.status === "new" && now - Date.parse(a.created_at) < 5 * 60_000;
                   const checked = selected.has(a.id);
+                  const active = checked || a.id === openId;
+                  const tone = isOpen ? "text-text-primary" : "text-text-secondary";
                   return (
                     <tr
                       key={a.id}
+                      onClick={() => openDrawer(a.id)}
                       className={cn(
-                        "relative border-b border-border-subtle last:border-b-0",
-                        checked ? "bg-brand-primary-subtle/60" : isOpen ? "bg-surface-base hover:bg-[#fbfaff]" : "bg-surface-raised",
+                        "h-16 cursor-pointer border-b border-border-default last:border-b-0",
+                        active ? "bg-brand-primary-subtle-hover" : "bg-surface-base hover:bg-surface-sunken",
                         feed.arrived.has(a.id) && "animate-row-arrive motion-reduce:animate-none",
                       )}
                     >
-                      <td className="relative py-3.5 pl-5">
-                        {(fresh || feed.arrived.has(a.id)) && <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-brand-primary" />}
-                        {isOpen && (
-                          <Checkbox label={`Select ${a.id}`} hideLabel checked={checked} onChange={(e) => toggle(a.id, e.target.checked)} />
-                        )}
+                      <td className="pr-2 pl-4" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          label={`Select ${a.id}`}
+                          hideLabel
+                          disabled={!isOpen}
+                          checked={checked && isOpen}
+                          onChange={(e) => toggle(a.id, e.target.checked)}
+                        />
                       </td>
-                      <td className="py-3.5">
-                        <span className="flex flex-col text-caption">
-                          <span className="font-mono text-mono-s text-text-primary">{formatClock(a.created_at)}</span>
-                          <span className="text-text-tertiary">{formatAgo(a.created_at, now)}</span>
-                        </span>
-                      </td>
-                      <td className="py-3.5">
+                      <td className={cn("px-4 text-body-s", tone)}>{formatClock(a.created_at)}</td>
+                      <td className="px-4">
                         <span className="flex items-center gap-2">
-                          <span className={cn("text-label-m", riskText(a.risk_score))}>{a.risk_score}</span>
+                          <span className={cn("w-5 text-right text-body-s tabular-nums", tone)}>{a.risk_score}</span>
                           <SeverityBadge severity={a.severity} />
                         </span>
                       </td>
-                      <td className="py-3.5 pr-4">
+                      <td className="px-4">
                         <button
                           type="button"
-                          onClick={() => openDrawer(a.id)}
-                          className="flex max-w-full flex-col gap-0.5 rounded text-left"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDrawer(a.id);
+                          }}
+                          className="flex w-full min-w-0 flex-col gap-0.5 rounded text-left"
                         >
-                          <span className={cn("truncate text-label-m", isOpen ? "text-text-primary" : "text-text-secondary")}>{a.title}</span>
-                          <span className="truncate font-mono text-mono-s text-text-tertiary">{[a.id, ...a.rule_ids].join(" · ")}</span>
+                          <span className={cn("w-full truncate text-label-s", tone)}>{a.title}</span>
+                          <span className="w-full truncate text-caption text-text-tertiary">{a.id}</span>
                         </button>
                       </td>
-                      <td className="py-3.5">
-                        <span className="flex flex-col text-caption">
-                          <span className="font-mono text-mono-s text-text-primary">{a.subscriber.msisdn}</span>
-                          <span className="text-text-secondary">{a.region}</span>
+                      <td className="px-4">
+                        <span className="flex min-w-0 flex-col gap-0.5">
+                          <span className={cn("truncate text-label-s", tone)}>{a.subscriber.msisdn}</span>
+                          <span className="truncate text-caption text-text-tertiary">{a.region}</span>
                         </span>
                       </td>
-                      <td className="py-3.5">{isOpen ? <OpenStatus alert={a} /> : <ClosedStatus alert={a} />}</td>
-                      <td className="py-3.5 pr-5">
-                        <span className="flex items-center justify-end gap-1">
-                          {isOpen ? (
-                            <>
-                              <Button variant="secondary" size="sm" onClick={() => openDrawer(a.id)}>
-                                Investigate
-                              </Button>
-                              <Menu
-                                label={`More actions for ${a.id}`}
-                                width={220}
-                                trigger={(t) => (
-                                  <button
-                                    type="button"
-                                    aria-label={`More actions for ${a.id}`}
-                                    aria-expanded={t["aria-expanded"]}
-                                    aria-haspopup="menu"
-                                    onClick={t.toggle}
-                                    className="flex size-8 items-center justify-center rounded-[10px] border border-border-default bg-surface-base hover:bg-surface-raised"
-                                  >
-                                    <Icon name="app/icon-more-20" size={20} />
-                                  </button>
-                                )}
-                              >
-                                {(close) =>
-                                  (
-                                    [
-                                      ["promote", "Open a case"],
-                                      ["attach", "Add to a case"],
-                                      ["dismiss", "Dismiss"],
-                                    ] as const
-                                  ).map(([id, label]) => (
-                                    <MenuItem
-                                      key={id}
-                                      title={label}
-                                      onSelect={() => {
-                                        close();
-                                        openDrawer(a.id, id);
-                                      }}
-                                    />
-                                  ))
-                                }
-                              </Menu>
-                            </>
-                          ) : a.case_id ? (
-                            <Link href={`/cases/${a.case_id}`} className="rounded-lg px-3 py-1.5 text-label-s text-text-brand hover:bg-brand-primary-subtle">
-                              View
-                            </Link>
-                          ) : (
-                            <Button variant="ghost" size="sm" onClick={() => openDrawer(a.id)}>
-                              View
-                            </Button>
-                          )}
-                        </span>
+                      <td className="px-4">
+                        <StatusCell alert={a} />
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        {isOpen && (
+                          <span className="flex justify-center">
+                            <Menu
+                              label={`More actions for ${a.id}`}
+                              width={200}
+                              trigger={(t) => (
+                                <button
+                                  type="button"
+                                  aria-label={`More actions for ${a.id}`}
+                                  aria-expanded={t["aria-expanded"]}
+                                  aria-haspopup="menu"
+                                  onClick={t.toggle}
+                                  className="flex size-8 items-center justify-center rounded-lg hover:bg-surface-sunken"
+                                >
+                                  <Icon name="app/icon-more-16" size={16} />
+                                </button>
+                              )}
+                            >
+                              {(close) =>
+                                (
+                                  [
+                                    ["promote", "Open a case"],
+                                    ["attach", "Add to a case"],
+                                    ["dismiss", "Dismiss"],
+                                  ] as const
+                                ).map(([id, label]) => (
+                                  <MenuItem
+                                    key={id}
+                                    title={label}
+                                    onSelect={() => {
+                                      close();
+                                      openDrawer(a.id, id);
+                                    }}
+                                  />
+                                ))
+                              }
+                            </Menu>
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );
                 })}
-                {!isLoading && rows.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-5 py-10 text-center text-body-s text-text-secondary">
-                      No alerts match.{" "}
-                      <button
-                        type="button"
-                        className="text-text-brand hover:underline"
-                        onClick={() => {
-                          setFilter(NO_FILTER);
-                          setSeverity("all");
-                          setQuery("");
-                          setMyRegions(false);
-                        }}
-                      >
-                        Clear filters
-                      </button>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+              {!isLoading && !allClear && rows.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-body-s text-text-secondary">
+                    No alerts match.{" "}
+                    <button
+                      type="button"
+                      className="text-text-brand hover:underline"
+                      onClick={() => {
+                        setFilter(NO_FILTER);
+                        setSeverity("all");
+                        setQuery("");
+                        setMyRegions(false);
+                        setPage(0);
+                      }}
+                    >
+                      Clear filters
+                    </button>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          {!isLoading && !allClear && rows.length > 0 && (
+            <Pagination page={current} pages={pages} total={rows.length} onPage={setPage} />
+          )}
+        </div>
       </PageBody>
 
       {drawerAlert && (

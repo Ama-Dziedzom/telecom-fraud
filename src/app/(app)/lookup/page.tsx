@@ -2,15 +2,19 @@
 
 import { AppHeader } from "@/components/app/AppHeader";
 import { PageBody, PageHead } from "@/components/app/AppShell";
-import { Card, Skeleton } from "@/components/app/Card";
+import { Card, CardMeta, Skeleton } from "@/components/app/Card";
 import { EmptyState } from "@/components/app/EmptyState";
 import { RiskScore } from "@/components/app/indicators";
+import { localMsisdn } from "@/components/cases/CaseTable";
+import { DataTable, Td, Th, rowClass } from "@/components/cases/Table";
 import { BulkLookupModal, hitNote, hitSubtitle, identifierProblem, RequestInfoModal } from "@/components/lookup/LookupModals";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { FieldLabel, Select } from "@/components/ui/TextField";
 import { apiFetch } from "@/lib/api/client";
 import { useApi, type SearchHit, type SearchResult } from "@/lib/api/fd";
+import { useOperatorName } from "@/lib/auth/session";
 import { cn } from "@/lib/cn";
 import { formatClockOrDay, useNow } from "@/lib/time";
 import Link from "next/link";
@@ -19,7 +23,15 @@ import { useEffect, useState } from "react";
 import { useSWRConfig } from "swr";
 
 type Hit = SearchHit & { subscriber: NonNullable<SearchHit["subscriber"]> };
-type Recent = { identifier: string; name: string; type: "msisdn" | "imei" | "wallet"; entity_id: string; case_id: string | null; risk_score: number; at: string };
+type Recent = {
+  identifier: string;
+  name: string;
+  type: "msisdn" | "imei" | "wallet";
+  entity_id: string;
+  case_id: string | null;
+  risk_score: number;
+  at: string;
+};
 type Watch = {
   id: string;
   entity_id: string;
@@ -40,16 +52,29 @@ const TYPES = [
   ["wallet", "Wallet ID"],
   ["ghana_card", "Ghana Card"],
 ] as const;
-const DETECTED: Record<string, string> = { msisdn: "Phone number detected", imei: "IMEI detected", ghana_card: "Ghana Card detected", wallet: "Wallet ID detected" };
-const TRY = ["+233 54 *** 3457", "IMEI 356938…4417", "GHA-7231…-4"];
-const RECENT_TYPE: Record<Recent["type"], string> = { msisdn: "Phone", imei: "Device", wallet: "Wallet" };
+const DETECTED: Record<string, string> = {
+  msisdn: "phone number detected",
+  imei: "IMEI detected",
+  ghana_card: "Ghana Card detected",
+  wallet: "wallet ID detected",
+};
+const RECENT_TYPE: Record<Recent["type"], string> = {
+  msisdn: "Phone",
+  imei: "Device",
+  wallet: "Wallet",
+};
 const WATCH_REASON: Record<string, string> = {
   victim_repeat: "Repeat victim",
   suspect_agent: "Suspected agent",
   linked_to_case: "Linked to a case",
   gateway: "Possible gateway",
 };
-const WATCH_ENTITY: Record<string, string> = { subscriber: "Number", wallet: "Wallet", agent: "Agent", device: "Device" };
+const WATCH_ENTITY: Record<string, string> = {
+  subscriber: "Number",
+  wallet: "Wallet",
+  agent: "Agent",
+  device: "Device",
+};
 /** “Mule wallet · FD-2998” / “Suspected agent · 3 hits · FD-3050” */
 const watchDetail = (w: Watch) =>
   [
@@ -60,24 +85,15 @@ const watchDetail = (w: Watch) =>
     .filter(Boolean)
     .join(" · ");
 
-/** “+233 54 *** 3457 Kojo M.” with the number in mono and the name after it. */
-function HitTitle({ hit }: { hit: Hit }) {
-  return (
-    <span className="flex items-center gap-2">
-      <span className="font-mono text-mono-m text-text-primary">{hit.subscriber.msisdn}</span>
-      <span className="text-label-m text-text-primary">{hit.subscriber.name}</span>
-    </span>
-  );
-}
-
 /** Auto-detect is the API’s default, so it isn’t sent. */
 const searchPath = (q: string, type: string) => `/search?q=${encodeURIComponent(q)}${type === "auto" ? "" : `&type=${type}`}`;
 const subscriberHits = (r: SearchResult | undefined) => (r?.data ?? []).filter((h): h is Hit => h.kind === "subscriber" && Boolean(h.subscriber));
 
-/** G14–G17 · Subscriber lookup — search by phone, wallet, IMEI or Ghana Card; every lookup is logged. */
+/** G14–G17 · Subscriber lookup (start, typing matches, no match, invalid identifier) — search by phone, wallet, IMEI or Ghana Card; every lookup is logged. */
 export default function LookupPage() {
   const router = useRouter();
   const now = useNow();
+  const operator = useOperatorName();
   const { mutate } = useSWRConfig();
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -112,7 +128,7 @@ export default function LookupPage() {
   const lookUp = () => {
     const problem = type === "auto" || type === "msisdn" ? identifierProblem(q) : null;
     if (problem === "is too short" || problem === "is too long") {
-      setInvalid(`That’s ${problem.replace("is ", "")} for a phone number. Use 10 digits (054 123 4567) or +233 followed by 9 digits.`);
+      setInvalid(`${problem === "is too short" ? "Too short" : "Too long"} for a phone number. Use 10 digits (054 123 4567) or +233 then 9 digits.`);
       return;
     }
     setInvalid(null);
@@ -135,38 +151,42 @@ export default function LookupPage() {
     } else if (e.key === "Escape") setOpen(false);
   };
 
+  const network = operator ?? "our network";
+  const other = result?.other_operator?.name;
+
   return (
     <>
       <AppHeader section="Investigate" title="Subscriber lookup" />
       <PageBody>
         <PageHead
           title="Subscriber lookup"
-          subtitle="Search any subscriber by phone number, wallet ID, IMEI or Ghana Card number. Every lookup is logged."
+          subtitle="Search by phone number, wallet ID, IMEI or Ghana Card number. Every lookup is logged."
           actions={
-            <Button variant="secondary" size="md" onClick={() => setDialog("bulk")} iconLeft={<Icon name="app/icon-file-secondary-18" size={18} />}>
+            <Button variant="secondary" size="md" onClick={() => setDialog("bulk")}>
               Bulk lookup
             </Button>
           }
         />
 
-        <section className={cn("flex flex-col gap-3 rounded-xl border bg-surface-base px-4 py-4", invalid ? "border-critical-border" : "border-border-subtle")}>
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
+        <Card title="Find a subscriber">
+          <div className="flex items-end gap-2.5">
+            <div className="relative flex min-w-0 flex-1 flex-col gap-1.5">
+              <FieldLabel htmlFor="lookup-q">Number, IMEI, wallet or Ghana Card</FieldLabel>
               <label
                 className={cn(
-                  "flex h-12 items-center gap-2.5 rounded-lg border bg-surface-base px-3.5",
-                  invalid ? "border-critical-fg" : "border-border-default focus-within:border-border-focus focus-within:shadow-focus",
+                  "flex h-10 items-center gap-2 rounded-lg border bg-surface-base px-3",
+                  invalid ? "border-critical-fg" : "border-border-default hover:border-border-strong focus-within:border-border-focus focus-within:shadow-focus",
                 )}
               >
-                <Icon name="app/icon-search-18" size={18} />
+                <Icon name="app/icon-search-tertiary-16" size={16} />
                 <input
+                  id="lookup-q"
                   role="combobox"
                   aria-expanded={showSuggest}
                   aria-controls="lookup-suggestions"
                   aria-activedescendant={showSuggest ? `hit-${active}` : undefined}
                   aria-invalid={Boolean(invalid)}
-                  aria-describedby={invalid ? "lookup-error" : undefined}
-                  aria-label="Phone number, IMEI, wallet or Ghana Card"
+                  aria-describedby={invalid ? "lookup-error" : "lookup-hint"}
                   value={q}
                   onChange={(e) => {
                     setQ(e.target.value);
@@ -179,7 +199,7 @@ export default function LookupPage() {
                   onBlur={() => setTimeout(() => setOpen(false), 150)}
                   onKeyDown={onKey}
                   placeholder="e.g. 024 123 4567, IMEI, wallet or Ghana Card"
-                  className="min-w-0 flex-1 bg-transparent font-mono text-mono-m text-text-primary outline-none placeholder:font-sans placeholder:text-body-m placeholder:text-text-tertiary focus-visible:shadow-none"
+                  className="min-w-0 flex-1 bg-transparent text-body-m text-text-primary outline-none placeholder:text-text-tertiary focus-visible:shadow-none"
                 />
                 {q && (
                   <button
@@ -196,13 +216,18 @@ export default function LookupPage() {
                   </button>
                 )}
               </label>
+              {invalid && (
+                <p id="lookup-error" className="absolute top-full mt-1.5 flex items-center gap-1.5 text-caption text-critical-fg">
+                  <Icon name="app/icon-alert-circle-critical-14" size={14} />
+                  {invalid}
+                </p>
+              )}
+              {/* G15 · Typing matches. */}
               {showSuggest && (
-                <div className="absolute top-[calc(100%+6px)] right-0 left-0 z-30 overflow-hidden rounded-xl border border-border-default bg-surface-base shadow-lg">
-                  <p className="flex justify-between border-b border-border-subtle bg-surface-raised px-3.5 py-2 text-overline text-text-tertiary uppercase">
-                    <span>
-                      {hits.length} {hits.length === 1 ? "subscriber matches" : "subscribers match"} “{debounced}”
-                    </span>
-                    <span className="normal-case tracking-normal">{DETECTED[matches?.detected_type ?? ""] ?? ""}</span>
+                <div className="absolute top-[calc(100%+4px)] right-0 left-0 z-30 rounded-lg border border-border-default bg-surface-base px-3 py-2 shadow-lg">
+                  <p className="px-1 pb-1.5 text-caption text-text-secondary">
+                    {hits.length} {hits.length === 1 ? "subscriber matches" : "subscribers match"} “{debounced}”
+                    {DETECTED[matches?.detected_type ?? ""] ? ` · ${DETECTED[matches?.detected_type ?? ""]}` : ""}
                   </p>
                   <ul id="lookup-suggestions" role="listbox" aria-label="Matches">
                     {hits.map((h, i) => (
@@ -214,118 +239,81 @@ export default function LookupPage() {
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={(e) => openHit(h, e.metaKey || e.ctrlKey)}
                         onMouseEnter={() => setActive(i)}
-                        className={cn("flex cursor-pointer items-center gap-3 border-b border-border-subtle px-3.5 py-2.5", i === active && "bg-brand-primary-subtle/60")}
+                        className={cn("flex cursor-pointer items-center gap-3 border-b border-border-default px-1 py-2 last:border-b-0", i === active && "bg-surface-sunken")}
                       >
-                        <span className="flex size-8 items-center justify-center rounded-full bg-brand-primary-subtle">
-                          <Icon name="app/icon-user-brand-20" size={16} />
-                        </span>
-                        <span className="flex flex-1 flex-col">
-                          <span className="flex items-center gap-2">
-                            <HitTitle hit={h} />
-                            {hitNote(h.subscriber) && <span className="text-body-s text-text-secondary">{hitNote(h.subscriber)}</span>}
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-label-s text-text-primary">
+                            {localMsisdn(h.subscriber.msisdn)} · {hitNote(h.subscriber) ? hitNote(h.subscriber).toLowerCase() : h.subscriber.name}
                           </span>
-                          <span className="text-caption text-text-secondary">{hitSubtitle(h.subscriber)}</span>
+                          <span className="truncate text-caption text-text-secondary">{hitSubtitle(h.subscriber)}</span>
                         </span>
                         {h.open_cases ? (
-                          <Badge label={`${h.open_cases} open ${h.open_cases === 1 ? "case" : "cases"}`} tone="critical" dot />
+                          <Badge label={`${h.open_cases} open ${h.open_cases === 1 ? "case" : "cases"}`} tone="critical" />
                         ) : (
-                          <span className="text-caption text-text-tertiary">No cases</span>
+                          <Badge label="No cases" tone="neutral" />
                         )}
-                        {i === active && <span className="text-caption text-text-tertiary">↵</span>}
                       </li>
                     ))}
                   </ul>
-                  <p className="bg-surface-raised px-3.5 py-2 text-caption text-text-tertiary">↑↓ move · ↵ open profile · ⌘↵ open in new tab</p>
+                  <p className="px-1 pt-2 text-caption text-text-secondary">Arrow keys to move · Enter to open the profile</p>
                 </div>
               )}
             </div>
-            <label className="relative flex h-12 w-[190px] items-center gap-2 rounded-lg border border-border-default bg-surface-base pr-8 pl-3">
-              <Icon name="app/icon-sliders-18" size={16} />
-              <select
-                aria-label="Identifier type"
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                className="min-w-0 flex-1 appearance-none bg-transparent text-body-m text-text-primary outline-none focus-visible:shadow-none"
-              >
-                {TYPES.map(([id, label]) => (
-                  <option key={id} value={id}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <Icon name="app/icon-chevron-down-16" size={14} className="pointer-events-none absolute right-3" />
-            </label>
-            <Button size="lg" onClick={lookUp} disabled={!q.trim()}>
+            <Select label="Type" aria-label="Identifier type" value={type} onChange={(e) => setType(e.target.value)} className="w-[162px] shrink-0">
+              {TYPES.map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+            <Button size="md" onClick={lookUp} disabled={!q.trim()}>
               Look up
             </Button>
           </div>
-          {invalid ? (
-            <p id="lookup-error" className="flex items-center gap-1.5 text-caption text-critical-fg">
-              <Icon name="icon-alert-critical" size={14} />
-              {invalid}
-            </p>
-          ) : (
-            <div className="flex items-center gap-2 text-caption text-text-tertiary">
-              Try
-              {TRY.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => {
-                    setQ(t);
-                    setOpen(true);
-                  }}
-                  className="rounded-md bg-surface-sunken px-2 py-0.5 font-mono text-mono-s text-text-secondary hover:text-text-primary"
-                >
-                  {t}
-                </button>
-              ))}
-              <span className="flex-1" />
-              <Icon name="app/icon-shield-tertiary-16" size={14} />
-              Numbers are masked until you reveal them with a reason
-            </div>
-          )}
-        </section>
+          <p id="lookup-hint" className={cn("text-caption text-text-secondary", invalid && "mt-5")}>
+            Numbers stay masked until you reveal them with a reason.
+          </p>
 
-        {noMatch ? (
-          <EmptyState
-            icon="app/icon-search-18"
-            tone="neutral"
-            title={`No Kasa Mobile subscriber with ${submitted}`}
-            className="min-h-[300px]"
-            actions={
-              <>
-                <Button variant="secondary" size="md" onClick={() => setDialog("request")} iconLeft={<Icon name="app/icon-send-18" size={18} />}>
-                  Request info from operator
-                </Button>
-                <Button
-                  size="md"
-                  onClick={() => {
-                    setSubmitted(null);
-                    setQ("");
-                  }}
-                  iconLeft={<Icon name="app/icon-search-white-18" size={18} />}
-                >
-                  Search again
-                </Button>
-              </>
-            }
-          >
-            {result.other_operator
-              ? `${submitted.replace(/\D/g, "").replace(/^233/, "0").slice(0, 3)} numbers usually belong to another network. `
-              : ""}
-            It may also never have been activated, or was purged after 24 months of inactivity.
-          </EmptyState>
-        ) : submitted && resultLoading ? (
-          <Skeleton className="h-[300px] w-full rounded-xl" />
-        ) : submitted && result && found.length > 1 ? (
-          <Card title={`${found.length} matches for “${submitted}”`} icon="app/icon-search-18">
-            <ul className="flex flex-col">
+          {/* G16 · No match. */}
+          {noMatch && (
+            <EmptyState
+              bare
+              icon="app/icon-search-18"
+              title={`No ${network} subscriber with ${localMsisdn(submitted)}`}
+              actions={
+                other ? (
+                  <Button variant="secondary" size="md" onClick={() => setDialog("request")}>
+                    Request info from {other}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    onClick={() => {
+                      setSubmitted(null);
+                      setQ("");
+                    }}
+                  >
+                    Search again
+                  </Button>
+                )
+              }
+            >
+              {other
+                ? `It looks like ${/^[aeiou]/i.test(other) ? "an" : "a"} ${other} number. You can ask ${other}’s fraud desk.`
+                : "It may never have been activated, or was purged after 24 months of inactivity."}
+            </EmptyState>
+          )}
+          {submitted && resultLoading && <Skeleton className="h-[120px] w-full rounded-lg" />}
+          {submitted && result && found.length > 1 && (
+            <ul className="flex flex-col border-t border-border-default">
               {found.map((h) => (
-                <li key={h.id} className="border-b border-border-subtle last:border-b-0">
-                  <Link href={`/subscribers/${h.id}`} className="flex items-center gap-3 py-3">
+                <li key={h.id} className="border-b border-border-default last:border-b-0">
+                  <Link href={`/subscribers/${h.id}`} className="flex items-center gap-3 py-3 hover:bg-surface-sunken">
                     <span className="flex flex-1 flex-col">
-                      <HitTitle hit={h} />
+                      <span className="text-label-s text-text-primary">
+                        {localMsisdn(h.subscriber.msisdn)} · {h.subscriber.name}
+                      </span>
                       <span className="text-caption text-text-secondary">{hitSubtitle(h.subscriber)}</span>
                     </span>
                     <Icon name="app/icon-chevron-right-16" size={16} />
@@ -333,104 +321,101 @@ export default function LookupPage() {
                 </li>
               ))}
             </ul>
+          )}
+        </Card>
+
+        <div className="flex items-start gap-5">
+          <Card
+            title="Recent lookups"
+            className="min-w-0 flex-1"
+            aside={
+              recent?.data.length ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    // Clears your list, not the audit log.
+                    await apiFetch("DELETE", "/lookups/recent").catch(() => undefined);
+                    await mutate("/lookups/recent");
+                  }}
+                  className="flex h-8 items-center rounded text-label-s text-text-brand hover:underline"
+                >
+                  Clear
+                </button>
+              ) : undefined
+            }
+          >
+            {!recent ? (
+              <Skeleton className="h-[200px] w-full rounded-lg" />
+            ) : recent.data.length === 0 ? (
+              <p className="py-6 text-center text-body-s text-text-secondary">Nothing yet. Your lookups show here; they’re still in the audit log.</p>
+            ) : (
+              <DataTable>
+                <colgroup>
+                  <col className="w-[30%]" />
+                  <col />
+                  <col className="w-[82px]" />
+                  <col className="w-[104px]" />
+                  <col className="w-[124px]" />
+                  <col className="w-[96px]" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <Th>Identifier</Th>
+                    <Th>Name</Th>
+                    <Th className="px-0">Type</Th>
+                    <Th>Case</Th>
+                    <Th>Risk</Th>
+                    <Th align="right">When</Th>
+                  </tr>
+                </thead>
+                <tbody className="[&_tr:last-child_td]:border-b-0">
+                  {recent.data.map((r) => (
+                    <tr key={r.entity_id} onClick={() => router.push(`/subscribers/${r.entity_id}`)} className={rowClass()}>
+                      <Td>
+                        {r.type === "imei" ? "IMEI " : ""}
+                        {localMsisdn(r.identifier)}
+                      </Td>
+                      <Td>{r.type === "wallet" ? `Wallet · ${r.name}` : r.name}</Td>
+                      <Td clip={false} className="px-0">
+                        <Badge label={RECENT_TYPE[r.type] ?? r.type} tone="neutral" />
+                      </Td>
+                      <Td>
+                        {r.case_id ? (
+                          <Link href={`/cases/${r.case_id}`} onClick={(e) => e.stopPropagation()} className="rounded font-mono text-mono-m text-text-primary hover:underline">
+                            {r.case_id}
+                          </Link>
+                        ) : (
+                          <span className="text-text-tertiary">–</span>
+                        )}
+                      </Td>
+                      <Td clip={false}>
+                        <RiskScore score={r.risk_score} />
+                      </Td>
+                      <Td align="right">{formatClockOrDay(r.at, now)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </DataTable>
+            )}
           </Card>
-        ) : (
-          <div className="flex items-start gap-4">
-            <Card
-              title="Recent lookups"
-              icon="app/icon-history-18"
-              className="min-w-0 flex-1"
-              aside={
-                recent?.data.length ? (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      // Clears your list, not the audit log.
-                      await apiFetch("DELETE", "/lookups/recent").catch(() => undefined);
-                      await mutate("/lookups/recent");
-                    }}
-                    className="rounded text-label-s text-text-brand hover:underline"
-                  >
-                    Clear
-                  </button>
-                ) : undefined
-              }
-            >
-              {!recent ? (
-                <Skeleton className="h-[200px] w-full rounded-lg" />
-              ) : recent.data.length === 0 ? (
-                <p className="py-6 text-center text-body-s text-text-secondary">Nothing yet. Your lookups show here; they’re still in the audit log.</p>
-              ) : (
-                <div className="overflow-hidden rounded-[10px] border border-border-subtle">
-                  <table className="w-full text-left">
-                    <thead className="bg-surface-raised">
-                      <tr className="text-overline text-text-tertiary uppercase">
-                        {["Identifier", "Name", "Type", "Case", "Risk", "When"].map((h, i) => (
-                          <th key={h} className={cn("py-2.5 font-bold", i === 0 && "pl-3.5", i === 5 && "pr-3.5 text-right")}>
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recent.data.map((r) => (
-                        <tr key={r.entity_id} onClick={() => router.push(`/subscribers/${r.entity_id}`)} className="cursor-pointer border-t border-border-subtle hover:bg-[#fbfaff]">
-                          <td className="py-3 pl-3.5 font-mono text-mono-m text-text-primary">
-                            {r.type === "imei" ? "IMEI " : ""}
-                            {r.identifier}
-                          </td>
-                          <td className="py-3 text-body-s text-text-primary">{r.name}</td>
-                          <td className="py-3">
-                            <Badge label={RECENT_TYPE[r.type] ?? r.type} tone="neutral" />
-                          </td>
-                          <td className="py-3">
-                            {r.case_id ? (
-                              <Link href={`/cases/${r.case_id}`} onClick={(e) => e.stopPropagation()} className="rounded font-mono text-mono-s text-text-brand hover:underline">
-                                {r.case_id}
-                              </Link>
-                            ) : (
-                              <span className="text-caption text-text-tertiary">No case</span>
-                            )}
-                          </td>
-                          <td className="py-3">
-                            <RiskScore score={r.risk_score} />
-                          </td>
-                          <td className="py-3 pr-3.5 text-right text-caption text-text-secondary">{formatClockOrDay(r.at, now)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
-            <Card
-              title={
-                <span className="flex items-center gap-2">
-                  My watchlist
-                  {watch && <span className="rounded-full bg-surface-sunken px-1.5 text-caption font-medium text-text-tertiary">{watch.data.length}</span>}
-                </span>
-              }
-              icon="app/icon-eye-primary-18"
-              className="w-[460px] shrink-0"
-            >
-              <ul className="flex flex-col">
-                {watch?.data.map((w) => (
-                  <li key={w.id} className="flex items-center gap-3 border-b border-border-subtle py-3 last:border-b-0">
-                    <span className="flex flex-1 flex-col">
-                      <span className="font-mono text-mono-m text-text-primary">{w.identifier}</span>
-                      <span className="text-caption text-text-secondary">{watchDetail(w)}</span>
-                    </span>
-                    <Badge label={w.status === "hit" ? "Active" : "Watching"} tone={w.status === "hit" ? "critical" : "high"} dot />
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          </div>
-        )}
+          <Card title="My watchlist" aside={watch ? <CardMeta>{watch.data.length}</CardMeta> : undefined} className="w-[324px] shrink-0">
+            <ul className="flex flex-col">
+              {watch?.data.map((w) => (
+                <li key={w.id} className="flex items-center gap-3 border-b border-border-default py-2.5 first:pt-0 last:border-b-0 last:pb-0">
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-body-s text-text-primary">{localMsisdn(w.identifier)}</span>
+                    <span className="truncate text-caption text-text-secondary">{watchDetail(w)}</span>
+                  </span>
+                  <Badge label={w.status === "hit" ? "Active" : "Watching"} tone={w.status === "hit" ? "critical" : "medium"} />
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
       </PageBody>
 
       {dialog === "bulk" && <BulkLookupModal onClose={() => setDialog(null)} />}
-      {dialog === "request" && submitted && <RequestInfoModal identifier={submitted} operator={result?.other_operator ?? null} onClose={() => setDialog(null)} />}
+      {dialog === "request" && submitted && <RequestInfoModal identifier={localMsisdn(submitted)} operator={result?.other_operator ?? null} onClose={() => setDialog(null)} />}
     </>
   );
 }

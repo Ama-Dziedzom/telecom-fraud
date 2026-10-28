@@ -4,11 +4,11 @@ import type { CaseDetail, Transaction } from "@/lib/api/cases";
 import type { ProtectiveAction } from "@/lib/api/fd";
 import { useState } from "react";
 import { AgentSuspensionModal, CallLogModal, EscalateModal, HandToColleagueModal, ReversalModal } from "./ActionDialogs";
-import { ApplyingModal, BarSimsModal, ProtectCaseModal } from "./ProtectDialogs";
+import { ApplyingModal, BarSimsModal, ProtectCaseModal, type ProtectKind } from "./ProtectDialogs";
 import { MonitorModal, ReopenModal, ResolveModal, ResubmitModal } from "./ResolveDialogs";
 
 export type CaseDialog =
-  | { kind: "protect"; parts: Array<"freeze_wallet" | "suspend_sim" | "block_recipients">; targets?: string[] }
+  | { kind: "protect"; parts: ProtectKind[]; targets?: string[] }
   | { kind: "bar_sims" }
   | { kind: "call" }
   | { kind: "reversal"; transactions?: Transaction[] }
@@ -50,7 +50,6 @@ export function CaseDialogs({
           targets={dialog.targets}
           onClose={onClose}
           onApplying={setApplying}
-          onReversal={() => onOpen({ kind: "reversal" })}
         />
       );
     case "bar_sims":
