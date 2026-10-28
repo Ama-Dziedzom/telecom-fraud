@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuthStep } from "@/components/auth/AuthFrame";
 import { AccountChip, AuthHeading, AuthPage, StepOverline } from "@/components/auth/AuthPage";
 import { RequestError } from "@/components/auth/RequestError";
 import { useSignIn } from "@/components/auth/SignInContext";
@@ -157,6 +158,7 @@ function InviteUnusable({
   title: string;
   detail?: string;
 }) {
+  useAuthStep(1);
   const [sent, setSent] = useState(false);
   return (
     <AuthPage>

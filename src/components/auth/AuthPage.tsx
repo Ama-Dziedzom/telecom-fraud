@@ -1,3 +1,4 @@
+import { Logo } from "@/components/brand/Logo";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
 import { IconTile, type IconTileTone } from "@/components/ui/IconTile";
@@ -12,8 +13,9 @@ const SECURITY_NOTES = {
 };
 
 /**
- * Right-hand column of every auth screen: back link + help in the top bar,
- * the form column centred vertically, and the footer.
+ * Left half of every auth screen: logo + help in the top bar, the form column
+ * centred (back link just above it), and the footer. The right half is the
+ * Auth / Workflow panel (see the auth layout).
  */
 export function AuthPage({
   back,
@@ -33,19 +35,11 @@ export function AuthPage({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-[calc(100dvh-32px)] flex-col px-6 pt-7 pb-8 sm:px-12">
+    <div className="flex min-h-dvh flex-col px-6 pt-11 pb-12 sm:px-16">
       <header className="flex items-center justify-between gap-4">
-        {back ? (
-          <Link
-            href={back.href}
-            className="flex items-center gap-1.5 rounded text-label-s text-text-secondary hover:text-text-primary"
-          >
-            <Icon name="icon-arrow-left" size={16} />
-            {back.label ?? "Back"}
-          </Link>
-        ) : (
-          <span />
-        )}
+        <Link href="/sign-in" aria-label="FraudDetection" className="-ml-3 rounded-[10px]">
+          <Logo />
+        </Link>
         {variant === "staff" ? (
           <p className="flex items-center gap-1.5 text-body-s text-text-secondary">
             Staff help:
@@ -67,14 +61,25 @@ export function AuthPage({
       </header>
 
       <main className="flex flex-1 items-center justify-center py-12">
-        <div className="flex w-full flex-col" style={{ maxWidth: width, gap }}>
-          {children}
-          {securityNote && (
-            <p className="flex items-start gap-2 text-caption text-text-tertiary">
-              <Icon name="icon-shield" size={16} />
-              {SECURITY_NOTES[variant]}
-            </p>
+        <div className="flex w-full flex-col" style={{ maxWidth: width }}>
+          {back && (
+            <Link
+              href={back.href}
+              className="mb-[34px] flex w-fit items-center gap-1.5 rounded text-label-s text-text-secondary hover:text-text-primary"
+            >
+              <Icon name="icon-arrow-left" size={16} />
+              {back.label ?? "Back"}
+            </Link>
           )}
+          <div className="flex flex-col" style={{ gap }}>
+            {children}
+            {securityNote && (
+              <p className="flex items-start gap-2 text-caption text-text-tertiary">
+                <Icon name="icon-shield" size={16} />
+                {SECURITY_NOTES[variant]}
+              </p>
+            )}
+          </div>
         </div>
       </main>
 

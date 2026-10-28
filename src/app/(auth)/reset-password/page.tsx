@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuthStep } from "@/components/auth/AuthFrame";
 import { AuthHeading, AuthPage } from "@/components/auth/AuthPage";
 import { NewPasswordForm } from "@/components/auth/NewPasswordForm";
 import { ButtonLink } from "@/components/ui/Button";
@@ -31,6 +32,7 @@ function ResetPasswordContent() {
 
 /** D4 · Reset link expired (410 link_expired, or no token) */
 function ResetLinkExpired() {
+  useAuthStep(1);
   return (
     <AuthPage>
       <AuthHeading
