@@ -2,6 +2,7 @@
 
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { useNotifications } from "@/lib/api/fd";
 import { useOperatorName } from "@/lib/auth/session";
 import { NotificationsPanel } from "@/components/shell/NotificationsPanel";
@@ -52,10 +53,13 @@ function Bell({ unread }: { unread: boolean }) {
   useDismiss(open, root, () => setOpen(false));
   return (
     <div ref={root} className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={unread ? "Notifications (unread)" : "Notifications"} className={iconButton}>
-        <Icon name="app/icon-bell" size={20} />
-        {unread && <span className="absolute top-[7px] left-[22px] size-[9px] rounded-full border-2 border-surface-base bg-critical-fg" />}
-      </button>
+      {/* No tooltip while the panel is open: it would sit over the panel. */}
+      <Tooltip title="Notifications" placement="bottom" className={open ? "[&>[role=tooltip]]:hidden" : undefined}>
+        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={unread ? "Notifications (unread)" : "Notifications"} className={iconButton}>
+          <Icon name="app/icon-bell" size={20} />
+          {unread && <span className="absolute top-[7px] left-[22px] size-[9px] rounded-full border-2 border-surface-base bg-critical-fg" />}
+        </button>
+      </Tooltip>
       {open && <NotificationsPanel onClose={() => setOpen(false)} />}
     </div>
   );
@@ -113,9 +117,11 @@ export function AppHeader({ title, actions }: { section?: string; title: string;
     <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border-default bg-surface-base px-6">
       <h1 className="sr-only">{title}</h1>
       <div className="flex min-w-0 items-center gap-3">
-        <button type="button" onClick={toggleSidebar} aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"} aria-expanded={sidebarOpen} className={iconButton}>
-          <Icon name="app/icon-sidebar" size={20} />
-        </button>
+        <Tooltip title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"} placement="bottom">
+          <button type="button" onClick={toggleSidebar} aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"} aria-expanded={sidebarOpen} className={iconButton}>
+            <Icon name="app/icon-sidebar" size={20} />
+          </button>
+        </Tooltip>
         <GlobalSearch />
       </div>
       <div className="flex items-center gap-3">

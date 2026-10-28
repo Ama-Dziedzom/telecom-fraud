@@ -16,7 +16,6 @@ import { DoThisNext, OtherActions, WhatHappened, WhoInvolved } from "@/component
 import { TimelineTab } from "@/components/case/TimelineTab";
 import { TransactionsTab } from "@/components/case/TransactionsTab";
 import { BannerLink, firstName } from "@/components/case/parts";
-import { RevealModal } from "@/components/subscriber/RevealModal";
 import { SubscriberDrawer } from "@/components/subscriber/SubscriberDrawer";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
@@ -52,7 +51,6 @@ export default function CasePage() {
   const retry = useActionRetry(detail);
   const [starting, setStarting] = useState(false);
   const [subscriberOpen, setSubscriberOpen] = useState(false);
-  const [revealOpen, setRevealOpen] = useState(false);
   // Arriving from a subscriber or a check with “Protect now” opens the protect dialog.
   const [dialog, setDialog] = useState<CaseDialog | null>(() =>
     params.get("protect") === "1" ? { kind: "protect", parts: ["freeze_wallet", "suspend_sim", "block_recipients"] } : null,
@@ -210,7 +208,6 @@ export default function CasePage() {
                 meId={user?.id}
                 now={now}
                 onOpenSubscriber={() => setSubscriberOpen(true)}
-                onReveal={() => setRevealOpen(true)}
                 actions={
                   isNew ? (
                     !unassigned && <BannerLink onClick={returnToQueue}>Not mine: return to queue</BannerLink>
@@ -386,14 +383,6 @@ export default function CasePage() {
             setSubscriberOpen(false);
             setDialog({ kind: "call" });
           }}
-        />
-      )}
-      {detail && revealOpen && (
-        <RevealModal
-          open
-          onClose={() => setRevealOpen(false)}
-          subscriber={{ id: detail.subject.subscriber_id, name: detail.subject.name, msisdn: detail.subject.msisdn }}
-          cases={[{ id: detail.id, title: detail.title }]}
         />
       )}
       {detail && dialog && <CaseDialogs detail={detail} dialog={dialog} onClose={() => setDialog(null)} onOpen={setDialog} />}

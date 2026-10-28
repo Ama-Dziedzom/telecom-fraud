@@ -11,13 +11,11 @@ import { NeedsYouNow } from "@/components/queue/NeedsYouNow";
 import { NightHandoverDrawer } from "@/components/queue/NightHandoverDrawer";
 import { Banner } from "@/components/ui/Banner";
 import { Button, ButtonLink } from "@/components/ui/Button";
-import { useToast } from "@/components/ui/Toast";
 import { isOpenAlert, useAlerts, useApi, useMyCases, useMyInsights, useNotifications, type PersonRef } from "@/lib/api/fd";
 import {
   handoverKey,
   markNightHandoverSeen,
   nightHandoverKey,
-  shiftName,
   useLatestHandover,
   useStored,
   type SubmittedHandover,
@@ -79,8 +77,9 @@ export default function MyQueuePage() {
   // ⌘ Shift H and the profile menu land here with ?handover=1.
   const [handoverState, setHandoverOpen] = useState(false);
   const handoverOpen = handoverState || params.get("handover") === "1";
-  const toast = useToast();
   const submitted = useStored<SubmittedHandover>(handoverKey(now));
+  // A6 · the confirmation shows right after sending; later visits just offer “Edit handover”.
+  const [justSent, setJustSent] = useState(false);
   const nightRead = useStored<boolean>(nightHandoverKey(now));
 
   const loading = casesLoading || alertsLoading;
@@ -117,7 +116,7 @@ export default function MyQueuePage() {
           }
         />
 
-        {submitted && (
+        {submitted && justSent && (
           <Banner tone="success" title={sentAt ? `Handover sent ${sentAt}` : "Handover sent"}>
             {handedIds.length ? `${listIds(handedIds)} ${handedIds.length === 1 ? "goes" : "go"} to ` : "Your note goes to "}
             {takerName ?? "the next shift"}
@@ -187,15 +186,10 @@ export default function MyQueuePage() {
           next={next}
           resolvedToday={mine?.resolved}
           previous={submitted}
-          onSubmitted={(h) => {
+          onSubmitted={() => {
             setHandoverOpen(false);
+            setJustSent(true);
             if (params.get("handover")) nav.replace("/queue");
-            const n = h.cases.filter((c) => c.choice === "hand_over").length;
-            toast({
-              tone: "success",
-              title: `Handover sent to ${next.user.name.split(" ")[0]}`,
-              body: `${n} ${n === 1 ? "case" : "cases"} handed to the ${shiftName(next.shift)} shift.`,
-            });
           }}
         />
       )}

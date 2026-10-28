@@ -4,7 +4,6 @@ import { useApi } from "@/lib/api/fd";
 import { useAlertStream, type FeedState } from "@/lib/api/stream";
 import type { User } from "@/lib/auth/api";
 import { useOperatorName } from "@/lib/auth/session";
-import { cn } from "@/lib/cn";
 import {
   createContext,
   useContext,
@@ -177,7 +176,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-/** Scrollable page body below the header, with the shared footer at the end. */
+/** Scrollable page body below the top bar (Direction v2 has no page footer). */
 export function PageBody({
   children,
   className,
@@ -185,32 +184,12 @@ export function PageBody({
   children: ReactNode;
   className?: string;
 }) {
-  const { feed } = useShell();
-  const interrupted = feed?.status === "reconnecting";
   return (
-    <>
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className={className ?? "flex flex-1 flex-col gap-6 px-8 pt-8 pb-10"}>
-          {children}
-        </div>
-        <footer className="flex shrink-0 items-center justify-center gap-2 border-t border-border-default px-8 py-3 text-caption">
-          <span
-            className={cn(
-              "size-1.5 rounded-full",
-              interrupted ? "bg-medium-fg" : "bg-success-fg",
-            )}
-          />
-          <span className="text-text-secondary">
-            {interrupted
-              ? "Live updates interrupted"
-              : "All systems operational"}
-          </span>
-          <span className="whitespace-pre text-text-tertiary">
-            · © 2026 FraudDetection · v2.0
-          </span>
-        </footer>
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className={className ?? "flex flex-1 flex-col gap-6 px-8 pt-8 pb-10"}>
+        {children}
       </div>
-    </>
+    </div>
   );
 }
 

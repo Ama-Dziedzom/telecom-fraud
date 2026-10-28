@@ -2,6 +2,7 @@
 
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
+import { TooltipBubble, tooltipOnHover } from "@/components/ui/Tooltip";
 import { useEffect, useRef, useState } from "react";
 import { BUCKETS, LEVELS, type Level, type Pin } from "./geo";
 
@@ -109,7 +110,8 @@ export function HeatMap({
               const bucket = intensity.get(s.id) ?? 0;
               const focused = focus === s.id;
               return (
-                <div key={s.id} className="absolute" style={{ left: s.x, top: s.y, width: s.w, height: s.h }} title={`${s.name}: ${bucket ? geo.legend[bucket] : "no"} alerts`}>
+                <div key={s.id} className="group/tip absolute" style={{ left: s.x, top: s.y, width: s.w, height: s.h }}>
+                  <TooltipBubble title={s.name} body={`${bucket ? geo.legend[bucket] : "No"} alerts`} className={tooltipOnHover("top")} style={{ top: "50%", bottom: "auto", marginTop: -8 }} />
                   <span
                     aria-hidden
                     className="absolute block"
@@ -167,15 +169,15 @@ export function HeatMap({
               return (
                 <span
                   key={a.id}
-                  title={a.id}
                   className={cn(
-                    "absolute flex size-5 items-center justify-center rounded-[6px] border-2 border-surface-base",
+                    "group/tip absolute flex size-5 items-center justify-center rounded-[6px] border-2 border-surface-base",
                     hot ? "bg-chart-1 outline-2 outline-offset-1 outline-critical-solid" : "bg-chart-6",
                   )}
                   style={{ left: a.x, top: a.y }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img alt="" src="/figma/map/agent-building.svg" className="size-[11px]" />
+                  <TooltipBubble title={a.id} className={tooltipOnHover("top")} />
                 </span>
               );
             })}

@@ -8,6 +8,7 @@ import { Select, TextField } from "@/components/ui/TextField";
 import { useSubscriber } from "@/lib/api/fd";
 import { usePatterns, type Patterns } from "@/lib/api/subscribers";
 import { cn } from "@/lib/cn";
+import { TooltipBubble, tooltipOnHover } from "@/components/ui/Tooltip";
 import { TZ, formatClock, useNow } from "@/lib/time";
 import { useParams } from "next/navigation";
 import { useDeferredValue, useState } from "react";
@@ -50,10 +51,11 @@ function TransfersChart({ data, days, now }: { data: Patterns; days: number; now
         {data.transfers.map((t) => (
           <span
             key={t.at}
-            title={`${formatClock(t.at)} · ${money(t.amount)}`}
-            className={cn("absolute -translate-x-1/2 translate-y-1/2 rounded-full", t.flagged ? "size-[11px] bg-critical-solid" : "size-[9px] bg-border-strong")}
+            className={cn("group/tip absolute -translate-x-1/2 translate-y-1/2 rounded-full", t.flagged ? "size-[11px] bg-critical-solid" : "size-[9px] bg-border-strong")}
             style={{ left: `${x(t.at)}%`, bottom: y(t.amount.amount_minor) }}
-          />
+          >
+            <TooltipBubble title={formatClock(t.at)} body={money(t.amount)} className={tooltipOnHover("top")} />
+          </span>
         ))}
       </div>
       <div className="absolute right-0 flex" style={{ left: AXIS_W, top: 238 }}>

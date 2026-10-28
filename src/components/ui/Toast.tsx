@@ -10,6 +10,41 @@ const TONES = {
 } as const;
 
 /**
+ * Calls `onDismiss` after `ms`, paused while the pointer is over the element
+ * or focus is inside it (the remaining time carries over). Spread the
+ * returned handlers on the element.
+ */
+export function useAutoDismiss(ms: number, onDismiss: () => void) {
+  const [paused, setPaused] = useState(false);
+  const remaining = useRef(ms);
+  // Latest callback without restarting the countdown when the parent re-renders.
+  const dismiss = useRef(onDismiss);
+  useEffect(() => {
+    dismiss.current = onDismiss;
+  }, [onDismiss]);
+
+  useEffect(() => {
+    if (paused) return;
+    const started = Date.now();
+    const id = setTimeout(() => dismiss.current(), remaining.current);
+    return () => {
+      clearTimeout(id);
+      remaining.current -= Date.now() - started;
+    };
+  }, [paused]);
+
+  return {
+    onMouseEnter: () => setPaused(true),
+    onMouseLeave: () => setPaused(false),
+    onFocus: () => setPaused(true),
+    onBlur: (e: React.FocusEvent) => {
+      // Moving focus between the toast's own buttons keeps it paused.
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPaused(false);
+    },
+  };
+}
+
+/**
  * Toast — bottom-centre, 24 above the content edge, 440 wide, surface/inverse,
  * radius 8. Title Label/S, optional body; the action is an underlined link.
  * Auto-hides after 6 s (10 s when it has an action), pauses on hover.
@@ -29,26 +64,12 @@ export function Toast({
   width?: number;
   onDismiss: () => void;
 }) {
-  const [paused, setPaused] = useState(false);
-  const remaining = useRef(action ? 10_000 : 6_000);
-
-  useEffect(() => {
-    if (paused) return;
-    const started = Date.now();
-    const id = setTimeout(onDismiss, remaining.current);
-    return () => {
-      clearTimeout(id);
-      remaining.current -= Date.now() - started;
-    };
-  }, [paused, onDismiss]);
+  const pause = useAutoDismiss(action ? 10_000 : 6_000, onDismiss);
 
   return (
     <div
       role="status"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
+      {...pause}
       style={{ width }}
       className="fixed bottom-6 left-1/2 z-50 flex max-w-[calc(100vw-32px)] -translate-x-1/2 animate-[toast-in_200ms_ease-out] items-center gap-3 rounded-lg bg-surface-inverse px-4 py-3 shadow-[0_24px_24px_rgb(15_23_42/0.2)] motion-reduce:animate-none"
     >

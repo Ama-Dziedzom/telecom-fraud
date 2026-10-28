@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
 import { useApi } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
+import { TooltipBubble, tooltipOnHover } from "@/components/ui/Tooltip";
 import { formatClock, useNow } from "@/lib/time";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -352,10 +353,15 @@ export default function TracePage() {
                         return (
                           <span
                             key={h}
-                            title={gap ? `${String(h).padStart(2, "0")}:00 · records not in yet` : `${String(h).padStart(2, "0")}:00 · ${v} calls`}
-                            className={cn("flex-1 rounded-t-[2px]", gap ? "bg-surface-raised" : "bg-neutral-fg")}
+                            className={cn("group/tip relative flex-1 rounded-t-[2px]", gap ? "bg-surface-raised" : "bg-neutral-fg")}
                             style={{ height: `${((v ?? usual) / max) * 100}%` }}
-                          />
+                          >
+                            <TooltipBubble
+                              title={`${String(h).padStart(2, "0")}:00`}
+                              body={gap ? "Records not in yet" : `${v} calls`}
+                              className={tooltipOnHover(h >= 22 ? "top-end" : "top")}
+                            />
+                          </span>
                         );
                       })}
                     </div>

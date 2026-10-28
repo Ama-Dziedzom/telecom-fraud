@@ -102,14 +102,12 @@ export function CaseTitle({
   meId,
   now,
   onOpenSubscriber,
-  onReveal,
   actions,
 }: {
   detail: CaseDetail;
   meId?: string;
   now: number;
   onOpenSubscriber: () => void;
-  onReveal: () => void;
   actions: ReactNode;
 }) {
   const revealed = useRevealed(detail.subject.subscriber_id);
@@ -132,11 +130,6 @@ export function CaseTitle({
           </button>
           <span>·</span>
           <span>{revealed?.values.msisdn ?? localMsisdn(detail.subject.msisdn)}</span>
-          {!revealed && (
-            <button type="button" onClick={onReveal} aria-label="Reveal personal details" className="flex rounded">
-              <Icon name="app/icon-eye-secondary-16" size={14} />
-            </button>
-          )}
           {tail.filter(Boolean).map((t) => (
             <span key={String(t)}>· {t}</span>
           ))}

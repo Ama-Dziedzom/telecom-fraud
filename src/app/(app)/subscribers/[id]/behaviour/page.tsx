@@ -9,6 +9,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { useSubscriber } from "@/lib/api/fd";
 import { useBehaviour, type Behaviour } from "@/lib/api/subscribers";
 import { cn } from "@/lib/cn";
+import { TooltipBubble, tooltipOnHover } from "@/components/ui/Tooltip";
 import { formatDate, TZ } from "@/lib/time";
 import { useParams } from "next/navigation";
 
@@ -64,10 +65,10 @@ function DailyChart({ data }: { data: Behaviour }) {
             return (
               <span
                 key={d.date}
-                title={`${formatDate(d.date)}: ${money(d.amount)}`}
-                className={cn("relative min-w-0 flex-1 rounded-t-sm", isToday ? "bg-critical-solid" : "bg-border-strong")}
+                className={cn("group/tip relative min-w-0 flex-1 rounded-t-sm", isToday ? "bg-critical-solid" : "bg-border-strong")}
                 style={{ height: isToday ? PLOT : Math.max(4, Math.min(PLOT, (d.amount.amount_minor / normal) * BAND)) }}
               >
+                {!isToday && <TooltipBubble title={formatDate(d.date)} body={money(d.amount)} className={tooltipOnHover("top")} />}
                 {isToday && (
                   <span className="absolute top-0 right-full mr-3 text-caption font-medium whitespace-nowrap text-critical-fg">{money(d.amount)}</span>
                 )}
@@ -157,12 +158,13 @@ export default function BehaviourPage() {
                   {Array.from({ length: 24 }, (_, h) => (
                     <span
                       key={h}
-                      title={`${String(h).padStart(2, "0")}:00`}
                       className={cn(
-                        "size-[22px] rounded",
+                        "group/tip relative size-[22px] rounded",
                         data.hours.today.includes(h) ? "bg-text-secondary" : data.hours.usual.includes(h) ? "bg-border-strong" : "bg-surface-raised",
                       )}
-                    />
+                    >
+                      <TooltipBubble title={`${String(h).padStart(2, "0")}:00`} className={tooltipOnHover("top")} />
+                    </span>
                   ))}
                 </div>
                 <div className="flex">

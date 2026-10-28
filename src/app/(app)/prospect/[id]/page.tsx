@@ -15,7 +15,8 @@ import { ruleChart, ruleText, type ProspectRule } from "@/components/cases/CaseM
 import { TextArea } from "@/components/ui/TextField";
 import { useApi, type PersonRef, type Severity } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
-import { formatAgo, useNow } from "@/lib/time";
+import { TooltipBubble, tooltipOnHover } from "@/components/ui/Tooltip";
+import { formatAgo, formatDate, useNow } from "@/lib/time";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -90,10 +91,11 @@ function SwapChart({ match, normalMax }: { match: Match; normalMax: number }) {
           {match.by_day.map((d) => (
             <span
               key={d.date}
-              title={`${d.date}: ${d.count}`}
-              className={cn("flex-1 rounded-t-[2px]", hot && d.count > normalMax ? "bg-critical-solid" : "bg-border-strong")}
+              className={cn("group/tip relative flex-1 rounded-t-[2px]", hot && d.count > normalMax ? "bg-critical-solid" : "bg-border-strong")}
               style={{ height: `${(Math.min(d.count, max) / max) * 100}%` }}
-            />
+            >
+              <TooltipBubble title={formatDate(d.date)} body={`${d.count} ${d.count === 1 ? "alert" : "alerts"}`} className={tooltipOnHover("top")} />
+            </span>
           ))}
         </div>
       </div>

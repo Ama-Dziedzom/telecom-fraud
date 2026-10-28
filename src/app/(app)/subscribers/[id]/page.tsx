@@ -20,6 +20,7 @@ import {
   SubscriberTiles,
   WhyHighRisk,
 } from "@/components/subscriber/ProfileParts";
+import { WatchModal } from "@/components/lookup/LookupModals";
 import { RevealModal, revealPurpose } from "@/components/subscriber/RevealModal";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
@@ -27,7 +28,7 @@ import { Banner } from "@/components/ui/Banner";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { ApiError } from "@/lib/api/client";
-import { useSubscriber, type Subscriber } from "@/lib/api/fd";
+import { useApi, useSubscriber, type Subscriber } from "@/lib/api/fd";
 import { hide, useRevealed } from "@/lib/api/reveal";
 import { useAudit } from "@/lib/api/subscribers";
 import { formatClock, formatWhen, useNow } from "@/lib/time";
@@ -80,6 +81,10 @@ export default function SubscriberPage() {
   const { data: sub, error } = useSubscriber(id);
   const revealed = useRevealed(id);
   const [revealOpen, setRevealOpen] = useState(false);
+  const [watchOpen, setWatchOpen] = useState(false);
+  const [justWatched, setJustWatched] = useState(false);
+  const { data: watchlist } = useApi<{ data: Array<{ entity_id: string }> }>("/me/watchlist");
+  const watching = justWatched || Boolean(watchlist?.data.some((w) => w.entity_id === id));
   const tab = (TABS.includes(params.get("tab") as Tab) ? params.get("tab") : "overview") as Tab;
   const setTab = (t: Tab) => router.replace(`${pathname}${t === "overview" ? "" : `?tab=${t}`}`, { scroll: false });
   const retry = () => mutate(`/subscribers/${id}`);
@@ -112,15 +117,10 @@ export default function SubscriberPage() {
 
   const actions = (
     <>
-      <ButtonLink
-        href={`/watchlist/new?subscriber=${id}`}
-        variant="secondary"
-        size="md"
-        aria-disabled={!sub}
-        className={!sub ? "pointer-events-none opacity-50" : undefined}
-      >
-        Watch
-      </ButtonLink>
+      {/* G34 · Add to watchlist; already on your list reads “Watching”. */}
+      <Button variant="secondary" size="md" disabled={!sub || watching} onClick={() => setWatchOpen(true)}>
+        {watching ? "Watching" : "Watch"}
+      </Button>
       {openCase && (
         <ButtonLink href={`/cases/${openCase.id}`} size="md">
           Go to {openCase.id}
@@ -288,6 +288,16 @@ export default function SubscriberPage() {
           onClose={() => setRevealOpen(false)}
           subscriber={{ id, name: sub.name, msisdn }}
           cases={openCases.map((c) => ({ id: c.id, title: c.title }))}
+        />
+      )}
+      {watchOpen && sub && (
+        <WatchModal
+          title={`Watch ${msisdn}`}
+          subtitle={openCase ? `${sub.name} · ${openCase.id}` : sub.name}
+          entityIds={[id]}
+          caseId={openCase?.id}
+          onWatched={() => setJustWatched(true)}
+          onClose={() => setWatchOpen(false)}
         />
       )}
     </>

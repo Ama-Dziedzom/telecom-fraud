@@ -48,12 +48,18 @@ const shortLabel = (label: string) => label.replace(/^\+233\s?(\d{2})\s?/, "0$1 
 
 type Placed = NetworkNode & { x: number; y: number; col: number; seed: boolean };
 
+/** Vertical room per node: 40 node + 4 + a two-line label (38) + breathing space. */
+const ROW = 104;
+
 /**
  * Columns by relationship to the seed: money flows to the right (recipients,
  * then where it went next, then the case it ends in); context — the swap
- * agent, devices, other SIMs — sits to the left.
+ * agent, devices, other SIMs — sits to the left. Within a column, nodes sit
+ * next to the neighbours that put them there (fewer crossings) and never
+ * closer than ROW, so labels don’t run into the next node; the canvas grows
+ * taller rather than squeezing them.
  */
-function layout(network: Network, seed: string, size: { colWidth: number; height: number; pad: number }) {
+function layout(network: Network, seed: string, size: { colWidth: number; height: number; pad: number; row: number }) {
   const byId = new Map(network.nodes.map((n) => [n.id, n]));
   const col = new Map<string, number>([[seed, 0]]);
   const queue = [seed];
@@ -70,24 +76,56 @@ function layout(network: Network, seed: string, size: { colWidth: number; height
       queue.push(other);
     }
   }
+
+  const neighbours = (id: string) =>
+    network.edges.flatMap((e) => (e.from === id ? [e.to] : e.to === id ? [e.from] : [])).filter((o) => col.has(o));
+
+  // A case on the money side sits one column past everything it links (G28: FD-2998 right of its mule wallets).
+  for (const n of network.nodes) {
+    const c = col.get(n.id);
+    if (n.type !== "case" || c === undefined || c <= 0) continue;
+    const furthest = Math.max(...neighbours(n.id).map((o) => col.get(o)!));
+    if (furthest >= c) col.set(n.id, furthest + 1);
+  }
+
   const cols = Array.from(new Set(col.values())).sort((a, b) => a - b);
   const min = cols[0] ?? 0;
-  const placed: Placed[] = [];
-  for (const c of cols) {
-    const members = network.nodes.filter((n) => col.get(n.id) === c);
-    const step = size.height / (members.length + 1);
-    members.forEach((n, i) => {
-      placed.push({
-        ...n,
-        col: c,
-        seed: n.id === seed,
-        x: size.pad + (c - min) * size.colWidth,
-        y: members.length === 1 && n.id === seed ? size.height / 2 : step * (i + 1),
-      });
-    });
+  const y = new Map<string, number>([[seed, 0]]);
+  // Outward from the seed, so each column can line up with the one nearer the seed.
+  const order = [...cols.filter((c) => c > 0), ...cols.filter((c) => c < 0).reverse()];
+  for (const c of order) {
+    const inner = c > 0 ? c - 1 : c + 1;
+    const members = network.nodes
+      .filter((n) => col.get(n.id) === c)
+      .map((n, i) => {
+        const anchors = neighbours(n.id).filter((o) => y.has(o) && Math.abs(col.get(o)! - inner) <= Math.abs(c - inner));
+        const want = anchors.length ? anchors.reduce((sum, o) => sum + y.get(o)!, 0) / anchors.length : 0;
+        return { id: n.id, want, i };
+      })
+      .sort((a, b) => a.want - b.want || a.i - b.i);
+    // Spread evenly around where the column wants to be, ROW apart.
+    const centre = members.reduce((sum, m) => sum + m.want, 0) / Math.max(1, members.length);
+    members.forEach((m, i) => y.set(m.id, centre + (i - (members.length - 1) / 2) * size.row));
   }
+
+  const ys = Array.from(y.values());
+  const top = Math.min(...ys);
+  const span = Math.max(...ys) - top;
+  // Labels hang below the node, so leave more room at the bottom; centre short graphs in the canvas.
+  const height = Math.max(size.height, span + size.row * 1.5);
+  const offset = (height - span) / 2 - top - size.row / 4;
+
+  const placed: Placed[] = network.nodes
+    .filter((n) => col.has(n.id))
+    .map((n) => ({
+      ...n,
+      col: col.get(n.id)!,
+      seed: n.id === seed,
+      x: size.pad + (col.get(n.id)! - min) * size.colWidth,
+      y: y.get(n.id)! + offset,
+    }));
   const width = size.pad * 2 + (cols.length - 1) * size.colWidth;
-  return { placed, width };
+  return { placed, width, height };
 }
 
 function edgePath(a: Placed, b: Placed) {
@@ -119,22 +157,33 @@ export function NetworkGraph({
 }) {
   const [zoom, setZoom] = useState(1);
   const box = useRef<HTMLDivElement>(null);
-  const { placed, width } = useMemo(() => layout(network, seed, { colWidth, height, pad: compact ? 40 : 80 }), [network, seed, colWidth, height, compact]);
+  const { placed, width, height: canvasHeight } = useMemo(
+    () => layout(network, seed, { colWidth, height, pad: compact ? 40 : 80, row: compact ? 56 : ROW }),
+    [network, seed, colWidth, height, compact],
+  );
   const byId = new Map(placed.map((n) => [n.id, n]));
+  // A wallet that paid mules already in a case reaches that case through them (G28 draws only the mules’ links).
+  const edges = useMemo(() => {
+    const inCase = (from: string, to: string) => network.edges.some((e) => e.kind === "in_case" && e.from === from && e.to === to);
+    return network.edges.filter(
+      (e) => e.kind !== "in_case" || !network.edges.some((m) => MONEY.has(m.kind) && m.from === e.from && inCase(m.to, e.to)),
+    );
+  }, [network.edges]);
   const red = (n: Placed) => isRed(n, seed);
   const redEdge = (a: Placed, b: Placed) => red(a) && red(b);
 
-  // Start fitted to the canvas width; +/− zoom from there.
+  // Start fitted to the canvas; +/− zoom from there.
   const [fit, setFit] = useState(1);
   useEffect(() => {
     const el = box.current;
     if (!el || compact) return;
-    const measure = () => setFit(Math.min(1, (el.clientWidth - 24) / width));
+    // Fit both ways, so the whole graph shows; labels scale with their nodes, so nothing collides.
+    const measure = () => setFit(Math.min(1, (el.clientWidth - 24) / width, el.clientHeight / canvasHeight));
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [width, compact]);
+  }, [width, canvasHeight, compact]);
   const scale = zoom * fit;
 
   // Focus: the selected node, its neighbours and the seed; everything else fades.
@@ -155,10 +204,10 @@ export function NetworkGraph({
   return (
     <div className="relative size-full">
       <div ref={box} className="size-full overflow-auto">
-        <div className="relative origin-top-left" style={{ width: width * scale, height: (height + 60) * scale }}>
-          <div className="absolute top-0 left-0" style={{ width, height: height + 60, transform: `scale(${scale})`, transformOrigin: "0 0" }}>
-            <svg width={width} height={height + 60} className="absolute inset-0" aria-hidden>
-              {network.edges.map((e, i) => {
+        <div className="relative origin-top-left" style={{ width: width * scale, height: canvasHeight * scale }}>
+          <div className="absolute top-0 left-0" style={{ width, height: canvasHeight, transform: `scale(${scale})`, transformOrigin: "0 0" }}>
+            <svg width={width} height={canvasHeight} className="absolute inset-0" aria-hidden>
+              {edges.map((e, i) => {
                 const a = byId.get(e.from);
                 const b = byId.get(e.to);
                 if (!a || !b) return null;
@@ -178,7 +227,7 @@ export function NetworkGraph({
               })}
             </svg>
             {!compact &&
-              network.edges.map((e, i) => {
+              edges.map((e, i) => {
                 const a = byId.get(e.from);
                 const b = byId.get(e.to);
                 const label = formatAmount(e) ?? (e.kind === "swapped_by" ? "SIM swap" : null);

@@ -294,7 +294,22 @@ const WATCH_REASONS = [
 ] as const;
 
 /** G34 · Add to watchlist — one entity, or several from a bulk lookup. */
-export function WatchModal({ title, subtitle, entityIds, caseId, onClose }: { title: string; subtitle?: string; entityIds: string[]; caseId?: string; onClose: () => void }) {
+export function WatchModal({
+  title,
+  subtitle,
+  entityIds,
+  caseId,
+  onClose,
+  onWatched,
+}: {
+  title: string;
+  subtitle?: string;
+  entityIds: string[];
+  caseId?: string;
+  onClose: () => void;
+  /** Called after the watch is saved, before the dialog closes. */
+  onWatched?: () => void;
+}) {
   const toast = useToast();
   const [reason, setReason] = useState<string>(WATCH_REASONS[0][0]);
   const [days, setDays] = useState<"7" | "30" | "90">("30");
@@ -321,6 +336,7 @@ export function WatchModal({ title, subtitle, entityIds, caseId, onClose }: { ti
         title: `Watching ${entityIds.length === 1 ? title.replace(/^Watch /, "") : `${entityIds.length} numbers`}`,
         body: `For ${days} days${top ? " · new alerts go to the top of your queue" : ""}.`,
       });
+      onWatched?.();
       onClose();
     } catch (err) {
       setFailure(err);

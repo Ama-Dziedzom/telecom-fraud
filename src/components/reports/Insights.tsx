@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/app/Card";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
+import { TooltipBubble } from "@/components/ui/Tooltip";
 import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 /**
@@ -199,14 +200,13 @@ export function ColumnChart({ data, unit, label }: { data: Array<{ key: string; 
                 style={{ height: `${(d.value / top) * 100}%` }}
               />
               {active === i && (
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute z-10 flex flex-col items-center rounded-lg border border-border-default bg-surface-base px-2.5 py-1.5 whitespace-nowrap shadow-lg"
-                  style={{ bottom: `calc(${(d.value / top) * 100}% + 8px)` }}
-                >
-                  <span className="text-label-s text-text-primary">{d.value}</span>
-                  <span className="text-caption text-text-secondary">{d.label}</span>
-                </span>
+                <TooltipBubble
+                  title={d.label}
+                  body={`${d.value} ${unit}`}
+                  placement={i >= data.length - 2 ? "top-end" : "top"}
+                  className={cn("absolute z-10", i >= data.length - 2 ? "right-1/2 -mr-[17px]" : "left-1/2 -translate-x-1/2")}
+                  style={{ bottom: `calc(${(d.value / top) * 100}% + 4px)` }}
+                />
               )}
             </span>
           ))}

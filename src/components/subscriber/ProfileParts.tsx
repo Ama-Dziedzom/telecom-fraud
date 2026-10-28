@@ -8,6 +8,7 @@ import type { Subscriber } from "@/lib/api/fd";
 import type { Revealed } from "@/lib/api/reveal";
 import { useOutflow, useRecent, type RecentEvent } from "@/lib/api/subscribers";
 import { cn } from "@/lib/cn";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { formatClock, formatDate, formatMoney, formatSpan, formatWhen, TZ } from "@/lib/time";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -184,7 +185,7 @@ export function WhyHighRisk({ sub }: { sub: Subscriber }) {
 /** “20k” · “10k” */
 const short = (ghs: number) => (ghs >= 1000 ? `${Math.round(ghs / 100) / 10}k`.replace(".0k", "k") : String(ghs));
 
-/** C12 · Chart card — MoMo outflow per day, ordinary days grey, today red, tooltip on today. */
+/** C12 · Chart card — MoMo outflow per day, ordinary days grey, today red; amounts show on hover. */
 export function OutflowChart({ id }: { id: string }) {
   const { data } = useOutflow(id, 12);
   if (!data) return <CardSkeleton />;
@@ -225,16 +226,13 @@ export function OutflowChart({ id }: { id: string }) {
               const today = i === days.length - 1;
               return (
                 <span key={d.date} className="relative flex w-8 justify-center">
-                  {today && (
-                    <span className="absolute right-0 bottom-full mb-2 flex flex-col rounded-md bg-surface-inverse px-2 py-1.5 text-caption whitespace-nowrap text-text-inverse">
-                      <span>Today · {money(d.amount)} out</span>
-                    </span>
-                  )}
-                  <span
-                    title={`${formatDate(d.date)}: ${money(d.amount)}`}
-                    className={cn("w-8 rounded-t", today ? "bg-critical-solid" : "bg-border-strong")}
-                    style={{ height: `${Math.max(2, (d.amount.amount_minor / top) * 240)}px` }}
-                  />
+                  {/* C12 · each day's amount shows on hover; today's bar sits by the right edge, so its tooltip right-aligns. */}
+                  <Tooltip title={today ? "Today" : formatDate(d.date)} body={`${money(d.amount)} out`} placement={today ? "top-end" : "top"}>
+                    <span
+                      className={cn("w-8 rounded-t", today ? "bg-critical-solid" : "bg-border-strong")}
+                      style={{ height: `${Math.max(2, (d.amount.amount_minor / top) * 240)}px` }}
+                    />
+                  </Tooltip>
                 </span>
               );
             })}

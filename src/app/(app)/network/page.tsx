@@ -321,7 +321,7 @@ export default function NetworkPage() {
                   </CardMeta>
                 )}
               </div>
-              <div className="relative h-[460px] overflow-hidden rounded-b-lg">
+              <div className="relative h-[540px] overflow-hidden rounded-b-lg">
                 {!view ? (
                   <div className="p-6">
                     <Skeleton className="h-[400px] w-full" />
@@ -383,7 +383,7 @@ export default function NetworkPage() {
                     </div>
                   </>
                 ) : (
-                  <NetworkGraph network={view} seed={seed} selected={selected} onSelect={setSelected} height={420} />
+                  <NetworkGraph network={view} seed={seed} selected={selected} onSelect={setSelected} height={500} />
                 )}
               </div>
             </section>

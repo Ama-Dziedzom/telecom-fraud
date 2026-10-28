@@ -2,6 +2,7 @@
 
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { formatClock, formatWhen } from "@/lib/time";
 import type { ReactNode } from "react";
 
@@ -38,16 +39,22 @@ export function BannerLink({
   title?: string;
   busy?: boolean;
 }) {
-  return (
+  const button = (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled || busy}
-      title={title}
       className="shrink-0 rounded px-2 text-label-s whitespace-nowrap text-text-brand hover:underline disabled:cursor-not-allowed disabled:text-text-disabled disabled:no-underline"
     >
       {children}
     </button>
+  );
+  return title ? (
+    <Tooltip title={title} placement="top-end" className="shrink-0">
+      {button}
+    </Tooltip>
+  ) : (
+    button
   );
 }
 

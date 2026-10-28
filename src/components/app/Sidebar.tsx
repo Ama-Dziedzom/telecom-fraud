@@ -86,7 +86,6 @@ function RailLink({ item, active }: { item: NavItem; active: boolean }) {
       href={item.href}
       aria-current={active ? "page" : undefined}
       aria-label={item.label}
-      title={item.label}
       className={cn(
         "relative flex h-[54px] w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-1",
         active ? "bg-shell-nav-active-bg" : "hover:bg-shell-nav-hover-bg",
@@ -192,7 +191,6 @@ export function Sidebar({ operatorName: operatorFromSession, collapsed }: { oper
             type="button"
             onClick={() => shell.open(id)}
             aria-label={label}
-            title={label}
             className="flex h-[54px] w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-1 hover:bg-shell-nav-hover-bg"
           >
             <NavIcon name={icon} active={false} size={20} />
