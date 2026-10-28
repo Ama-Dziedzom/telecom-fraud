@@ -206,13 +206,13 @@ export function ShortcutsModal({ onClose }: { onClose: () => void }) {
 }
 
 type Guide = { id: string; title: string; detail: string; read_minutes: number | null; url: string | null };
-type Contact = { id: string; kind: "phone" | "ticket" | "feedback"; title: string; value: string | null; hours?: string; reply_within_hours?: number };
-type Help = { guides: Guide[]; contacts: Contact[] };
+export type Contact = { id: string; kind: "phone" | "ticket" | "feedback"; title: string; value: string | null; hours?: string; reply_within_hours?: number };
+export type Help = { guides: Guide[]; contacts: Contact[] };
 /** GET /status/integrations. */
 type Integration = { id: string; name: string; state: "operational" | "degraded" | "down"; since: string | null; lag_seconds: number | null };
 
 /** Neutral icons by guide or contact id. */
-const HELP_ICON: Record<string, string> = {
+export const HELP_ICON: Record<string, string> = {
   triage: "app/icon-alert-triangle-secondary-18",
   close: "app/icon-folder-secondary-16",
   reversal: "app/icon-refresh-16",
@@ -222,10 +222,10 @@ const HELP_ICON: Record<string, string> = {
   it: "app/icon-lock-secondary-18",
   feedback: "app/icon-message-18",
 };
-const KIND_ICON: Record<Contact["kind"], string> = { phone: "app/icon-phone-secondary-16", ticket: "app/icon-lock-secondary-18", feedback: "app/icon-message-18" };
+export const KIND_ICON: Record<Contact["kind"], string> = { phone: "app/icon-phone-secondary-16", ticket: "app/icon-lock-secondary-18", feedback: "app/icon-message-18" };
 
 /** The line under a contact, in the app’s words. */
-function contactDetail(c: Contact) {
+export function contactDetail(c: Contact) {
   if (c.kind === "phone") return `Live incident? Call ${c.value}${c.hours ? ` · ${c.hours}` : ""}`;
   if (c.kind === "ticket") return `Access, sign-in or system problems${c.reply_within_hours ? ` · replies within ${c.reply_within_hours} h` : ""}`;
   return "Ideas, or something that got in your way";
@@ -233,18 +233,33 @@ function contactDetail(c: Contact) {
 
 const STATE: Record<Integration["state"], string> = { operational: "working", degraded: "slow", down: "down" };
 
+/** System status from GET /status/integrations — success when all work, warning naming what doesn’t. */
+export function SystemStatus() {
+  const { data: status } = useApi<{ data: Integration[] }>("/status/integrations");
+  if (!status) return null;
+  const bad = status.data.filter((i) => i.state !== "operational");
+  return bad.length === 0 ? (
+    <Banner tone="success" title="All systems working">
+      {status.data.map((i) => i.name).join(", ")}
+    </Banner>
+  ) : (
+    <Banner tone="warning" title={bad.length === 1 ? `${bad[0].name} is ${STATE[bad[0].state]}` : `${bad.length} systems need attention`}>
+      {bad.map((i) => `${i.name} ${STATE[i.state] ?? i.state}${i.since ? ` since ${formatClock(i.since)}` : ""}`).join(" · ")}
+      {status.data.length > bad.length ? " · everything else working" : ""}
+    </Banner>
+  );
+}
+
+/** Where a GET /help guide opens in the app: its guide page, or the playbooks group. */
+const helpHref = (id: string) => (id === "playbooks" ? "/help#playbooks" : `/help/${id}`);
+
 /** I12 · Help and support — guides for your role, system status and who to contact. */
 export function HelpDrawer({ onClose, onShortcuts, onFeedback }: { onClose: () => void; onShortcuts: () => void; onFeedback: () => void }) {
   const { data } = useApi<Help>("/help");
-  const { data: status } = useApi<{ data: Integration[] }>("/status/integrations");
   const [q, setQ] = useState("");
   const guides = data?.guides.map((g) => ({ ...g, detail: g.read_minutes ? `${g.detail} · ${g.read_minutes} min read` : g.detail }));
   const contacts = data?.contacts.map((c) => ({ ...c, detail: contactDetail(c) }));
   const match = (t: { title: string; detail: string }) => !q || `${t.title} ${t.detail}`.toLowerCase().includes(q.toLowerCase());
-  const bad = status?.data.filter((i) => i.state !== "operational") ?? [];
-  // The help centre is wherever the guides live.
-  const centre = data?.guides.map((g) => g.url).find(Boolean);
-  const centreUrl = centre ? new URL(centre).origin : null;
 
   const row = (t: { id: string; title: string; detail: string; icon: string; href: string | null; onClick?: () => void }) => {
     const body = (
@@ -262,6 +277,13 @@ export function HelpDrawer({ onClose, onShortcuts, onFeedback }: { onClose: () =
         <button key={t.id} type="button" onClick={t.onClick} className={cls}>
           {body}
         </button>
+      );
+    }
+    if (t.href.startsWith("/")) {
+      return (
+        <Link key={t.id} href={t.href} onClick={onClose} className={cls}>
+          {body}
+        </Link>
       );
     }
     const external = t.href.startsWith("http");
@@ -291,11 +313,9 @@ export function HelpDrawer({ onClose, onShortcuts, onFeedback }: { onClose: () =
             Close
           </Button>
           <span className="flex-1" />
-          {centreUrl && (
-            <ButtonLink href={centreUrl} target="_blank" rel="noreferrer" size="md">
-              Open the help centre
-            </ButtonLink>
-          )}
+          <ButtonLink href="/help" onClick={onClose} size="md">
+            Open the help centre
+          </ButtonLink>
         </>
       }
     >
@@ -310,20 +330,12 @@ export function HelpDrawer({ onClose, onShortcuts, onFeedback }: { onClose: () =
           className="min-w-0 flex-1 bg-transparent text-body-m text-text-primary outline-none placeholder:text-text-tertiary focus-visible:shadow-none"
         />
       </label>
-      {status &&
-        (bad.length === 0 ? (
-          <Banner tone="success" title="All systems working">
-            {status.data.map((i) => i.name).join(", ")}
-          </Banner>
-        ) : (
-          <Banner tone="warning" title={bad.length === 1 ? `${bad[0].name} is ${STATE[bad[0].state]}` : `${bad.length} systems need attention`}>
-            {bad.map((i) => `${i.name} ${STATE[i.state] ?? i.state}${i.since ? ` since ${formatClock(i.since)}` : ""}`).join(" · ")}
-            {status.data.length > bad.length ? " · everything else working" : ""}
-          </Banner>
-        ))}
+      <SystemStatus />
       {section(
         "Guides for your work",
-        guides?.filter(match).map((g) => row({ ...g, icon: HELP_ICON[g.id] ?? "app/icon-folder-secondary-16", href: g.url, onClick: g.id === "shortcuts" ? onShortcuts : undefined })),
+        guides?.filter(match).map((g) =>
+          row({ ...g, icon: HELP_ICON[g.id] ?? "app/icon-folder-secondary-16", href: helpHref(g.id), onClick: g.id === "shortcuts" ? onShortcuts : undefined }),
+        ),
       )}
       {section(
         "Get a person",
