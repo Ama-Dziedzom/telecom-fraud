@@ -4,20 +4,22 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { Icon } from "./Icon";
 
 const TONES = {
-  info: { wrap: "bg-brand-primary", icon: "icon-info-white-14" },
-  success: { wrap: "bg-success-fg", icon: "app/icon-check-white-14" },
+  info: { wrap: "bg-brand-primary", icon: "app/icon-info-white-12" },
+  success: { wrap: "bg-success-fg", icon: "app/icon-check-white-12" },
+  error: { wrap: "bg-critical-fg", icon: "app/icon-alert-circle-white-12" },
 } as const;
 
 /**
- * Toast — bottom-right, auto-hides after 6 s (10 s when it has an action),
- * pauses on hover.
+ * Toast — bottom-centre, 24 above the content edge, 440 wide, surface/inverse,
+ * radius 8. Title Label/S, optional body; the action is an underlined link.
+ * Auto-hides after 6 s (10 s when it has an action), pauses on hover.
  */
 export function Toast({
   title,
   body,
   action,
   tone = "info",
-  width = 380,
+  width = 440,
   onDismiss,
 }: {
   title: string;
@@ -48,14 +50,14 @@ export function Toast({
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
       style={{ width }}
-      className="fixed right-12 bottom-26 z-50 flex max-w-[calc(100vw-32px)] animate-[toast-in_200ms_ease-out] items-start gap-3 rounded-xl bg-brand-ink px-4 py-3.5 shadow-lg motion-reduce:animate-none"
+      className="fixed bottom-6 left-1/2 z-50 flex max-w-[calc(100vw-32px)] -translate-x-1/2 animate-[toast-in_200ms_ease-out] items-center gap-3 rounded-lg bg-surface-inverse px-4 py-3 shadow-[0_24px_24px_rgb(15_23_42/0.2)] motion-reduce:animate-none"
     >
-      <span className={`flex size-6 shrink-0 items-center justify-center rounded-full ${TONES[tone].wrap}`}>
-        <Icon name={TONES[tone].icon} size={14} />
+      <span className={`flex size-5 shrink-0 items-center justify-center rounded-full ${TONES[tone].wrap}`}>
+        <Icon name={TONES[tone].icon} size={12} />
       </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className="text-label-m text-text-inverse">{title}</p>
-        {body && <p className="text-body-s text-[#c9c6e6]">{body}</p>}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-text-inverse">
+        <p className="text-label-s">{title}</p>
+        {body && <p className="text-body-s">{body}</p>}
       </div>
       {action && (
         <button
@@ -64,13 +66,13 @@ export function Toast({
             action.onClick();
             onDismiss();
           }}
-          className="rounded text-label-s text-logo-accent hover:underline"
+          className="rounded text-label-s text-text-inverse underline"
         >
           {action.label}
         </button>
       )}
       <button type="button" onClick={onDismiss} aria-label="Dismiss" className="flex rounded">
-        <Icon name="icon-x-toast" size={16} />
+        <Icon name="app/icon-x-white-16" size={16} />
       </button>
     </div>
   );

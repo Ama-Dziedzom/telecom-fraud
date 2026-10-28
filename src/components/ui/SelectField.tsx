@@ -16,7 +16,7 @@ export function SelectField({
       <label htmlFor={selectId} className="text-label-s text-text-primary">
         {label}
       </label>
-      <div className="relative flex h-12 w-full items-center gap-2.5 rounded-lg border border-border-default bg-surface-base px-3.5 hover:border-border-strong focus-within:border-[1.5px] focus-within:border-border-focus focus-within:shadow-focus">
+      <div className="relative flex h-12 w-full items-center gap-2.5 rounded-lg border border-border-strong bg-surface-base px-3.5 focus-within:border-[1.5px] focus-within:border-border-focus focus-within:shadow-focus">
         {iconLeft}
         <select
           id={selectId}

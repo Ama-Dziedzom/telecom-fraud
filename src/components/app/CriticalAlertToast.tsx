@@ -5,13 +5,15 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { useAlert } from "@/lib/api/fd";
 import type { FeedState } from "@/lib/api/stream";
-import { formatMoney } from "@/lib/time";
+import { formatClock, formatMoney } from "@/lib/time";
 import { usePathname } from "next/navigation";
 
 /**
- * B3 · Critical alert, anywhere in the app. A critical alert that opened a
- * case interrupts whatever the analyst is doing (Live alerts shows its own
- * banner instead). Stays until they open the case or choose “Later”.
+ * B3 · Critical alert, anywhere in the app — the Critical alert card,
+ * bottom-right, stacked above toasts. A critical alert that opened a case
+ * interrupts whatever the analyst is doing (Live alerts shows its own banner
+ * instead). The pill carries the colour. Open goes to the case; Later and ×
+ * leave it in Needs you now.
  */
 export function CriticalAlertToast({ feed }: { feed: FeedState }) {
   const pathname = usePathname();
@@ -24,31 +26,35 @@ export function CriticalAlertToast({ feed }: { feed: FeedState }) {
   return (
     <div
       role="alert"
-      className="fixed right-12 bottom-26 z-50 flex w-[460px] max-w-[calc(100vw-32px)] animate-[toast-in_200ms_ease-out] items-start gap-3.5 overflow-hidden rounded-xl border border-critical-border bg-surface-base px-[18px] py-4 shadow-lg motion-reduce:animate-none"
+      className="fixed right-6 bottom-6 z-50 flex w-[400px] max-w-[calc(100vw-32px)] animate-[toast-in_200ms_ease-out] flex-col gap-2 rounded-lg border border-border-default bg-surface-base py-4 pr-3 pl-5 shadow-[0_24px_24px_rgb(15_23_42/0.2)] motion-reduce:animate-none"
     >
-      <span aria-hidden className="w-1 self-stretch rounded-[2px] bg-critical-fg" />
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <p className="flex items-center gap-2">
-          <Badge label={`Critical · ${alert.risk_score} · auto-case`} tone="critical" dot />
-          <span className="text-caption text-text-tertiary">just now</span>
-        </p>
+      <div className="flex items-center gap-2">
+        <Badge label={`Critical · ${alert.risk_score}`} tone="critical" />
+        <span className="min-w-0 flex-1 truncate text-caption text-text-tertiary">
+          Case {event.case_id} opened · {formatClock(alert.created_at)}
+        </span>
+        <button
+          type="button"
+          onClick={feed.dismissCritical}
+          aria-label="Dismiss"
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg hover:bg-surface-sunken"
+        >
+          <Icon name="app/icon-x-secondary-16" size={16} />
+        </button>
+      </div>
+      <div className="flex flex-col gap-0.5 pr-2">
         <p className="text-title text-text-primary">{alert.title}</p>
-        <p className="truncate text-body-s text-text-secondary">
-          {[outLine, alert.subscriber.msisdn].filter(Boolean).join(" · ")}
+        <p className="text-body-s text-text-secondary">
+          {[outLine, alert.subscriber.msisdn, "assigned to you"].filter(Boolean).join(" · ")}
         </p>
-        <div className="flex gap-2">
-          <ButtonLink
-            href={`/cases/${event.case_id}`}
-            size="sm"
-            onClick={feed.dismissCritical}
-            iconLeft={<Icon name="app/icon-arrow-right-white-16" size={16} />}
-          >
-            Open {event.case_id}
-          </ButtonLink>
-          <Button variant="ghost" size="sm" onClick={feed.dismissCritical}>
-            Later
-          </Button>
-        </div>
+      </div>
+      <div className="flex gap-2 pt-1">
+        <ButtonLink href={`/cases/${event.case_id}`} size="sm" onClick={feed.dismissCritical}>
+          Open {event.case_id}
+        </ButtonLink>
+        <Button variant="ghost" size="sm" onClick={feed.dismissCritical}>
+          Later
+        </Button>
       </div>
     </div>
   );

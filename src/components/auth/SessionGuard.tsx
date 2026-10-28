@@ -1,5 +1,6 @@
 "use client";
 
+import { SignedOutDialog } from "@/components/app/ProblemStates";
 import { Button } from "@/components/ui/Button";
 import { CountdownCard } from "@/components/ui/Countdown";
 import { Modal } from "@/components/ui/Modal";
@@ -8,6 +9,7 @@ import { ApiError, getMe, logout, type User } from "@/lib/auth/api";
 import { signOut, useWelcomeToast } from "@/lib/auth/session";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { SWRConfig } from "swr";
 
 /** Operator policy: 15–30 min. Kasa Mobile uses 15. */
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
@@ -42,6 +44,8 @@ export function SessionGuard({ children }: { children: ReactNode }) {
   const [warningUntil, setWarningUntil] = useState<number | null>(null);
   const [showWelcome, dismissWelcome] = useWelcomeToast();
   const [user, setUser] = useState<User | null>(null);
+  // I21 · Any request answered 401 mid-session (token gone, signed out elsewhere).
+  const [signedOut, setSignedOut] = useState(false);
 
   useEffect(() => {
     lastActivity.current = Date.now();
@@ -90,8 +94,18 @@ export function SessionGuard({ children }: { children: ReactNode }) {
   }, [router]);
 
   return (
-    <>
+    <SWRConfig value={{ onError: (err) => err instanceof ApiError && err.status === 401 && setSignedOut(true) }}>
       {children}
+
+      {/* I21 · Signed out */}
+      {signedOut && (
+        <SignedOutDialog
+          onSignIn={() => {
+            signOut({ keepAccount: true });
+            router.replace("/sign-in");
+          }}
+        />
+      )}
 
       {/* E2 · Idle timeout warning */}
       <Modal
@@ -125,6 +139,6 @@ export function SessionGuard({ children }: { children: ReactNode }) {
           onDismiss={dismissWelcome}
         />
       )}
-    </>
+    </SWRConfig>
   );
 }

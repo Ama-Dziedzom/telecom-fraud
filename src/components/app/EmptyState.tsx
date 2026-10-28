@@ -2,57 +2,65 @@ import { cn } from "@/lib/cn";
 import type { ReactNode } from "react";
 import { Icon } from "@/components/ui/Icon";
 
-const TILES = {
-  critical: "bg-critical-bg",
-  medium: "bg-medium-bg",
-  success: "bg-success-bg",
-  brand: "bg-brand-primary-subtle",
-  neutral: "bg-surface-sunken",
-} as const;
-
 /**
- * Empty / error state — 56 tile + H3 + Body/M (460 wide) + actions, centred
- * in a card. Optional meta line (error ID, retry note) underneath.
+ * Empty / error state (Foundations · Empty state, Error state) — neutral 40
+ * tile (raised, 1px border) with a 20 icon, Title 16, one Body/S line and up
+ * to two actions, centred in the list area. Never red: the page isn’t in
+ * error, the request is. Optional meta line (error ID) underneath.
+ *
+ * Standalone it sits in a white card; pass `bare` when it already lives
+ * inside a card or panel.
  */
 export function EmptyState({
   icon,
-  tone,
   title,
   children,
   actions,
   meta,
   className,
-  size = "lg",
+  bare = false,
 }: {
   icon: string;
-  tone: keyof typeof TILES;
+  /** @deprecated Direction v2 tiles are always neutral; kept so existing callers compile. */
+  tone?: "critical" | "medium" | "success" | "brand" | "neutral";
   title: ReactNode;
   children?: ReactNode;
   actions?: ReactNode;
   meta?: ReactNode;
   className?: string;
-  /** md: 44 tile, Title — for states inside a card or panel. */
+  /** @deprecated One size in Direction v2. */
   size?: "lg" | "md";
+  /** No card chrome — for states inside a card, panel or dialog. */
+  bare?: boolean;
 }) {
   return (
-    <div className={cn("flex flex-col items-center justify-center gap-3.5 rounded-xl border border-border-subtle bg-surface-base px-8 text-center", className)}>
-      <span className={cn("flex items-center justify-center", size === "lg" ? "size-14 rounded-2xl" : "size-11 rounded-xl", TILES[tone])}>
-        <Icon name={icon} size={size === "lg" ? 26 : 22} />
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center gap-4 px-8 py-10 text-center",
+        !bare && "rounded-lg border border-border-default bg-surface-base",
+        className,
+      )}
+    >
+      {/* icon-tint masks whatever icon the caller passes into the neutral tertiary colour. */}
+      <span className="icon-tint flex size-10 shrink-0 items-center justify-center rounded-lg border border-border-default bg-surface-raised text-text-tertiary">
+        <Icon name={icon} size={20} />
       </span>
-      <h2 className={cn("text-text-primary", size === "lg" ? "text-h3" : "text-title")}>{title}</h2>
-      {children && <p className={cn("max-w-[460px] text-text-secondary", size === "lg" ? "text-body-m" : "text-body-s")}>{children}</p>}
-      {actions && <div className="flex items-center gap-2.5">{actions}</div>}
+      <div className="flex max-w-[400px] flex-col items-center gap-1">
+        <h2 className="text-title text-text-primary">{title}</h2>
+        {children && <p className="text-body-s text-text-secondary">{children}</p>}
+      </div>
+      {actions && <div className="flex items-center gap-2">{actions}</div>}
       {meta}
     </div>
   );
 }
 
-/** “Error ID ERR-… · 20 Oct 09:42 · Quote this if you raise an IT ticket” */
+/** “Error ID ERR-… · 28 Oct, 09:42 · quote this if you raise an IT ticket” — Caption, tertiary. */
 export function ErrorId({ id, at }: { id: string; at?: string }) {
   return (
-    <p className="flex items-center gap-2 rounded-lg bg-surface-sunken px-3 py-2 text-caption text-text-tertiary">
+    <p className="mt-6 text-caption text-text-tertiary">
       Error ID <span className="font-mono text-mono-s text-text-secondary">{id}</span>
-      {at ? ` · ${at}` : ""} · Quote this if you raise an IT ticket
+      {at ? ` · ${at}` : ""} · quote this if you raise an IT ticket
     </p>
   );
 }

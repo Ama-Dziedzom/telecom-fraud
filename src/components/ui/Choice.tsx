@@ -9,17 +9,17 @@ type CheckboxProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
   indeterminate?: boolean;
 };
 
-/** Checkbox — 18px box, brand fill when on, a dash when some are selected. */
+/** Checkbox — 16px box, radius 4, brand fill when on, a dash when some are selected. */
 export function Checkbox({ label, hideLabel, indeterminate = false, className, ...props }: CheckboxProps) {
   return (
     <label className={cn("flex cursor-pointer items-center gap-2.5 text-body-m text-text-primary", className)}>
-      <span className="relative flex size-[18px] shrink-0">
+      <span className="relative flex size-4 shrink-0">
         <input
           type="checkbox"
           ref={(el) => {
             if (el) el.indeterminate = indeterminate;
           }}
-          className="peer size-full cursor-pointer appearance-none rounded-[5px] border-[1.25px] border-border-strong bg-surface-base checked:border-brand-primary checked:bg-brand-primary indeterminate:border-brand-primary indeterminate:bg-brand-primary focus-visible:shadow-focus"
+          className="peer size-full cursor-pointer appearance-none rounded border border-border-strong bg-surface-base checked:border-brand-primary checked:bg-brand-primary indeterminate:border-brand-primary indeterminate:bg-brand-primary focus-visible:shadow-focus"
           {...props}
         />
         <span className="pointer-events-none absolute inset-0 hidden items-center justify-center peer-checked:flex">
@@ -50,10 +50,10 @@ export function CheckCard({
         className,
       )}
     >
-      <span className="relative mt-px flex size-[18px] shrink-0">
+      <span className="relative mt-0.5 flex size-4 shrink-0">
         <input
           type="checkbox"
-          className="peer size-full cursor-pointer appearance-none rounded-[5px] border-[1.25px] border-border-strong bg-surface-base checked:border-brand-primary checked:bg-brand-primary focus-visible:shadow-none disabled:cursor-not-allowed"
+          className="peer size-full cursor-pointer appearance-none rounded border border-border-strong bg-surface-base checked:border-brand-primary checked:bg-brand-primary focus-visible:shadow-none disabled:cursor-not-allowed"
           {...props}
         />
         <span className="pointer-events-none absolute inset-0 hidden items-center justify-center peer-checked:flex">

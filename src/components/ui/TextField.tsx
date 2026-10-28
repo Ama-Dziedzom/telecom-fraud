@@ -52,13 +52,13 @@ export function TextField({
       )}
       <div
         className={cn(
-          "flex w-full items-center gap-2.5 rounded-lg px-3.5 transition-shadow",
-          size === "lg" ? "h-12" : "h-10",
+          "flex w-full items-center rounded-lg transition-shadow",
+          size === "lg" ? "h-12 gap-2.5 px-3.5" : "h-10 gap-2 px-3",
           disabled
             ? "border border-border-default bg-surface-sunken"
             : isInvalid
               ? "border-[1.5px] border-critical-fg bg-surface-base"
-              : "border border-border-default bg-surface-base hover:border-border-strong focus-within:border-[1.5px] focus-within:border-border-focus focus-within:shadow-focus",
+              : "border border-border-strong bg-surface-base focus-within:border-[1.5px] focus-within:border-border-focus focus-within:shadow-focus",
         )}
       >
         {iconLeft}
@@ -74,7 +74,7 @@ export function TextField({
               ? "font-mono text-mono-m"
               : size === "lg"
                 ? "text-body-l"
-                : "text-body-m",
+                : "text-body-s",
           )}
           {...props}
         />
@@ -101,7 +101,7 @@ export function TextField({
   );
 }
 
-/** Text area — same chrome as the input; label with an optional “optional” marker. */
+/** Text area — same chrome as the input; label with an optional “(optional)” suffix. */
 export function TextArea({
   label,
   optional,
@@ -122,7 +122,7 @@ export function TextArea({
     <div className={cn("flex flex-col gap-1.5", fullWidthUnless(className), className)}>
       <label htmlFor={areaId} className="flex items-center gap-1 text-label-s text-text-primary">
         {label}
-        {optional && <span className="text-caption text-text-tertiary">optional</span>}
+        {optional && <span>(optional)</span>}
         {required && <span className="text-critical-fg">*</span>}
       </label>
       <textarea
@@ -131,10 +131,10 @@ export function TextArea({
         required={required}
         aria-invalid={Boolean(error) || undefined}
         className={cn(
-          "w-full resize-none rounded-lg border bg-surface-base px-3 py-2.5 text-body-m text-text-primary outline-none placeholder:text-text-tertiary",
+          "w-full resize-none rounded-lg border bg-surface-base px-3 py-2.5 text-body-s text-text-primary outline-none placeholder:text-text-tertiary",
           error
             ? "border-[1.5px] border-critical-fg"
-            : "border-border-default hover:border-border-strong focus:border-[1.5px] focus:border-border-focus focus:shadow-focus",
+            : "border-border-strong focus:border-[1.5px] focus:border-border-focus focus:shadow-focus",
         )}
         {...props}
       />
@@ -148,29 +148,31 @@ export function TextArea({
   );
 }
 
-/** Field label row: “Reason *” or “Note optional”. */
+/** Field label row: “Reason *” or “Note (optional)”. */
 export function FieldLabel({ children, required, optional, htmlFor }: { children: ReactNode; required?: boolean; optional?: boolean; htmlFor?: string }) {
   return (
     <label htmlFor={htmlFor} className="flex items-center gap-1 text-label-s text-text-primary">
       {children}
       {required && <span className="text-critical-fg">*</span>}
-      {optional && <span className="text-caption text-text-tertiary">optional</span>}
+      {optional && <span>(optional)</span>}
     </label>
   );
 }
 
-/** Compact select (40 high) used inside modals and filter rows. */
+/** Compact select (MD, 40 high) used inside modals and filter rows; `error` turns the border red and shows the message. */
 export function Select({
   label,
   required,
   iconLeft,
+  error,
   className,
   id,
   children,
   ...props
-}: SelectHTMLAttributes<HTMLSelectElement> & { label?: ReactNode; iconLeft?: ReactNode }) {
+}: SelectHTMLAttributes<HTMLSelectElement> & { label?: ReactNode; iconLeft?: ReactNode; error?: ReactNode }) {
   const autoId = useId();
   const selectId = id ?? autoId;
+  const errorId = `${selectId}-error`;
   return (
     <div className={cn("flex flex-col gap-1.5", fullWidthUnless(className), className)}>
       {label && (
@@ -178,18 +180,33 @@ export function Select({
           {label}
         </FieldLabel>
       )}
-      <div className="relative flex h-10 w-full items-center gap-2 rounded-lg border border-border-default bg-surface-base px-3 hover:border-border-strong focus-within:border-[1.5px] focus-within:border-border-focus focus-within:shadow-focus">
+      <div
+        className={cn(
+          "relative flex h-10 w-full items-center gap-2 rounded-lg bg-surface-base px-3",
+          error
+            ? "border-[1.5px] border-critical-fg"
+            : "border border-border-strong focus-within:border-[1.5px] focus-within:border-border-focus focus-within:shadow-focus",
+        )}
+      >
         {iconLeft}
         <select
           id={selectId}
           required={required}
-          className="min-w-0 flex-1 cursor-pointer appearance-none bg-transparent text-body-m text-text-primary outline-none focus-visible:shadow-none"
+          aria-invalid={Boolean(error) || undefined}
+          aria-describedby={error ? errorId : undefined}
+          className="min-w-0 flex-1 cursor-pointer appearance-none bg-transparent text-body-s text-text-primary outline-none focus-visible:shadow-none"
           {...props}
         >
           {children}
         </select>
         <Icon name="app/icon-chevron-down-16" size={16} className="pointer-events-none shrink-0" />
       </div>
+      {error && (
+        <p id={errorId} role="alert" className="flex items-start gap-1.5 text-caption text-critical-fg">
+          <Icon name="icon-alert-critical" size={14} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </p>
+      )}
     </div>
   );
 }

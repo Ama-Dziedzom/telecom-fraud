@@ -2,27 +2,30 @@
 
 import { cn } from "@/lib/cn";
 import { useEffect, useRef, type ReactNode } from "react";
-import { IconTile, type IconTileTone } from "./IconTile";
+import { Icon } from "./Icon";
+import type { IconTileTone } from "./IconTile";
 
 /**
- * Modal — icon tile + title + sub + body + right-aligned actions.
- * 480–760 wide · radius 16 · Shadow/LG · overlay #14112F @ 45%.
- * Uses <dialog> for focus trapping and Esc handling.
+ * Modal — centred dialog on a 50% scrim. S 400, M 560, L 800; height hugs
+ * content. Header: H3 title + optional Body/S meta + ghost close; body with
+ * 24 padding; footer on a divider, right-aligned: Cancel (Secondary) then one
+ * Primary or Danger. Radius 8, 1px border. Uses <dialog> for focus trapping
+ * and Esc handling.
  */
 export function Modal({
   open,
   onClose,
-  icon,
-  tone,
   title,
   description,
   children,
   actions,
-  width = 480,
+  width = 400,
 }: {
   open: boolean;
   onClose: () => void;
+  /** @deprecated Direction v2 modals carry no icon tile. */
   icon?: string;
+  /** @deprecated See `icon`. */
   tone?: IconTileTone;
   title: ReactNode;
   description?: ReactNode;
@@ -46,23 +49,28 @@ export function Modal({
       aria-labelledby="modal-title"
       style={{ width }}
       className={cn(
-        "m-auto max-h-[calc(100dvh-32px)] max-w-[calc(100vw-32px)] rounded-2xl bg-surface-base p-7 shadow-lg backdrop:bg-overlay",
-        "open:animate-[modal-in_200ms_ease-out] motion-reduce:open:animate-none",
+        "m-auto max-h-[calc(100dvh-32px)] max-w-[calc(100vw-32px)] rounded-lg border border-border-default bg-surface-base shadow-[0_24px_48px_-12px_rgb(15_23_42/0.2)] backdrop:bg-overlay",
+        "open:flex open:flex-col open:animate-[modal-in_200ms_ease-out] motion-reduce:open:animate-none",
       )}
     >
-      <div className="flex flex-col gap-6">
-        <div className={cn("flex flex-col", icon && "gap-4")}>
-          {icon && <IconTile icon={icon} tone={tone ?? "brand"} size="md" />}
-          <div className="flex flex-col gap-1.5">
-            <h2 id="modal-title" tabIndex={-1} autoFocus className="text-h2 text-text-primary outline-none focus-visible:shadow-none">
-              {title}
-            </h2>
-            {description && <p className="text-body-m text-text-secondary">{description}</p>}
-          </div>
+      <div className="flex shrink-0 items-start gap-3 pt-5 pr-4 pb-4 pl-6">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h2 id="modal-title" tabIndex={-1} autoFocus className="text-h3 text-text-primary outline-none focus-visible:shadow-none">
+            {title}
+          </h2>
+          {description && <p className="text-body-s text-text-secondary">{description}</p>}
         </div>
-        {children}
-        <div className="flex items-center justify-end gap-2.5">{actions}</div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg hover:bg-surface-sunken"
+        >
+          <Icon name="app/icon-x-secondary-16" size={16} />
+        </button>
       </div>
+      {children && <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-6 pb-6">{children}</div>}
+      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border-default px-6 py-4">{actions}</div>
     </dialog>
   );
 }

@@ -6,24 +6,24 @@ import type { CaseStatus, Severity } from "@/lib/api/fd";
 import { cn } from "@/lib/cn";
 import { formatSpan } from "@/lib/time";
 
-/** Risk score colour bands used across tables and drawers. */
-export function riskTone(score: number): "critical" | "high" | "medium" {
-  return score >= 90 ? "critical" : score >= 70 ? "high" : "medium";
+/** Risk levels: Critical 90+, High 70-89, Medium 40-69, Low under 40. */
+export function riskTone(score: number): Severity {
+  return score >= 90 ? "critical" : score >= 70 ? "high" : score >= 40 ? "medium" : "low";
 }
 
-const TONE_TEXT = { critical: "text-critical-fg", high: "text-high-fg", medium: "text-medium-fg" };
-const TONE_FILL = { critical: "bg-critical-fg", high: "bg-high-fg", medium: "bg-medium-fg" };
-const TONE_TRACK = { critical: "bg-critical-bg", high: "bg-high-bg", medium: "bg-medium-bg" };
+const TONE_TEXT: Record<Severity, string> = {
+  critical: "text-critical-fg",
+  high: "text-high-fg",
+  medium: "text-medium-fg",
+  low: "text-text-secondary",
+};
 
-/** “97 ▬▬▬” — score plus a 44px bar. */
+/** Risk pill — score + level pill (risk in tables is always this). */
 export function RiskScore({ score }: { score: number }) {
-  const tone = riskTone(score);
   return (
     <span className="flex items-center gap-2">
-      <span className={cn("text-label-m", TONE_TEXT[tone])}>{score}</span>
-      <span className={cn("h-1 w-11 rounded-[2px]", TONE_TRACK[tone])} aria-hidden>
-        <span className={cn("block h-1 rounded-[2px]", TONE_FILL[tone])} style={{ width: `${score}%` }} />
-      </span>
+      <span className="w-6 text-right text-body-s text-text-primary tabular-nums">{score}</span>
+      <SeverityBadge severity={riskTone(score)} />
     </span>
   );
 }
@@ -35,7 +35,7 @@ const SEVERITY: Record<Severity, { label: string; tone: BadgeTone }> = {
   low: { label: "Low", tone: "neutral" },
 };
 
-export function SeverityBadge({ severity, dot = false, size }: { severity: Severity; dot?: boolean; size?: "sm" | "md" }) {
+export function SeverityBadge({ severity, dot = true, size }: { severity: Severity; dot?: boolean; size?: "sm" | "md" }) {
   const s = SEVERITY[severity];
   return <Badge label={s.label} tone={s.tone} dot={dot} size={size} />;
 }
@@ -44,11 +44,11 @@ export function SeverityBadge({ severity, dot = false, size }: { severity: Sever
 export const riskText = (score: number) => TONE_TEXT[riskTone(score)];
 
 const CASE_STATUS: Record<CaseStatus, { label: string; tone: BadgeTone }> = {
-  new: { label: "New", tone: "info" },
+  new: { label: "New", tone: "neutral" },
   investigating: { label: "Investigating", tone: "brand" },
-  escalated: { label: "Escalated", tone: "critical" },
-  sent_back: { label: "Sent back", tone: "high" },
-  pending_decision: { label: "Pending decision", tone: "medium" },
+  escalated: { label: "Escalated", tone: "high" },
+  sent_back: { label: "Sent back", tone: "medium" },
+  pending_decision: { label: "Pending decision", tone: "info" },
   closed: { label: "Closed", tone: "neutral" },
   reopened: { label: "Reopened", tone: "high" },
 };

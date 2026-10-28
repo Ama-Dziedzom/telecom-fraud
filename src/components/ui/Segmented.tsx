@@ -27,7 +27,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(o.id)}
             className={cn(
               "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-label-s",
-              active ? "bg-surface-base text-text-primary shadow-[0_1px_1px_rgb(20_18_51/0.06)]" : "text-text-secondary hover:text-text-primary",
+              active ? "bg-surface-base text-text-primary shadow-[0_1px_1px_rgb(15_23_42/0.06)]" : "text-text-secondary hover:text-text-primary",
             )}
           >
             {o.dot && <span aria-hidden className={cn("size-1.5 rounded-full", o.dot)} />}

@@ -6,26 +6,30 @@ const tones = {
   info: {
     box: "bg-info-bg border-info-border",
     title: "text-info-fg",
-    icon: "icon-info-info-20",
+    icon: "app/icon-info-info-16",
   },
   warning: {
     box: "bg-medium-bg border-medium-border",
     title: "text-medium-fg",
-    icon: "icon-alert-triangle-medium",
+    icon: "app/icon-alert-triangle-medium-16",
   },
   error: {
     box: "bg-critical-bg border-critical-border",
     title: "text-critical-fg",
-    icon: "icon-alert-circle-critical-20",
+    icon: "app/icon-alert-circle-critical-16",
   },
   success: {
     box: "bg-success-bg border-success-border",
     title: "text-success-fg",
-    icon: "app/icon-check-circle-success-20",
+    icon: "app/icon-check-circle-success-16",
   },
 } as const;
 
-/** Banner — inline, persistent message for a page or modal. */
+/**
+ * Banner — system or ownership states only (info, success, warning, error).
+ * Radius 8, 16 icon; title Label/S in the tone colour, optional body Body/S
+ * in text/secondary, optional one ghost action on the right.
+ */
 export function Banner({
   tone,
   title,
@@ -44,12 +48,12 @@ export function Banner({
   return (
     <div
       role={tone === "error" ? "alert" : "status"}
-      className={cn("flex w-full gap-3 rounded-[10px] border px-3.5 py-3", action ? "items-center" : "items-start", t.box)}
+      className={cn("flex w-full gap-3 rounded-lg border px-4 py-3", action ? "items-center" : "items-start", t.box)}
     >
-      <Icon name={icon ?? t.icon} size={20} className={action ? "self-start" : undefined} />
+      <Icon name={icon ?? t.icon} size={16} className="mt-px shrink-0 self-start" />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className={cn("text-label-m", t.title)}>{title}</p>
-        {children && <p className="text-body-s text-text-primary">{children}</p>}
+        <p className={cn("text-label-s", t.title)}>{title}</p>
+        {children && <p className="text-body-s text-text-secondary">{children}</p>}
       </div>
       {action}
     </div>
@@ -67,7 +71,7 @@ const noteTones = {
 export function Note({ tone, children }: { tone: keyof typeof noteTones; children: ReactNode }) {
   const t = noteTones[tone];
   return (
-    <div className={cn("flex w-full items-start gap-2.5 rounded-[10px] px-3.5 py-3 text-body-s", t.box)}>
+    <div className={cn("flex w-full items-start gap-2.5 rounded-lg px-4 py-3 text-body-s", t.box)}>
       <Icon name={t.icon} size={t.size} className="mt-0.5 shrink-0" />
       <p>{children}</p>
     </div>

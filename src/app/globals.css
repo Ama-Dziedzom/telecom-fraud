@@ -2,84 +2,107 @@
 
 /*
  * FraudDetection design tokens — mirrors the "FD · Color" and "FD · Shell"
- * collections in Figma (07 · Handoff). Use tokens, never hex.
+ * collections in Figma (00 · Foundations, Direction v2: blue + slate). Use tokens, never hex.
  * Status colours always come as fg/bg/border triplets.
  */
 @theme {
   /* brand */
-  --color-brand-primary: #5347ce;
-  --color-brand-primary-hover: #4b40b9;
-  --color-brand-primary-pressed: #4239a5;
-  --color-brand-primary-subtle: #eeedfa;
-  --color-brand-primary-subtle-hover: #e5e3f8;
-  --color-brand-primary-strong: #3e359b;
-  --color-brand-ink: #1d1948;
-  --color-brand-ink-deep: #14112f;
-  --color-brand-highlight: #887cfd;
+  --color-brand-primary: #2563eb;
+  --color-brand-primary-hover: #1d4ed8;
+  --color-brand-primary-pressed: #1e40af;
+  --color-brand-primary-subtle: #eff6ff;
+  --color-brand-primary-subtle-hover: #dbeafe;
+  --color-brand-primary-strong: #1e40af;
+  --color-brand-ink: #0f172a;
+  --color-brand-ink-deep: #020617;
+  --color-brand-highlight: #60a5fa;
 
   /* surface */
-  --color-surface-canvas: #eeedf6;
+  --color-surface-canvas: #f1f5f9;
   --color-surface-base: #ffffff;
-  --color-surface-raised: #f7f6fb;
-  --color-surface-sunken: #efeef6;
-  --color-surface-inverse: #1d1948;
+  --color-surface-raised: #f8fafc;
+  --color-surface-sunken: #f1f5f9;
+  --color-surface-inverse: #0f172a;
 
   /* border */
-  --color-border-subtle: #e6e4f0;
-  --color-border-default: #e1dfeb;
-  --color-border-strong: #d4d4d4;
-  --color-border-focus: #5347ce;
+  --color-border-subtle: #f1f5f9;
+  --color-border-default: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-border-focus: #2563eb;
 
   /* text */
-  --color-text-primary: #1f1f24;
-  --color-text-secondary: #5f5f66;
-  --color-text-tertiary: #8b8b93;
-  --color-text-disabled: #b4b4b8;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-tertiary: #64748b;
+  --color-text-disabled: #cbd5e1;
   --color-text-inverse: #ffffff;
-  --color-text-brand: #4b40b9;
+  --color-text-brand: #1d4ed8;
 
-  /* status */
-  --color-critical-fg: #b51c1c;
-  --color-critical-bg: #fbeaea;
-  --color-critical-border: #efc1c1;
-  --color-high-fg: #b9430f;
-  --color-high-bg: #fdf0e8;
-  --color-high-border: #f6cdb2;
-  --color-medium-fg: #8b621a;
-  --color-medium-bg: #fdf6ea;
-  --color-medium-border: #f3dcb2;
-  --color-success-fg: #206224;
-  --color-success-bg: #ebf4ec;
-  --color-success-border: #c2dcc4;
-  --color-info-fg: #2b5a98;
-  --color-info-bg: #edf5ff;
-  --color-info-border: #c9ddf7;
-  --color-neutral-fg: #4a4a50;
-  --color-neutral-bg: #f1f1f3;
-  --color-neutral-border: #e2e2e6;
+  /* status — colour lives in pills; solid is for dots, bars and counts */
+  --color-critical-fg: #b42318;
+  --color-critical-bg: #fef3f2;
+  --color-critical-border: #fecdca;
+  --color-critical-solid: #d92d20;
+  --color-high-fg: #b93815;
+  --color-high-bg: #fff4ed;
+  --color-high-border: #ffd6ae;
+  --color-high-solid: #ef6820;
+  --color-medium-fg: #a15c07;
+  --color-medium-bg: #fefbe8;
+  --color-medium-border: #fde272;
+  --color-medium-solid: #eaaa08;
+  --color-low-fg: #475569;
+  --color-low-bg: #f1f5f9;
+  --color-low-border: #e2e8f0;
+  --color-low-solid: #64748b;
+  --color-success-fg: #067647;
+  --color-success-bg: #ecfdf3;
+  --color-success-border: #abefc6;
+  --color-success-solid: #17b26a;
+  --color-info-fg: #0e7490;
+  --color-info-bg: #ecfeff;
+  --color-info-border: #a5f3fc;
+  --color-info-solid: #06aed4;
+  --color-neutral-fg: #475569;
+  --color-neutral-bg: #f1f5f9;
+  --color-neutral-border: #e2e8f0;
+  --color-neutral-solid: #64748b;
+
+  /* charts — categorical (never red, orange or amber) and sequential (heatmap density) */
+  --color-chart-1: #2563eb;
+  --color-chart-2: #0d9488;
+  --color-chart-3: #6366f1;
+  --color-chart-4: #38bdf8;
+  --color-chart-5: #a78bfa;
+  --color-chart-6: #94a3b8;
+  --color-seq-1: #eff6ff;
+  --color-seq-2: #bfdbfe;
+  --color-seq-3: #60a5fa;
+  --color-seq-4: #2563eb;
+  --color-seq-5: #1e3a8a;
 
   /* logo */
-  --color-logo-accent: #b7b1f5;
+  --color-logo-accent: #60a5fa;
 
-  /* overlay (modals: #14112F @ 45%) */
-  --color-overlay: rgb(20 17 47 / 0.45);
+  /* overlay (modal and drawer scrim: slate/900 @ 50%) */
+  --color-overlay: rgb(15 23 42 / 0.5);
 
-  /* FD · Shell — Ink mode (sidebar and frame canvas only) */
-  --color-shell-canvas: #1b1842;
+  /* FD · Shell — Navy mode (sidebar only) */
+  --color-shell-canvas: #0f172a;
   --color-shell-card-bg: rgb(255 255 255 / 0.06);
   --color-shell-card-border: rgb(255 255 255 / 0.1);
   --color-shell-text: #ffffff;
-  --color-shell-text-muted: #9893c4;
-  --color-shell-nav-text: #dcd9f5;
-  --color-shell-nav-icon: #9893c4;
+  --color-shell-text-muted: #94a3b8;
+  --color-shell-nav-text: #cbd5e1;
+  --color-shell-nav-icon: #94a3b8;
   --color-shell-nav-hover-bg: rgb(255 255 255 / 0.06);
-  --color-shell-nav-active-bg: #5347ce;
+  --color-shell-nav-active-bg: rgb(255 255 255 / 0.1);
   --color-shell-nav-active-text: #ffffff;
   --color-shell-count-bg: rgb(255 255 255 / 0.1);
   --color-shell-count-text: #ffffff;
-  --color-shell-count-active-bg: rgb(255 255 255 / 0.22);
-  --color-shell-count-critical-bg: #e5484d;
-  --color-shell-count-warning-bg: #c98a1b;
+  --color-shell-count-active-bg: rgb(255 255 255 / 0.2);
+  --color-shell-count-critical-bg: #d92d20;
+  --color-shell-count-warning-bg: #eaaa08;
 
   /* new live-alert row highlight (fades to white over 1200 ms) */
   --animate-row-arrive: row-arrive 1200ms linear;
@@ -93,22 +116,22 @@
   /* type scale (FD/*) */
   --text-display: 40px;
   --text-display--line-height: 48px;
-  --text-display--letter-spacing: -0.6px;
-  --text-display--font-weight: 700;
+  --text-display--letter-spacing: -1.5px;
+  --text-display--font-weight: 500;
   --text-h1: 28px;
   --text-h1--line-height: 36px;
-  --text-h1--letter-spacing: -0.28px;
-  --text-h1--font-weight: 700;
+  --text-h1--letter-spacing: -1px;
+  --text-h1--font-weight: 500;
   --text-h2: 22px;
   --text-h2--line-height: 30px;
-  --text-h2--letter-spacing: -0.11px;
-  --text-h2--font-weight: 700;
+  --text-h2--letter-spacing: -0.5px;
+  --text-h2--font-weight: 500;
   --text-h3: 18px;
   --text-h3--line-height: 26px;
-  --text-h3--font-weight: 700;
+  --text-h3--font-weight: 500;
   --text-title: 16px;
   --text-title--line-height: 24px;
-  --text-title--font-weight: 700;
+  --text-title--font-weight: 500;
   --text-body-l: 16px;
   --text-body-l--line-height: 24px;
   --text-body-m: 14px;
@@ -138,10 +161,12 @@
   --text-mono-code--font-weight: 500;
 
   /* effects */
-  --shadow-sm: 0 1px 2px rgb(20 18 51 / 0.06);
-  --shadow-md: 0 6px 20px rgb(20 18 51 / 0.08);
-  --shadow-lg: 0 16px 40px rgb(20 18 51 / 0.16);
-  --shadow-focus: 0 0 0 3px rgb(83 71 206 / 0.22);
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06);
+  --shadow-md: 0 6px 20px rgb(15 23 42 / 0.08);
+  --shadow-lg: 0 16px 40px rgb(15 23 42 / 0.16);
+  --shadow-focus: 0 0 0 3px rgb(37 99 235 / 0.22);
+  /* keyboard focus on controls: 2px white gap + 2px border/focus */
+  --shadow-focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px #2563eb;
 
   --animate-shake: shake 300ms ease-in-out;
 
@@ -197,7 +222,7 @@
   /* FD/Focus ring — every focusable element on keyboard focus */
   :focus-visible {
     outline: none;
-    box-shadow: var(--shadow-focus);
+    box-shadow: var(--shadow-focus-ring);
   }
 }
 

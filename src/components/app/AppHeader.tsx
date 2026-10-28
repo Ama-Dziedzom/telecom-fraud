@@ -1,12 +1,28 @@
 "use client";
 
-import { EnvironmentPill } from "@/components/ui/Badge";
+import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
-import { isOpenAlert, useAlerts, useNotifications } from "@/lib/api/fd";
-import Link from "next/link";
+import { useNotifications } from "@/lib/api/fd";
+import { useOperatorName } from "@/lib/auth/session";
 import { NotificationsPanel } from "@/components/shell/NotificationsPanel";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ProfileMenu } from "@/components/shell/ShellDialogs";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useShell } from "./AppShell";
+
+/** Closes a popover on Esc or a pointer-down outside `root`. */
+function useDismiss(open: boolean, root: RefObject<HTMLElement | null>, close: () => void) {
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: PointerEvent) => !root.current?.contains(e.target as Node) && close();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && close();
+    document.addEventListener("pointerdown", down);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", down);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open, root, close]);
+}
 
 /** Global search — opens the ⌘K palette (I1). */
 function GlobalSearch() {
@@ -17,30 +33,23 @@ function GlobalSearch() {
       onClick={() => open("palette")}
       aria-label="Search"
       aria-keyshortcuts="Meta+K"
-      className="flex h-10 w-[420px] min-w-0 items-center gap-2.5 rounded-[10px] border border-border-default bg-surface-base px-3 text-left hover:border-border-strong"
+      className="flex h-10 w-[420px] min-w-0 items-center gap-2 rounded-lg border border-border-default bg-surface-base px-3 text-left hover:border-border-strong"
     >
-      <Icon name="app/icon-search" size={18} />
-      <span className="min-w-0 flex-1 truncate text-body-m text-text-tertiary">Search MSISDN, case ID, IMEI or name…</span>
-      <kbd className="rounded-[5px] border border-border-default bg-surface-sunken px-1.5 py-0.5 font-mono text-mono-s text-text-secondary">⌘K</kbd>
+      <Icon name="app/icon-search" size={16} />
+      <span className="min-w-0 flex-1 truncate text-body-s text-text-tertiary">Search MSISDN, case ID, IMEI or name…</span>
+      <kbd className="rounded border border-border-default bg-surface-sunken px-1.5 py-0.5 font-sans text-caption font-medium text-text-secondary">⌘K</kbd>
     </button>
   );
 }
 
-/** Bell + I3/I4 panel; closes on Esc or a click outside. */
+const iconButton =
+  "relative flex size-10 shrink-0 items-center justify-center rounded-lg border border-border-default bg-surface-base hover:bg-surface-raised";
+
+/** Bell + I3/I4 panel. */
 function Bell({ unread }: { unread: boolean }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: PointerEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
-    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("pointerdown", down);
-    document.addEventListener("keydown", key);
-    return () => {
-      document.removeEventListener("pointerdown", down);
-      document.removeEventListener("keydown", key);
-    };
-  }, [open]);
+  useDismiss(open, root, () => setOpen(false));
   return (
     <div ref={root} className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={unread ? "Notifications (unread)" : "Notifications"} className={iconButton}>
@@ -52,45 +61,67 @@ function Bell({ unread }: { unread: boolean }) {
   );
 }
 
-const iconButton =
-  "relative flex size-10 shrink-0 items-center justify-center rounded-[10px] border border-border-default bg-surface-base hover:bg-surface-raised";
+/** Avatar + I5 profile menu. */
+function Account() {
+  const shell = useShell();
+  const operator = useOperatorName() ?? "Kasa Mobile";
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useDismiss(open, root, () => setOpen(false));
+  const initials =
+    shell.user?.name
+      .split(" ")
+      .map((p) => p[0])
+      .slice(0, 2)
+      .join("") ?? "";
+  return (
+    <div ref={root} className="relative">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu" aria-label="Account" className="flex rounded-full">
+        <Avatar initials={initials} size={32} />
+      </button>
+      {open && (
+        <ProfileMenu
+          user={shell.user}
+          operator={operator}
+          onClose={() => setOpen(false)}
+          onHandover={() => {
+            setOpen(false);
+            shell.handOver();
+          }}
+          onShortcuts={() => {
+            setOpen(false);
+            shell.open("shortcuts");
+          }}
+          onSignOut={shell.signOutNow}
+        />
+      )}
+    </div>
+  );
+}
 
-/** Header — 76 high: sidebar toggle + title block left; search, env, status pill, bell right. */
-export function AppHeader({ section, title, actions }: { section: string; title: string; actions?: ReactNode }) {
-  const { toggleSidebar } = useShell();
-  const { data: alerts } = useAlerts();
+/**
+ * Shell / Top bar — 64 high: sidebar toggle + search left; notifications and
+ * account right. No visible page title (the page header carries it); `title`
+ * stays as the document heading for screen readers.
+ */
+export function AppHeader({ title, actions }: { section?: string; title: string; actions?: ReactNode }) {
+  const { toggleSidebar, sidebarOpen } = useShell();
   const { data: notifications } = useNotifications();
-  const openAlerts = alerts?.data.filter(isOpenAlert).length ?? 0;
   const unread = (notifications?.unread ?? 0) > 0;
 
   return (
-    <header className="flex h-[76px] shrink-0 items-center justify-between gap-4 border-b border-border-subtle px-7">
-      <div className="flex items-center gap-3.5">
-        <button type="button" onClick={toggleSidebar} aria-label="Toggle sidebar" className={iconButton}>
+    <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border-default bg-surface-base px-6">
+      <h1 className="sr-only">{title}</h1>
+      <div className="flex min-w-0 items-center gap-3">
+        <button type="button" onClick={toggleSidebar} aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"} aria-expanded={sidebarOpen} className={iconButton}>
           <Icon name="app/icon-sidebar" size={20} />
         </button>
-        <div className="flex flex-col">
-          <span className="text-caption text-text-tertiary">{section}</span>
-          <h1 className="text-h3 text-text-primary">{title}</h1>
-        </div>
-      </div>
-      <div className="flex min-w-0 items-center gap-2.5">
-        {actions}
         <GlobalSearch />
-        <EnvironmentPill env="production" />
-        {openAlerts > 0 && (
-          <Link
-            href="/alerts"
-            className="flex h-10 shrink-0 items-center gap-2 rounded-[10px] border border-critical-border bg-critical-bg px-3 text-label-s text-critical-fg"
-          >
-            <Icon name="app/icon-alert-triangle-critical-16" size={16} />
-            Live alerts
-            <span className="rounded-full bg-critical-fg px-[7px] py-px text-caption font-medium text-text-inverse">
-              {openAlerts}
-            </span>
-          </Link>
-        )}
+      </div>
+      <div className="flex items-center gap-3">
+        {actions}
         <Bell unread={unread} />
+        <Account />
       </div>
     </header>
   );

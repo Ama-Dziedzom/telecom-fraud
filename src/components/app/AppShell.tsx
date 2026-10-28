@@ -67,9 +67,9 @@ export function useFeed() {
 }
 
 /**
- * App shell — dark sidebar (300) + main panel inset 16 with radius 16 on
- * the shell canvas. Pages render their own <AppHeader> and content; the
- * footer is shared.
+ * App shell — Navy sidebar (280, or the 80 rail when collapsed) flush beside
+ * the main column on the canvas. Pages render their own <AppHeader> (top bar)
+ * and content; the footer is shared.
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const { data: user } = useApi<User>("/me");
@@ -142,17 +142,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     >
       <ToastProvider>
         <StepUpProvider>
-          <div className="flex h-dvh bg-shell-canvas">
-            {sidebarOpen && (
-              <Sidebar user={user ?? null} operatorName={operatorName} />
-            )}
-            <div
-              className={
-                sidebarOpen
-                  ? "my-4 mr-4 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-shell-card-border bg-surface-raised"
-                  : "m-4 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-shell-card-border bg-surface-raised"
-              }
-            >
+          <div className="flex h-dvh">
+            <Sidebar operatorName={operatorName} collapsed={!sidebarOpen} />
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface-canvas">
               {children}
             </div>
           </div>
@@ -198,10 +190,10 @@ export function PageBody({
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className={className ?? "flex flex-1 flex-col gap-6 px-8 py-7"}>
+        <div className={className ?? "flex flex-1 flex-col gap-6 px-8 pt-8 pb-10"}>
           {children}
         </div>
-        <footer className="flex shrink-0 items-center justify-center gap-2 border-t border-border-subtle px-8 py-3 text-caption">
+        <footer className="flex shrink-0 items-center justify-center gap-2 border-t border-border-default px-8 py-3 text-caption">
           <span
             className={cn(
               "size-1.5 rounded-full",
@@ -222,25 +214,31 @@ export function PageBody({
   );
 }
 
-/** Page head — H1 title + subtitle left, actions right. */
+/** Page header — H2 title + Body/S meta left, up to two actions right (one primary at most). */
 export function PageHead({
   title,
+  pill,
   subtitle,
   actions,
 }: {
   title: string;
+  /** Optional pill beside the title (Live, Read-only, Restricted). */
+  pill?: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-h1 text-text-primary">{title}</h2>
+    <div className="flex flex-wrap items-center justify-between gap-6">
+      <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <h2 className="text-h2 text-text-primary">{title}</h2>
+          {pill}
+        </div>
         {subtitle && (
-          <p className="text-body-m text-text-secondary">{subtitle}</p>
+          <p className="text-body-s text-text-secondary">{subtitle}</p>
         )}
       </div>
-      {actions && <div className="flex items-center gap-2.5">{actions}</div>}
+      {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>
   );
 }
