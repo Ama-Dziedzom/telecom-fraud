@@ -1,5 +1,5 @@
 import { mockAlertStream, mockFixture } from "@/lib/api/mock-fixtures";
-import { mockRoute, mockSyntheticResponse, mockWant } from "@/lib/api/mock-scenarios";
+import { mockFilterList, mockRoute, mockSyntheticResponse, mockWant } from "@/lib/api/mock-scenarios";
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
@@ -192,6 +192,7 @@ async function handle(req: NextRequest, ctx: RouteContext<"/api/fd/[...path]">) 
     }
     status = res.status;
     data = parseJson(await res.text());
+    if (MOCK && status >= 200 && status < 300) data = mockFilterList(method, path, req.nextUrl.searchParams, data);
   }
 
   if (status >= 200 && status < 300 && data && typeof data.access_token === "string") {

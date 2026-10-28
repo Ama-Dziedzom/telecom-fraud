@@ -187,3 +187,50 @@ export function mockSyntheticResponse(
   }
   return undefined;
 }
+
+/**
+ * The collection has one example per list (e.g. GET /cases?view=mine), so the
+ * mock answers every filter with the same rows. In mock mode the proxy applies
+ * the list query here — what the real API does server-side — so filter chips,
+ * search and saved views behave. Counts stay as the example gives them
+ * (they’re totals per status, not per filter); `total` follows the rows.
+ */
+/** The mock’s “now”: NEXT_PUBLIC_FD_DEMO_NOW when set (as the app clock in lib/time), else the real time. */
+const mockNow = () => (process.env.NEXT_PUBLIC_FD_DEMO_NOW ? Date.parse(process.env.NEXT_PUBLIC_FD_DEMO_NOW) : Date.now());
+
+export function mockFilterList(method: string, path: string, search: URLSearchParams, data: Record<string, unknown> | null) {
+  if (method !== "GET" || path !== "cases" || !data || !Array.isArray(data.data)) return data;
+  const list = (k: string) =>
+    (search.get(k) ?? "")
+      .split(",")
+      .map((v) => v.trim().toLowerCase())
+      .filter(Boolean);
+  const level = (score: number) => (score >= 90 ? "critical" : score >= 70 ? "high" : score >= 40 ? "medium" : "low");
+  const status = list("status");
+  const severity = list("severity");
+  const region = list("region");
+  const fraudType = list("fraud_type");
+  const sla = list("sla");
+  const q = (search.get("q") ?? "").trim().toLowerCase();
+  type Row = {
+    id: string;
+    title: string;
+    status: string;
+    risk_score: number;
+    region?: string;
+    fraud_type?: string;
+    sla_due_at?: string;
+    subscriber?: { msisdn?: string; name?: string };
+  };
+  const rows = (data.data as Row[]).filter(
+    (c) =>
+      // Saved views use “open” for every status but closed.
+      (!status.length || status.includes(c.status) || (status.includes("open") && c.status !== "closed")) &&
+      (!severity.length || severity.includes(level(c.risk_score))) &&
+      (!region.length || region.includes((c.region ?? "").toLowerCase())) &&
+      (!fraudType.length || fraudType.includes((c.fraud_type ?? "").toLowerCase())) &&
+      (!sla.includes("breached") || (c.sla_due_at !== undefined && Date.parse(c.sla_due_at) < mockNow())) &&
+      (!q || [c.id, c.title, c.subscriber?.msisdn, c.subscriber?.name].some((v) => v?.toLowerCase().replace(/\s/g, "").includes(q.replace(/\s/g, "")))),
+  );
+  return { ...data, data: rows, total: rows.length };
+}
