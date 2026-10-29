@@ -53,11 +53,12 @@ function DailyChart({ data }: { data: Behaviour }) {
   const marks = [0, Math.round((days.length - 1) / 3), Math.round(((days.length - 1) * 2) / 3)];
   return (
     <div className="relative h-[232px]" role="img" aria-label={`Money out per day for the last ${days.length} days; today ${money(today.amount)}`}>
-      <span className="absolute top-0 left-0 text-caption whitespace-nowrap text-text-secondary">{shortMoney(today.amount)}</span>
-      <span className="absolute left-0 text-caption whitespace-nowrap text-text-secondary" style={{ top: 200 - BAND - 2 }}>
-        {money(data.normal_max)}
+      {/* Axis labels end 8px before the plot, so a wide amount never runs into the bars. */}
+      <span className="absolute top-0 right-[calc(100%-48px)] text-caption whitespace-nowrap text-text-secondary">{shortMoney(today.amount)}</span>
+      <span className="absolute right-[calc(100%-48px)] -translate-y-1/2 text-caption whitespace-nowrap text-text-secondary" style={{ top: 200 - BAND }}>
+        {shortMoney(data.normal_max)}
       </span>
-      <span className="absolute top-[186px] left-0 text-caption whitespace-nowrap text-text-secondary">{data.normal_max.currency} 0</span>
+      <span className="absolute top-[186px] right-[calc(100%-48px)] text-caption whitespace-nowrap text-text-secondary">{data.normal_max.currency} 0</span>
       <div className="absolute top-0 right-0 left-14 h-[200px]">
         <span className="absolute inset-x-0 bottom-0 bg-surface-raised" style={{ height: BAND }} />
         <div className="relative flex h-full items-end gap-2">
@@ -77,8 +78,8 @@ function DailyChart({ data }: { data: Behaviour }) {
             );
           })}
         </div>
-        {/* Drawn over the bars, so a day close to his normal doesn’t hide it. */}
-        <span className="pointer-events-none absolute left-2 text-caption text-text-secondary" style={{ bottom: BAND - 24 }}>
+        {/* Just above the band, on a backing so a bar near his normal can’t run through it. */}
+        <span className="pointer-events-none absolute left-2 rounded bg-surface-base/90 px-1 text-caption whitespace-nowrap text-text-secondary" style={{ bottom: BAND + 4 }}>
           His normal: up to {money(data.normal_max)} a day
         </span>
       </div>

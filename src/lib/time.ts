@@ -17,9 +17,13 @@ export function now() {
   return Date.now() + demoOffset;
 }
 
-/** Re-renders every `intervalMs` with the current app time. */
+/**
+ * Re-renders every `intervalMs` with the current app time. The demo clock starts
+ * when its module loads, which is much earlier on the dev server than in the
+ * browser, so the first render uses the pinned time on both; the first tick catches up.
+ */
 export function useNow(intervalMs = 30_000) {
-  const [t, setT] = useState(now);
+  const [t, setT] = useState(() => (DEMO_NOW ? Date.parse(DEMO_NOW) : now()));
   useEffect(() => {
     const id = setInterval(() => setT(now()), intervalMs);
     return () => clearInterval(id);

@@ -15,7 +15,7 @@ const DAY = 86_400_000;
 const FINDING: Record<string, string> = { burst: "Burst", fan_out: "Fan-out", drain: "Drain" };
 
 const PLOT_H = 220;
-const AXIS_W = 56;
+const AXIS_W = 76;
 
 /** Every transfer as a dot by amount and time; his normal band at the bottom, today’s column shaded. */
 function TransfersChart({ data, days, now }: { data: Patterns; days: number; now: number }) {
@@ -30,19 +30,21 @@ function TransfersChart({ data, days, now }: { data: Patterns; days: number; now
   const y = (minor: number) => Math.min(1, minor / yMax) * PLOT_H;
   const currency = data.normal_max.currency;
   const dayLabels = Array.from({ length: days }, (_, i) => start + i * DAY);
+  // At most ~7 day labels, counted back from today, so 30 days don’t crowd each other.
+  const every = Math.ceil(days / 7);
 
   return (
     <div className="relative h-[270px]" role="img" aria-label={`Every transfer over the last ${days} days by amount`}>
       {ticks.map((v) => (
         <span key={v} className="absolute right-0 h-px bg-border-default" style={{ left: AXIS_W, top: 10 + PLOT_H - y(v) }}>
-          <span className="absolute -translate-y-1/2 text-caption whitespace-nowrap text-text-secondary" style={{ left: -AXIS_W }}>
+          <span className="absolute right-full mr-2 -translate-y-1/2 text-caption whitespace-nowrap text-text-secondary">
             {currency} {(v / 100).toLocaleString("en-GB")}
           </span>
         </span>
       ))}
       <div className="absolute top-2.5 right-0" style={{ left: AXIS_W, height: PLOT_H }}>
         <span className="absolute inset-x-0 bottom-0 bg-surface-raised" style={{ height: Math.max(8, y(data.normal_max.amount_minor)) }}>
-          <span className="absolute bottom-full left-2 mb-0.5 text-caption whitespace-nowrap text-text-secondary">
+          <span className="absolute bottom-full left-2 z-10 mb-0.5 rounded bg-surface-base/90 px-1 text-caption whitespace-nowrap text-text-secondary">
             His normal transfers: under {money(data.normal_max)}
           </span>
         </span>
@@ -59,8 +61,14 @@ function TransfersChart({ data, days, now }: { data: Patterns; days: number; now
       </div>
       <div className="absolute right-0 flex" style={{ left: AXIS_W, top: 238 }}>
         {dayLabels.map((d, i) => (
-          <span key={d} className={cn("flex-1 text-center text-caption", i === days - 1 ? "text-critical-fg" : "text-text-secondary")}>
-            {i === days - 1 ? "Today" : new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", timeZone: TZ })}
+          <span key={d} className={cn("flex min-w-0 flex-1 text-caption whitespace-nowrap", i === days - 1 ? "text-critical-fg" : "text-text-secondary", i === days - 1 && every > 1 ? "justify-end" : "justify-center")}>
+            {i === days - 1
+              ? "Today"
+              : (days - 1 - i) % every === 0 && days - 1 - i >= every
+                ? every > 1
+                  ? `${new Date(d).toLocaleDateString("en-GB", { day: "numeric", timeZone: TZ })} ${new Date(d).toLocaleDateString("en-GB", { month: "short", timeZone: TZ }).slice(0, 3)}`
+                  : new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", timeZone: TZ })
+                : ""}
           </span>
         ))}
       </div>
