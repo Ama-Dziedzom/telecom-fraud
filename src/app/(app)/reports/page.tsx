@@ -99,6 +99,8 @@ export default function ReportsPage() {
   }, [data, router, toast]);
 
   const download = async (r: Report) => {
+    // PDFs are laid out in their own tab; Download PDF there saves the file.
+    if (r.format === "pdf") return void window.open(`/print/reports/${r.id}`, "_blank");
     await apiFetch<{ url: string }>("GET", `/reports/${r.id}/download`);
     toast({ tone: "success", title: `Downloading ${r.name}`, body: `${formatLabel(r.format)} · link valid for 24 hours.` });
   };

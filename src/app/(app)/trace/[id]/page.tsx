@@ -39,7 +39,7 @@ export default function TracePage() {
       setStarting(false);
     }
   };
-  const exportTrace = () => toast({ tone: "success", title: "Trace exported", body: `${id}.pdf · numbers masked · logged to the audit trail` });
+  const exportTrace = () => window.open(`/print/traces/${id}`, "_blank");
 
   const badge = running ? (
     <Badge label="Tracing" tone="info" size="md" />

@@ -2,7 +2,6 @@
 
 import { EmptyState } from "@/components/app/EmptyState";
 import { Button } from "@/components/ui/Button";
-import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
 import { useApi } from "@/lib/api/fd";
 import { useEffect, useState } from "react";
@@ -14,7 +13,6 @@ import { TraceBody, type Trace } from "./TraceBody";
  * case) and polls it until it’s ready; another period is a new trace.
  */
 export function CallsTab({ subscriberId, caseId }: { subscriberId: string; caseId?: string }) {
-  const toast = useToast();
   const [period, setPeriod] = useState("24h");
   const [attempt, setAttempt] = useState(0);
   const [started, setStarted] = useState<{ key: string; id: string } | null>(null);
@@ -56,7 +54,7 @@ export function CallsTab({ subscriberId, caseId }: { subscriberId: string; caseI
       period={period}
       starting={!traceId}
       onPeriod={setPeriod}
-      onExport={() => toast({ tone: "success", title: "Trace exported", body: `${traceId}.pdf · numbers masked · logged to the audit trail` })}
+      onExport={() => traceId && window.open(`/print/traces/${traceId}`, "_blank")}
     />
   );
 }

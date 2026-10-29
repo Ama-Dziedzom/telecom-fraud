@@ -61,6 +61,7 @@ export default function ReportPage() {
   const [sharing, setSharing] = useState(false);
 
   const download = async () => {
+    if (data?.format === "pdf") return void window.open(`/print/reports/${id}`, "_blank");
     await apiFetch("GET", `/reports/${id}/download`);
     toast({ tone: "success", title: "Your report is downloading", body: `${data?.name} · ${data?.rows} rows · ${data ? formatLabel(data.format) : ""}` });
   };

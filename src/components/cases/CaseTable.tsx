@@ -71,8 +71,7 @@ export function CaseTable({
     const exportCase: RowMenuItem = {
       title: "Export case",
       icon: "app/menu-export-16",
-      // TODO(api): 0.2 has no case report export yet (see ExportMenu); this only confirms the request.
-      onSelect: () => toast({ tone: "success", title: "Export started", body: `Case report · PDF for ${c.id}. We’ll let you know when it’s ready.` }),
+      onSelect: () => window.open(`/print/cases/${c.id}`, "_blank"),
     };
     const onCase = (action: string) => () => router.push(`/cases/${c.id}?action=${action}`);
     if (scope === "team") return [{ title: "Assign to me", icon: "app/menu-assign-16", onSelect: () => onPickUp([c.id]) }, open, copy];

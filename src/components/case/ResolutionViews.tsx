@@ -3,7 +3,6 @@
 import { Card } from "@/components/app/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Banner } from "@/components/ui/Banner";
-import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
 import type { CaseDetail } from "@/lib/api/cases";
 import { formatClock, formatMoney } from "@/lib/time";
@@ -78,7 +77,6 @@ export function SentBackBanner({ detail }: { detail: CaseDetail }) {
 
 /** E6/E9 · Closed — the resolution as it stands on the record, with its figures. */
 export function ResolutionCard({ detail, now }: { detail: CaseDetail; now: number }) {
-  const toast = useToast();
   const r = detail.resolution;
   if (!r || detail.status !== "closed") return null;
   const b = OUTCOME_BADGE[r.outcome];
@@ -111,7 +109,7 @@ export function ResolutionCard({ detail, now }: { detail: CaseDetail; now: numbe
       aside={
         <button
           type="button"
-          onClick={() => toast({ tone: "success", title: "Case report on its way", body: `${detail.id} · PDF, logged with your name.` })}
+          onClick={() => window.open(`/print/cases/${detail.id}`, "_blank")}
           className="flex h-8 items-center rounded text-label-s text-text-brand hover:underline"
         >
           Download case report

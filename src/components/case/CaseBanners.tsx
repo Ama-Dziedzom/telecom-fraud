@@ -269,14 +269,18 @@ export function ExportMenu({ detail }: { detail: CaseDetail }) {
   const toast = useToast();
   const items = [
     { id: "report", icon: "app/icon-file-secondary-18", title: "Case report · PDF", detail: "Summary, timeline, outcome · 8 pages" },
+    { id: "brief", icon: "app/icon-file-secondary-18", title: "Case brief · PDF", detail: "The story in 6 short chapters, for sign-off" },
     { id: "transactions", icon: "app/icon-file-secondary-18", title: "Transactions · CSV", detail: `${detail.counts?.transactions ?? 0} rows · opens in Excel` },
     { id: "evidence", icon: "app/icon-folder-secondary-16", title: "Evidence pack · ZIP", detail: `Report, ${detail.counts?.evidence ?? 0} evidence files and hashes` },
   ];
   const run = async (id: string) => {
+    // The report is laid out for A4 in its own tab; Download PDF there saves it.
+    if (id === "report") return void window.open(`/print/cases/${detail.id}`, "_blank");
+    if (id === "brief") return void window.open(`/print/cases/${detail.id}/brief`, "_blank");
     if (id === "evidence") {
       await apiFetch("POST", "/exports/evidence-pack", { case_id: detail.id }).catch(() => undefined);
     }
-    // TODO(api): 0.2 still has no case report PDF or transactions CSV; only the brief and the evidence pack export.
+    // TODO(api): 0.2 still has no transactions CSV or a way to log a case report export; only the brief and the evidence pack export.
     toast({ tone: "success", title: "Export started", body: `${items.find((i) => i.id === id)?.title} for ${detail.id}. We’ll let you know when it’s ready.` });
   };
   return (
