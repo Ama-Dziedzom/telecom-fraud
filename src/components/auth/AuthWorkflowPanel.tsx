@@ -16,6 +16,15 @@ const BEATS = [
   { label: "Signed off", meta: "confirmed fraud", top: 840, side: "left" },
 ] as const;
 
+/** Spine centre, node radius (outer edge) and stroke; strokes stop where their round cap meets a node. */
+const SPINE_X = 499;
+const NODE_R = 4.5;
+const STROKE = 1.5;
+const GAP = NODE_R + STROKE / 2;
+const CAP = STROKE / 2;
+const SPINE_TOP = 250;
+const SPINE_BOTTOM = 918;
+
 /**
  * Auth / Workflow panel — right half of every auth screen (864 × 1117).
  * `step` is how far the sign-in has got: 1 email, 2 password or SSO,
@@ -47,7 +56,23 @@ export function AuthWorkflowPanel({ step }: { step: WorkflowStep }) {
             <span className="h-1.5 w-10 rounded-[3px] bg-border-default" />
           </div>
         </div>
-        <img src={`${A}/spine.svg`} alt="" width={1.5} height={700} className="absolute top-[250px] left-[498.25px]" />
+        {/* eslint-enable @next/next/no-img-element */}
+        <svg width={864} height={1117} viewBox="0 0 864 1117" fill="none" className="absolute inset-0 stroke-brand-primary" strokeWidth={STROKE} strokeLinecap="round">
+          {/* Spine, broken at each node: card → nodes → pulse */}
+          {BEATS.map((b, i) => (i === 0 ? SPINE_TOP + CAP : BEATS[i - 1].top + 20 + GAP))
+            .concat(BEATS[BEATS.length - 1].top + 20 + GAP)
+            .map((y1, i) => {
+              const y2 = i < BEATS.length ? BEATS[i].top + 20 - GAP : SPINE_BOTTOM - CAP;
+              return <line key={i} x1={SPINE_X} y1={y1} x2={SPINE_X} y2={y2} opacity={0.45} />;
+            })}
+          {/* Ticks, from the node’s edge to the pill */}
+          {BEATS.map((b, i) => {
+            const y = b.top + 20;
+            const [x1, x2] = b.side === "right" ? [SPINE_X + GAP, 539 - CAP] : [SPINE_X - GAP, 459 + CAP];
+            return <line key={b.label} x1={x1} y1={y} x2={x2} y2={y} opacity={i < step ? 0.6 : 0.25} />;
+          })}
+        </svg>
+        {/* eslint-disable @next/next/no-img-element */}
 
         {BEATS.map((b, i) => {
           const lit = i < step;
@@ -62,14 +87,6 @@ export function AuthWorkflowPanel({ step }: { step: WorkflowStep }) {
                 <span className={cn("text-label-s", lit && "text-text-primary")}>{b.label}</span>
                 <span className={cn("font-mono text-[12px] font-normal", lit && "text-text-secondary")}>{b.meta}</span>
               </div>
-              <img
-                src={`${A}/${lit ? "tick-active" : "tick-idle"}.svg`}
-                alt=""
-                width={40}
-                height={1.5}
-                className="absolute"
-                style={{ top: b.top + 19.25, left: b.side === "right" ? 499 : 459 }}
-              />
               <img src={`${A}/${lit ? "node-active" : "node-idle"}.svg`} alt="" width={9} height={9} className="absolute left-[494.5px]" style={{ top: b.top + 15.5 }} />
             </div>
           );
