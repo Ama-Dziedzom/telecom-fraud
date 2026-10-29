@@ -444,7 +444,13 @@ export default function HeatmapPage() {
                   // Adum, Kumasi opens the Kumasi district, where Adum’s detail lives.
                   const drill = r.id === "ashanti" || r.id === "kumasi" || r.id === "adum-kumasi" ? (r.id === "adum-kumasi" ? "kumasi" : r.id) : null;
                   const open = () =>
-                    drill && drill !== area ? go(drill) : r.id === "adum" ? setDrawer("adum") : r.id.startsWith("AG-") ? router.push(`/network?seed=${r.id}`) : undefined;
+                    drill && drill !== area
+                      ? go(drill)
+                      : r.id.startsWith("AG-")
+                        ? router.push(`/network?seed=${r.id}`)
+                        : data.towns.some((t) => t.id === r.id)
+                          ? setDrawer(r.id)
+                          : undefined;
                   return (
                     <li key={r.id} className="border-b border-border-default last:border-b-0">
                       <button type="button" onClick={open} className="flex w-full flex-col gap-1.5 py-2.5 text-left hover:bg-surface-raised">
@@ -507,7 +513,7 @@ export default function HeatmapPage() {
               <div className="grid grid-cols-3 gap-2.5">
                 {(
                   [
-                    [`Alerts · ${detail.period}`, String(detail.alerts), detail.usual_alerts ? `${Math.round(detail.alerts / detail.usual_alerts)} times the usual` : ""],
+                    [`Alerts · ${detail.period}`, String(detail.alerts), !detail.usual_alerts ? "" : detail.alerts >= detail.usual_alerts * 2 ? `${Math.round(detail.alerts / detail.usual_alerts)} times the usual` : `Usually ${detail.usual_alerts}`],
                     ["Agents", String(detail.agents), `In ${detail.name}`],
                     ["Moved out", money(detail.moved_out), `From ${detail.name} wallets`],
                   ] as const

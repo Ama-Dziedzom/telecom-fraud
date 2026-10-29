@@ -16,8 +16,8 @@ export type Level = {
   id: "country" | "ashanti" | "kumasi";
   left: number;
   width: number;
-  /** Fixed background art (neighbours, flattened districts, lakes). */
-  base: Array<Box & { src: string; inset: string }>;
+  /** Fixed background art (neighbours, flattened districts, lakes). `land` clips the heat field when there are no shapes. */
+  base: Array<Box & { src: string; inset: string; land?: true }>;
   /** Areas coloured by the data. */
   shapes: Shape[];
   overlays: Array<Box & { src: string; inset: string }>;
@@ -108,7 +108,7 @@ export const LEVELS: Record<Level["id"], Level> = {
       { src: `${R}ashanti-oti.svg`, x: 914, y: -32, w: 62, h: 94, inset: "-0.53% -0.81%" },
       { src: `${R}ashanti-eastern.svg`, x: 533, y: 157, w: 443, h: 510, inset: "0 -0.11%" },
       // TODO(api): district boundaries are flattened in the design; colour them by data once they’re split.
-      { src: `${R}ashanti-districts.svg`, x: 128, y: 19, w: 745, h: 596, inset: "-0.84% -0.94% -1.51% -0.94%" },
+      { src: `${R}ashanti-districts.svg`, x: 128, y: 19, w: 745, h: 596, inset: "-0.84% -0.94% -1.51% -0.94%", land: true },
     ],
     shapes: [],
     overlays: [{ src: `${R}lake-bosomtwe.svg`, x: 464, y: 383, w: 26, h: 24, inset: "0" }],

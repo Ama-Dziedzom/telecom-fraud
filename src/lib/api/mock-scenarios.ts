@@ -33,7 +33,12 @@ import { join } from "node:path";
 
 type Body = Record<string, unknown> | null;
 
-const domainOf = (email: unknown) => String(email ?? "").split("@")[1]?.toLowerCase() ?? "";
+/** Pre-rename domains; the hosted mock still returns them until the collection is re-imported. */
+const LEGACY_DOMAINS: Record<string, string> = { "kasamobile.com.gh": "mtn.com.gh", "voltatelecom.com.gh": "at.com.gh" };
+const domainOf = (email: unknown) => {
+  const domain = String(email ?? "").split("@")[1]?.toLowerCase() ?? "";
+  return LEGACY_DOMAINS[domain] ?? domain;
+};
 const localOf = (email: unknown) => String(email ?? "").split("@")[0]?.toLowerCase() ?? "";
 const KNOWN_DOMAINS = ["mtn.com.gh", "at.com.gh"];
 
@@ -141,7 +146,7 @@ export function mockRoute(method: string, path: string, search: URLSearchParams,
   endpoints ??= loadEndpoints();
   const endpoint = endpoints.find((e) => e.method === method && e.pattern.test(path));
   // Without a demo trigger, an example saved on this exact path can win whatever
-  // its status (FD-3043 answers 404 case_merged; layers for Kumasi answer 504);
+  // its status (FD-3043 answers 404 case_merged; Kumasi’s layers over 30 days answer 504);
   // otherwise a success example.
   const pool = endpoint?.examples.filter((e) => (want?.name ? e.name === want.name : want?.code ? e.code === want.code : true));
   const onPath = want ? [] : (pool ?? []).filter((e) => e.path === path);

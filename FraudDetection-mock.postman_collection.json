@@ -10247,6 +10247,326 @@
                 }
               ],
               "body": "{\n  \"area\": {\n    \"id\": \"ghana\",\n    \"name\": \"Ghana\",\n    \"level\": \"country\",\n    \"path\": []\n  },\n  \"metric\": \"alerts\",\n  \"period\": \"24h\",\n  \"filters\": {\n    \"fraud_type\": \"account_takeover\",\n    \"region\": \"northern\"\n  },\n  \"kpis\": {\n    \"alerts\": {\n      \"value\": 0,\n      \"change_pct\": null\n    },\n    \"hottest_area\": null,\n    \"confirmed_fraud\": {\n      \"money\": {\n        \"amount_minor\": 0,\n        \"currency\": \"GHS\"\n      },\n      \"cases_closed\": 0\n    },\n    \"new_since\": {\n      \"since\": \"2026-10-20T08:00:00Z\",\n      \"value\": 0,\n      \"top_area_id\": null\n    }\n  },\n  \"shapes\": [],\n  \"towns\": [],\n  \"regions\": [],\n  \"agents\": [],\n  \"empty\": {\n    \"focus_area_id\": \"northern\",\n    \"last_7d\": 2,\n    \"last_7d_area_ids\": [\n      \"tamale\"\n    ]\n  },\n  \"updated_at\": \"2026-10-20T09:44:00Z\",\n  \"refresh_seconds\": 300\n}"
+            },
+            {
+              "name": "Greater Accra only, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap?area=ghana&metric=alerts&period=24h&region=greater-accra",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "ghana"
+                    },
+                    {
+                      "key": "metric",
+                      "value": "alerts"
+                    },
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    },
+                    {
+                      "key": "region",
+                      "value": "greater-accra"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"area\": {\n    \"id\": \"ghana\",\n    \"name\": \"Ghana\",\n    \"level\": \"country\",\n    \"path\": []\n  },\n  \"metric\": \"alerts\",\n  \"period\": \"24h\",\n  \"filters\": {\n    \"region\": \"greater-accra\"\n  },\n  \"kpis\": {\n    \"alerts\": {\n      \"value\": 44,\n      \"change_pct\": 33\n    },\n    \"hottest_area\": {\n      \"area_id\": \"accra-central\",\n      \"name\": \"Accra Central\",\n      \"alerts\": 31,\n      \"agents\": 3\n    },\n    \"confirmed_fraud\": {\n      \"money\": {\n        \"amount_minor\": 2240000,\n        \"currency\": \"GHS\"\n      },\n      \"cases_closed\": 5\n    },\n    \"new_since\": {\n      \"since\": \"2026-10-20T08:00:00Z\",\n      \"value\": 9,\n      \"top_area_id\": \"accra-central\"\n    }\n  },\n  \"shapes\": [\n    {\n      \"id\": \"greater-accra\",\n      \"intensity\": 4\n    }\n  ],\n  \"towns\": [\n    {\n      \"id\": \"accra-central\",\n      \"name\": \"Accra Central\",\n      \"parent\": \"Greater Accra\",\n      \"top_fraud_type\": \"sim_swap_to_momo\",\n      \"alerts\": 31,\n      \"change\": 9\n    },\n    {\n      \"id\": \"tema\",\n      \"name\": \"Tema\",\n      \"parent\": \"Greater Accra\",\n      \"top_fraud_type\": \"account_takeover\",\n      \"alerts\": 13,\n      \"change\": 2\n    }\n  ],\n  \"regions\": [\n    {\n      \"id\": \"greater-accra\",\n      \"name\": \"Greater Accra\",\n      \"top_towns\": [\n        \"Accra Central\",\n        \"Tema\"\n      ],\n      \"alerts\": 44,\n      \"change\": 11\n    }\n  ],\n  \"agents\": [],\n  \"empty\": null,\n  \"updated_at\": \"2026-10-20T09:44:00Z\",\n  \"refresh_seconds\": 300\n}"
+            },
+            {
+              "name": "Western only, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap?area=ghana&metric=alerts&period=24h&region=western",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "ghana"
+                    },
+                    {
+                      "key": "metric",
+                      "value": "alerts"
+                    },
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    },
+                    {
+                      "key": "region",
+                      "value": "western"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"area\": {\n    \"id\": \"ghana\",\n    \"name\": \"Ghana\",\n    \"level\": \"country\",\n    \"path\": []\n  },\n  \"metric\": \"alerts\",\n  \"period\": \"24h\",\n  \"filters\": {\n    \"region\": \"western\"\n  },\n  \"kpis\": {\n    \"alerts\": {\n      \"value\": 12,\n      \"change_pct\": 50\n    },\n    \"hottest_area\": {\n      \"area_id\": \"takoradi\",\n      \"name\": \"Takoradi\",\n      \"alerts\": 12,\n      \"agents\": 1\n    },\n    \"confirmed_fraud\": {\n      \"money\": {\n        \"amount_minor\": 630000,\n        \"currency\": \"GHS\"\n      },\n      \"cases_closed\": 1\n    },\n    \"new_since\": {\n      \"since\": \"2026-10-20T08:00:00Z\",\n      \"value\": 1,\n      \"top_area_id\": \"takoradi\"\n    }\n  },\n  \"shapes\": [\n    {\n      \"id\": \"western\",\n      \"intensity\": 2\n    }\n  ],\n  \"towns\": [\n    {\n      \"id\": \"takoradi\",\n      \"name\": \"Takoradi\",\n      \"parent\": \"Western\",\n      \"top_fraud_type\": \"account_takeover\",\n      \"alerts\": 12,\n      \"change\": 4\n    }\n  ],\n  \"regions\": [\n    {\n      \"id\": \"western\",\n      \"name\": \"Western\",\n      \"top_towns\": [\n        \"Takoradi\"\n      ],\n      \"alerts\": 12,\n      \"change\": 4\n    }\n  ],\n  \"agents\": [],\n  \"empty\": null,\n  \"updated_at\": \"2026-10-20T09:44:00Z\",\n  \"refresh_seconds\": 300\n}"
+            },
+            {
+              "name": "Central only, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap?area=ghana&metric=alerts&period=24h&region=central",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "ghana"
+                    },
+                    {
+                      "key": "metric",
+                      "value": "alerts"
+                    },
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    },
+                    {
+                      "key": "region",
+                      "value": "central"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"area\": {\n    \"id\": \"ghana\",\n    \"name\": \"Ghana\",\n    \"level\": \"country\",\n    \"path\": []\n  },\n  \"metric\": \"alerts\",\n  \"period\": \"24h\",\n  \"filters\": {\n    \"region\": \"central\"\n  },\n  \"kpis\": {\n    \"alerts\": {\n      \"value\": 8,\n      \"change_pct\": -11\n    },\n    \"hottest_area\": {\n      \"area_id\": \"kasoa\",\n      \"name\": \"Kasoa\",\n      \"alerts\": 8,\n      \"agents\": 1\n    },\n    \"confirmed_fraud\": {\n      \"money\": {\n        \"amount_minor\": 410000,\n        \"currency\": \"GHS\"\n      },\n      \"cases_closed\": 1\n    },\n    \"new_since\": {\n      \"since\": \"2026-10-20T08:00:00Z\",\n      \"value\": 1,\n      \"top_area_id\": \"kasoa\"\n    }\n  },\n  \"shapes\": [\n    {\n      \"id\": \"central\",\n      \"intensity\": 2\n    }\n  ],\n  \"towns\": [\n    {\n      \"id\": \"kasoa\",\n      \"name\": \"Kasoa\",\n      \"parent\": \"Central\",\n      \"top_fraud_type\": \"account_takeover\",\n      \"alerts\": 8,\n      \"change\": -1\n    }\n  ],\n  \"regions\": [\n    {\n      \"id\": \"central\",\n      \"name\": \"Central\",\n      \"top_towns\": [\n        \"Kasoa\"\n      ],\n      \"alerts\": 8,\n      \"change\": -1\n    }\n  ],\n  \"agents\": [],\n  \"empty\": null,\n  \"updated_at\": \"2026-10-20T09:44:00Z\",\n  \"refresh_seconds\": 300\n}"
+            },
+            {
+              "name": "Northern only, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap?area=ghana&metric=alerts&period=24h&region=northern",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "ghana"
+                    },
+                    {
+                      "key": "metric",
+                      "value": "alerts"
+                    },
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    },
+                    {
+                      "key": "region",
+                      "value": "northern"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"area\": {\n    \"id\": \"ghana\",\n    \"name\": \"Ghana\",\n    \"level\": \"country\",\n    \"path\": []\n  },\n  \"metric\": \"alerts\",\n  \"period\": \"24h\",\n  \"filters\": {\n    \"region\": \"northern\"\n  },\n  \"kpis\": {\n    \"alerts\": {\n      \"value\": 6,\n      \"change_pct\": 0\n    },\n    \"hottest_area\": {\n      \"area_id\": \"tamale\",\n      \"name\": \"Tamale\",\n      \"alerts\": 6,\n      \"agents\": 1\n    },\n    \"confirmed_fraud\": {\n      \"money\": {\n        \"amount_minor\": 230000,\n        \"currency\": \"GHS\"\n      },\n      \"cases_closed\": 1\n    },\n    \"new_since\": {\n      \"since\": \"2026-10-20T08:00:00Z\",\n      \"value\": 1,\n      \"top_area_id\": \"tamale\"\n    }\n  },\n  \"shapes\": [\n    {\n      \"id\": \"northern\",\n      \"intensity\": 2\n    }\n  ],\n  \"towns\": [\n    {\n      \"id\": \"tamale\",\n      \"name\": \"Tamale\",\n      \"parent\": \"Northern\",\n      \"top_fraud_type\": \"agent_cash_out\",\n      \"alerts\": 6,\n      \"change\": 0\n    }\n  ],\n  \"regions\": [\n    {\n      \"id\": \"northern\",\n      \"name\": \"Northern\",\n      \"top_towns\": [\n        \"Tamale\"\n      ],\n      \"alerts\": 6,\n      \"change\": 0\n    }\n  ],\n  \"agents\": [],\n  \"empty\": null,\n  \"updated_at\": \"2026-10-20T09:44:00Z\",\n  \"refresh_seconds\": 300\n}"
+            },
+            {
+              "name": "Volta only, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap?area=ghana&metric=alerts&period=24h&region=volta",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "ghana"
+                    },
+                    {
+                      "key": "metric",
+                      "value": "alerts"
+                    },
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    },
+                    {
+                      "key": "region",
+                      "value": "volta"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"area\": {\n    \"id\": \"ghana\",\n    \"name\": \"Ghana\",\n    \"level\": \"country\",\n    \"path\": []\n  },\n  \"metric\": \"alerts\",\n  \"period\": \"24h\",\n  \"filters\": {\n    \"region\": \"volta\"\n  },\n  \"kpis\": {\n    \"alerts\": {\n      \"value\": 4,\n      \"change_pct\": 33\n    },\n    \"hottest_area\": {\n      \"area_id\": \"ho\",\n      \"name\": \"Ho\",\n      \"alerts\": 4,\n      \"agents\": 1\n    },\n    \"confirmed_fraud\": {\n      \"money\": {\n        \"amount_minor\": 130000,\n        \"currency\": \"GHS\"\n      },\n      \"cases_closed\": 0\n    },\n    \"new_since\": {\n      \"since\": \"2026-10-20T08:00:00Z\",\n      \"value\": 0,\n      \"top_area_id\": null\n    }\n  },\n  \"shapes\": [\n    {\n      \"id\": \"volta\",\n      \"intensity\": 1\n    }\n  ],\n  \"towns\": [\n    {\n      \"id\": \"ho\",\n      \"name\": \"Ho\",\n      \"parent\": \"Volta\",\n      \"top_fraud_type\": \"agent_cash_out\",\n      \"alerts\": 4,\n      \"change\": 1\n    }\n  ],\n  \"regions\": [\n    {\n      \"id\": \"volta\",\n      \"name\": \"Volta\",\n      \"top_towns\": [\n        \"Ho\"\n      ],\n      \"alerts\": 4,\n      \"change\": 1\n    }\n  ],\n  \"agents\": [],\n  \"empty\": null,\n  \"updated_at\": \"2026-10-20T09:44:00Z\",\n  \"refresh_seconds\": 300\n}"
+            },
+            {
+              "name": "Ashanti, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap?area=ashanti&metric=alerts&period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "ashanti"
+                    },
+                    {
+                      "key": "metric",
+                      "value": "alerts"
+                    },
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"area\": {\n    \"id\": \"ashanti\",\n    \"name\": \"Ashanti\",\n    \"level\": \"region\",\n    \"path\": [\n      {\n        \"id\": \"ghana\",\n        \"name\": \"Ghana\"\n      }\n    ]\n  },\n  \"metric\": \"alerts\",\n  \"period\": \"24h\",\n  \"kpis\": {\n    \"alerts\": {\n      \"value\": 41,\n      \"change_pct\": 24\n    },\n    \"hottest_area\": {\n      \"area_id\": \"kumasi\",\n      \"name\": \"Kumasi\",\n      \"alerts\": 38,\n      \"agents\": 9\n    },\n    \"confirmed_fraud\": {\n      \"money\": {\n        \"amount_minor\": 2480000,\n        \"currency\": \"GHS\"\n      },\n      \"cases_closed\": 6\n    },\n    \"new_since\": {\n      \"since\": \"2026-10-20T08:00:00Z\",\n      \"value\": 5,\n      \"top_area_id\": \"kumasi\"\n    }\n  },\n  \"shapes\": [],\n  \"towns\": [\n    {\n      \"id\": \"kumasi\",\n      \"name\": \"Kumasi\",\n      \"parent\": \"Kumasi Metro\",\n      \"agents\": 9,\n      \"alerts\": 38,\n      \"change\": 9\n    },\n    {\n      \"id\": \"obuasi\",\n      \"name\": \"Obuasi\",\n      \"parent\": \"Obuasi Municipal\",\n      \"agents\": 1,\n      \"alerts\": 2,\n      \"change\": -1\n    },\n    {\n      \"id\": \"ejisu\",\n      \"name\": \"Ejisu\",\n      \"parent\": \"Ejisu Municipal\",\n      \"agents\": 0,\n      \"alerts\": 1,\n      \"change\": 0\n    }\n  ],\n  \"regions\": [],\n  \"agents\": [],\n  \"empty\": null,\n  \"updated_at\": \"2026-10-20T09:44:00Z\",\n  \"refresh_seconds\": 300\n}"
             }
           ]
         },
@@ -10327,6 +10647,355 @@
                   }
                 ],
                 "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/layers?area=kumasi&period=30d",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "layers"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "kumasi"
+                    },
+                    {
+                      "key": "period",
+                      "value": "30d"
+                    }
+                  ]
+                }
+              },
+              "status": "Gateway Timeout",
+              "code": 504,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/problem+json"
+                }
+              ],
+              "body": "{\n  \"type\": \"https://docs.fd.example/errors/upstream_timeout\",\n  \"status\": 504,\n  \"code\": \"upstream_timeout\",\n  \"title\": \"The map didn\\u2019t load\",\n  \"service\": \"maps\",\n  \"request_id\": \"req_7Qm2xK\"\n}"
+            },
+            {
+              "name": "Greater Accra only, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/layers?area=ghana&period=24h&region=greater-accra",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "layers"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "ghana"
+                    },
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    },
+                    {
+                      "key": "region",
+                      "value": "greater-accra"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"area\": \"ghana\",\n  \"period\": \"24h\",\n  \"shapes\": [\n    {\n      \"id\": \"greater-accra\",\n      \"intensity\": 4\n    }\n  ],\n  \"pins\": [\n    {\n      \"id\": \"accra-central\",\n      \"alerts\": 31\n    },\n    {\n      \"id\": \"tema\",\n      \"alerts\": 13\n    }\n  ],\n  \"agents\": []\n}"
+            },
+            {
+              "name": "Western only, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/layers?area=ghana&period=24h&region=western",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "layers"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "ghana"
+                    },
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    },
+                    {
+                      "key": "region",
+                      "value": "western"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"area\": \"ghana\",\n  \"period\": \"24h\",\n  \"shapes\": [\n    {\n      \"id\": \"western\",\n      \"intensity\": 2\n    }\n  ],\n  \"pins\": [\n    {\n      \"id\": \"takoradi\",\n      \"alerts\": 12\n    }\n  ],\n  \"agents\": []\n}"
+            },
+            {
+              "name": "Central only, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/layers?area=ghana&period=24h&region=central",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "layers"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "ghana"
+                    },
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    },
+                    {
+                      "key": "region",
+                      "value": "central"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"area\": \"ghana\",\n  \"period\": \"24h\",\n  \"shapes\": [\n    {\n      \"id\": \"central\",\n      \"intensity\": 2\n    }\n  ],\n  \"pins\": [\n    {\n      \"id\": \"kasoa\",\n      \"alerts\": 8\n    }\n  ],\n  \"agents\": []\n}"
+            },
+            {
+              "name": "Northern only, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/layers?area=ghana&period=24h&region=northern",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "layers"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "ghana"
+                    },
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    },
+                    {
+                      "key": "region",
+                      "value": "northern"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"area\": \"ghana\",\n  \"period\": \"24h\",\n  \"shapes\": [\n    {\n      \"id\": \"northern\",\n      \"intensity\": 2\n    }\n  ],\n  \"pins\": [\n    {\n      \"id\": \"tamale\",\n      \"alerts\": 6\n    }\n  ],\n  \"agents\": []\n}"
+            },
+            {
+              "name": "Volta only, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/layers?area=ghana&period=24h&region=volta",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "layers"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "ghana"
+                    },
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    },
+                    {
+                      "key": "region",
+                      "value": "volta"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"area\": \"ghana\",\n  \"period\": \"24h\",\n  \"shapes\": [\n    {\n      \"id\": \"volta\",\n      \"intensity\": 1\n    }\n  ],\n  \"pins\": [\n    {\n      \"id\": \"ho\",\n      \"alerts\": 4\n    }\n  ],\n  \"agents\": []\n}"
+            },
+            {
+              "name": "Ashanti, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/layers?area=ashanti&period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "layers"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "ashanti"
+                    },
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"area\": \"ashanti\",\n  \"period\": \"24h\",\n  \"shapes\": [],\n  \"pins\": [\n    {\n      \"id\": \"kumasi\",\n      \"alerts\": 38\n    },\n    {\n      \"id\": \"obuasi\",\n      \"alerts\": 2\n    },\n    {\n      \"id\": \"ejisu\",\n      \"alerts\": 1\n    }\n  ],\n  \"agents\": []\n}"
+            },
+            {
+              "name": "Kumasi, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
                   "raw": "https://api.fd.example/app/v1/heatmap/layers?area=kumasi&period=24h",
                   "path": [
                     "app",
@@ -10352,16 +11021,71 @@
                   ]
                 }
               },
-              "status": "Gateway Timeout",
-              "code": 504,
+              "status": "OK",
+              "code": 200,
               "_postman_previewlanguage": "json",
               "header": [
                 {
                   "key": "Content-Type",
-                  "value": "application/problem+json"
+                  "value": "application/json"
                 }
               ],
-              "body": "{\n  \"type\": \"https://docs.fd.example/errors/upstream_timeout\",\n  \"status\": 504,\n  \"code\": \"upstream_timeout\",\n  \"title\": \"The map didn\\u2019t load\",\n  \"service\": \"maps\",\n  \"request_id\": \"req_7Qm2xK\"\n}"
+              "body": "{\n  \"area\": \"kumasi\",\n  \"period\": \"24h\",\n  \"shapes\": [\n    {\n      \"id\": \"kumasi-metro\",\n      \"intensity\": 4\n    },\n    {\n      \"id\": \"suame\",\n      \"intensity\": 3\n    },\n    {\n      \"id\": \"asokwa\",\n      \"intensity\": 2\n    },\n    {\n      \"id\": \"old-tafo\",\n      \"intensity\": 2\n    },\n    {\n      \"id\": \"ejisu\",\n      \"intensity\": 1\n    },\n    {\n      \"id\": \"oforikrom\",\n      \"intensity\": 1\n    }\n  ],\n  \"pins\": [\n    {\n      \"id\": \"adum\",\n      \"alerts\": 22\n    },\n    {\n      \"id\": \"kejetia\",\n      \"alerts\": 5\n    },\n    {\n      \"id\": \"suame\",\n      \"alerts\": 4\n    },\n    {\n      \"id\": \"tafo\",\n      \"alerts\": 2\n    },\n    {\n      \"id\": \"asafo\",\n      \"alerts\": 2\n    },\n    {\n      \"id\": \"asokwa\",\n      \"alerts\": 2\n    },\n    {\n      \"id\": \"ayigya\",\n      \"alerts\": 1\n    }\n  ],\n  \"agents\": [\n    {\n      \"code\": \"AG-2231\",\n      \"hot\": true\n    },\n    {\n      \"code\": \"AG-2402\",\n      \"hot\": true\n    },\n    {\n      \"code\": \"AG-1987\",\n      \"hot\": true\n    },\n    {\n      \"code\": \"AG-2410\",\n      \"hot\": false\n    },\n    {\n      \"code\": \"AG-1774\",\n      \"hot\": false\n    }\n  ]\n}"
+            },
+            {
+              "name": "No account takeover in Northern",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/layers?area=ghana&period=24h&fraud_type=account_takeover&region=northern",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "layers"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "area",
+                      "value": "ghana"
+                    },
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    },
+                    {
+                      "key": "fraud_type",
+                      "value": "account_takeover"
+                    },
+                    {
+                      "key": "region",
+                      "value": "northern"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"area\": \"ghana\",\n  \"period\": \"24h\",\n  \"shapes\": [],\n  \"pins\": [],\n  \"agents\": []\n}"
             }
           ]
         },
@@ -10433,6 +11157,622 @@
                 }
               ],
               "body": "{\n  \"id\": \"adum\",\n  \"name\": \"Adum\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"ashanti\",\n      \"name\": \"Ashanti\"\n    },\n    {\n      \"id\": \"kumasi\",\n      \"name\": \"Kumasi Metro\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"22 alerts in the last 24 hours, 5 times the usual for Adum. Mostly SIM swaps at agents followed by fast MoMo cash-out.\",\n  \"alerts\": 22,\n  \"usual_alerts\": 4,\n  \"agents\": 3,\n  \"moved_out\": {\n    \"amount_minor\": 2630000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"sim_swap_to_momo\",\n      \"alerts\": 18\n    },\n    {\n      \"fraud_type\": \"account_takeover\",\n      \"alerts\": 3\n    },\n    {\n      \"fraud_type\": \"agent_cash_out\",\n      \"alerts\": 1\n    }\n  ],\n  \"agent_list\": [\n    {\n      \"code\": \"AG-2231\",\n      \"street\": \"Prempeh II St\",\n      \"swaps_today\": 11,\n      \"swaps_became_fraud\": 3\n    },\n    {\n      \"code\": \"AG-2402\",\n      \"street\": \"Kingsway\",\n      \"swaps_today\": 7,\n      \"swaps_became_fraud\": 1\n    },\n    {\n      \"code\": \"AG-2410\",\n      \"street\": \"Bank Rd\",\n      \"swaps_today\": 4,\n      \"swaps_became_fraud\": 0\n    }\n  ],\n  \"untriaged\": {\n    \"total\": 8,\n    \"data\": [\n      {\n        \"id\": \"AL-88240\",\n        \"risk_score\": 94,\n        \"fraud_type\": \"sim_swap_to_momo\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_1190\",\n          \"name\": \"Kwabena O.\",\n          \"msisdn\": \"+233 24 *** 1190\",\n          \"msisdn_ref\": \"pii_1190\"\n        }\n      },\n      {\n        \"id\": \"AL-88236\",\n        \"risk_score\": 88,\n        \"fraud_type\": \"sim_swap_to_momo\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_0427\",\n          \"name\": \"Ama B.\",\n          \"msisdn\": \"+233 55 *** 0427\",\n          \"msisdn_ref\": \"pii_0427\"\n        }\n      },\n      {\n        \"id\": \"AL-88229\",\n        \"risk_score\": 76,\n        \"fraud_type\": \"account_takeover\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_7713\",\n          \"name\": \"Kofi T.\",\n          \"msisdn\": \"+233 54 *** 7713\",\n          \"msisdn_ref\": \"pii_7713\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Accra Central, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/accra-central?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "accra-central"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"accra-central\",\n  \"name\": \"Accra Central\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"greater-accra\",\n      \"name\": \"Greater Accra\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"31 alerts in the last 24 hours, about 3 times the usual for Accra Central. Mostly SIM swaps at agents near Makola, then MoMo transfers out within the hour.\",\n  \"alerts\": 31,\n  \"usual_alerts\": 12,\n  \"agents\": 3,\n  \"moved_out\": {\n    \"amount_minor\": 2180000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"sim_swap_to_momo\",\n      \"alerts\": 22\n    },\n    {\n      \"fraud_type\": \"account_takeover\",\n      \"alerts\": 7\n    },\n    {\n      \"fraud_type\": \"agent_cash_out\",\n      \"alerts\": 2\n    }\n  ],\n  \"agent_list\": [\n    {\n      \"code\": \"AG-3105\",\n      \"street\": \"Kwame Nkrumah Ave\",\n      \"swaps_today\": 9,\n      \"swaps_became_fraud\": 2\n    },\n    {\n      \"code\": \"AG-3142\",\n      \"street\": \"Makola Market\",\n      \"swaps_today\": 6,\n      \"swaps_became_fraud\": 1\n    },\n    {\n      \"code\": \"AG-3088\",\n      \"street\": \"High St\",\n      \"swaps_today\": 5,\n      \"swaps_became_fraud\": 1\n    }\n  ],\n  \"untriaged\": {\n    \"total\": 9,\n    \"data\": [\n      {\n        \"id\": \"AL-88228\",\n        \"risk_score\": 91,\n        \"fraud_type\": \"sim_swap_to_momo\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_2208\",\n          \"name\": \"Efua A.\",\n          \"msisdn\": \"+233 20 *** 2208\",\n          \"msisdn_ref\": \"pii_2208\"\n        }\n      },\n      {\n        \"id\": \"AL-88225\",\n        \"risk_score\": 84,\n        \"fraud_type\": \"sim_swap_to_momo\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_5531\",\n          \"name\": \"Yaw D.\",\n          \"msisdn\": \"+233 24 *** 5531\",\n          \"msisdn_ref\": \"pii_5531\"\n        }\n      },\n      {\n        \"id\": \"AL-88222\",\n        \"risk_score\": 72,\n        \"fraud_type\": \"account_takeover\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_0916\",\n          \"name\": \"Akosua M.\",\n          \"msisdn\": \"+233 55 *** 0916\",\n          \"msisdn_ref\": \"pii_0916\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Tema, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/tema?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "tema"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"tema\",\n  \"name\": \"Tema\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"greater-accra\",\n      \"name\": \"Greater Accra\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"13 alerts in the last 24 hours, about twice the usual for Tema. Mostly account takeovers after password resets from new devices.\",\n  \"alerts\": 13,\n  \"usual_alerts\": 6,\n  \"agents\": 2,\n  \"moved_out\": {\n    \"amount_minor\": 690000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"account_takeover\",\n      \"alerts\": 8\n    },\n    {\n      \"fraud_type\": \"sim_swap_to_momo\",\n      \"alerts\": 4\n    },\n    {\n      \"fraud_type\": \"agent_cash_out\",\n      \"alerts\": 1\n    }\n  ],\n  \"agent_list\": [\n    {\n      \"code\": \"AG-3317\",\n      \"street\": \"Community 1 Market\",\n      \"swaps_today\": 4,\n      \"swaps_became_fraud\": 1\n    },\n    {\n      \"code\": \"AG-3352\",\n      \"street\": \"Harbour Rd\",\n      \"swaps_today\": 2,\n      \"swaps_became_fraud\": 0\n    }\n  ],\n  \"untriaged\": {\n    \"total\": 4,\n    \"data\": [\n      {\n        \"id\": \"AL-88219\",\n        \"risk_score\": 82,\n        \"fraud_type\": \"account_takeover\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_3374\",\n          \"name\": \"Kwame N.\",\n          \"msisdn\": \"+233 54 *** 3374\",\n          \"msisdn_ref\": \"pii_3374\"\n        }\n      },\n      {\n        \"id\": \"AL-88216\",\n        \"risk_score\": 71,\n        \"fraud_type\": \"account_takeover\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_6102\",\n          \"name\": \"Abena K.\",\n          \"msisdn\": \"+233 27 *** 6102\",\n          \"msisdn_ref\": \"pii_6102\"\n        }\n      },\n      {\n        \"id\": \"AL-88213\",\n        \"risk_score\": 66,\n        \"fraud_type\": \"sim_swap_to_momo\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_4485\",\n          \"name\": \"Kojo F.\",\n          \"msisdn\": \"+233 50 *** 4485\",\n          \"msisdn_ref\": \"pii_4485\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Takoradi, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/takoradi?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "takoradi"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"takoradi\",\n  \"name\": \"Takoradi\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"western\",\n      \"name\": \"Western\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"12 alerts in the last 24 hours, 3 times the usual for Takoradi. Mostly account takeovers on wallets that changed PIN this morning.\",\n  \"alerts\": 12,\n  \"usual_alerts\": 4,\n  \"agents\": 1,\n  \"moved_out\": {\n    \"amount_minor\": 630000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"account_takeover\",\n      \"alerts\": 9\n    },\n    {\n      \"fraud_type\": \"sim_swap_to_momo\",\n      \"alerts\": 3\n    }\n  ],\n  \"agent_list\": [\n    {\n      \"code\": \"AG-4021\",\n      \"street\": \"Market Circle\",\n      \"swaps_today\": 3,\n      \"swaps_became_fraud\": 1\n    }\n  ],\n  \"untriaged\": {\n    \"total\": 5,\n    \"data\": [\n      {\n        \"id\": \"AL-88210\",\n        \"risk_score\": 86,\n        \"fraud_type\": \"account_takeover\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_7720\",\n          \"name\": \"Adwoa S.\",\n          \"msisdn\": \"+233 24 *** 7720\",\n          \"msisdn_ref\": \"pii_7720\"\n        }\n      },\n      {\n        \"id\": \"AL-88207\",\n        \"risk_score\": 74,\n        \"fraud_type\": \"account_takeover\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_1843\",\n          \"name\": \"Kofi A.\",\n          \"msisdn\": \"+233 20 *** 1843\",\n          \"msisdn_ref\": \"pii_1843\"\n        }\n      },\n      {\n        \"id\": \"AL-88204\",\n        \"risk_score\": 63,\n        \"fraud_type\": \"sim_swap_to_momo\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_9051\",\n          \"name\": \"Esi Q.\",\n          \"msisdn\": \"+233 55 *** 9051\",\n          \"msisdn_ref\": \"pii_9051\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Kasoa, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/kasoa?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "kasoa"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"kasoa\",\n  \"name\": \"Kasoa\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"central\",\n      \"name\": \"Central\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"8 alerts in the last 24 hours, a little above the usual for Kasoa. Account takeovers, spread across the day.\",\n  \"alerts\": 8,\n  \"usual_alerts\": 5,\n  \"agents\": 1,\n  \"moved_out\": {\n    \"amount_minor\": 410000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"account_takeover\",\n      \"alerts\": 5\n    },\n    {\n      \"fraud_type\": \"sim_swap_to_momo\",\n      \"alerts\": 2\n    },\n    {\n      \"fraud_type\": \"agent_cash_out\",\n      \"alerts\": 1\n    }\n  ],\n  \"agent_list\": [\n    {\n      \"code\": \"AG-2756\",\n      \"street\": \"Kasoa Toll Booth\",\n      \"swaps_today\": 3,\n      \"swaps_became_fraud\": 1\n    }\n  ],\n  \"untriaged\": {\n    \"total\": 3,\n    \"data\": [\n      {\n        \"id\": \"AL-88201\",\n        \"risk_score\": 77,\n        \"fraud_type\": \"account_takeover\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_2667\",\n          \"name\": \"Kwesi B.\",\n          \"msisdn\": \"+233 54 *** 2667\",\n          \"msisdn_ref\": \"pii_2667\"\n        }\n      },\n      {\n        \"id\": \"AL-88198\",\n        \"risk_score\": 61,\n        \"fraud_type\": \"sim_swap_to_momo\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_3819\",\n          \"name\": \"Akua T.\",\n          \"msisdn\": \"+233 26 *** 3819\",\n          \"msisdn_ref\": \"pii_3819\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Tamale, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/tamale?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "tamale"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"tamale\",\n  \"name\": \"Tamale\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"northern\",\n      \"name\": \"Northern\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"6 alerts in the last 24 hours, close to the usual for Tamale. Mostly one agent cashing out several wallets in a row.\",\n  \"alerts\": 6,\n  \"usual_alerts\": 5,\n  \"agents\": 1,\n  \"moved_out\": {\n    \"amount_minor\": 230000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"agent_cash_out\",\n      \"alerts\": 4\n    },\n    {\n      \"fraud_type\": \"sim_swap_to_momo\",\n      \"alerts\": 2\n    }\n  ],\n  \"agent_list\": [\n    {\n      \"code\": \"AG-5170\",\n      \"street\": \"Central Market\",\n      \"swaps_today\": 5,\n      \"swaps_became_fraud\": 1\n    }\n  ],\n  \"untriaged\": {\n    \"total\": 2,\n    \"data\": [\n      {\n        \"id\": \"AL-88195\",\n        \"risk_score\": 69,\n        \"fraud_type\": \"agent_cash_out\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_5203\",\n          \"name\": \"Yaa O.\",\n          \"msisdn\": \"+233 24 *** 5203\",\n          \"msisdn_ref\": \"pii_5203\"\n        }\n      },\n      {\n        \"id\": \"AL-88192\",\n        \"risk_score\": 58,\n        \"fraud_type\": \"sim_swap_to_momo\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_8436\",\n          \"name\": \"Fiifi E.\",\n          \"msisdn\": \"+233 50 *** 8436\",\n          \"msisdn_ref\": \"pii_8436\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Ho, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/ho?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "ho"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"ho\",\n  \"name\": \"Ho\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"volta\",\n      \"name\": \"Volta\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"4 alerts in the last 24 hours, close to the usual for Ho. Agent cash-outs, nothing confirmed yet.\",\n  \"alerts\": 4,\n  \"usual_alerts\": 3,\n  \"agents\": 1,\n  \"moved_out\": {\n    \"amount_minor\": 130000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"agent_cash_out\",\n      \"alerts\": 3\n    },\n    {\n      \"fraud_type\": \"account_takeover\",\n      \"alerts\": 1\n    }\n  ],\n  \"agent_list\": [\n    {\n      \"code\": \"AG-5602\",\n      \"street\": \"Ho Main Station\",\n      \"swaps_today\": 2,\n      \"swaps_became_fraud\": 0\n    }\n  ],\n  \"untriaged\": {\n    \"total\": 2,\n    \"data\": [\n      {\n        \"id\": \"AL-88189\",\n        \"risk_score\": 64,\n        \"fraud_type\": \"agent_cash_out\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_0372\",\n          \"name\": \"Ama D.\",\n          \"msisdn\": \"+233 20 *** 0372\",\n          \"msisdn_ref\": \"pii_0372\"\n        }\n      },\n      {\n        \"id\": \"AL-88186\",\n        \"risk_score\": 52,\n        \"fraud_type\": \"account_takeover\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_6928\",\n          \"name\": \"Nana K.\",\n          \"msisdn\": \"+233 55 *** 6928\",\n          \"msisdn_ref\": \"pii_6928\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Obuasi, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/obuasi?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "obuasi"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"obuasi\",\n  \"name\": \"Obuasi\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"ashanti\",\n      \"name\": \"Ashanti\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"2 alerts in the last 24 hours, the usual for Obuasi.\",\n  \"alerts\": 2,\n  \"usual_alerts\": 2,\n  \"agents\": 1,\n  \"moved_out\": {\n    \"amount_minor\": 90000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"sim_swap_to_momo\",\n      \"alerts\": 1\n    },\n    {\n      \"fraud_type\": \"agent_cash_out\",\n      \"alerts\": 1\n    }\n  ],\n  \"agent_list\": [\n    {\n      \"code\": \"AG-2519\",\n      \"street\": \"Obuasi Central Market\",\n      \"swaps_today\": 2,\n      \"swaps_became_fraud\": 0\n    }\n  ],\n  \"untriaged\": {\n    \"total\": 1,\n    \"data\": [\n      {\n        \"id\": \"AL-88183\",\n        \"risk_score\": 67,\n        \"fraud_type\": \"sim_swap_to_momo\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_4157\",\n          \"name\": \"Kweku M.\",\n          \"msisdn\": \"+233 24 *** 4157\",\n          \"msisdn_ref\": \"pii_4157\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Ejisu, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/ejisu?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "ejisu"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"ejisu\",\n  \"name\": \"Ejisu\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"ashanti\",\n      \"name\": \"Ashanti\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"1 alert in the last 24 hours, the usual for Ejisu.\",\n  \"alerts\": 1,\n  \"usual_alerts\": 1,\n  \"agents\": 0,\n  \"moved_out\": {\n    \"amount_minor\": 35000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"account_takeover\",\n      \"alerts\": 1\n    }\n  ],\n  \"agent_list\": [],\n  \"untriaged\": {\n    \"total\": 1,\n    \"data\": [\n      {\n        \"id\": \"AL-88180\",\n        \"risk_score\": 55,\n        \"fraud_type\": \"account_takeover\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_7390\",\n          \"name\": \"Afia B.\",\n          \"msisdn\": \"+233 54 *** 7390\",\n          \"msisdn_ref\": \"pii_7390\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Kejetia, Kumasi, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/kejetia?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "kejetia"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"kejetia\",\n  \"name\": \"Kejetia\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"ashanti\",\n      \"name\": \"Ashanti\"\n    },\n    {\n      \"id\": \"kumasi\",\n      \"name\": \"Kumasi Metro\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"5 alerts in the last 24 hours, about twice the usual for Kejetia. SIM swaps at one market agent, the same pattern as Adum.\",\n  \"alerts\": 5,\n  \"usual_alerts\": 2,\n  \"agents\": 1,\n  \"moved_out\": {\n    \"amount_minor\": 520000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"sim_swap_to_momo\",\n      \"alerts\": 4\n    },\n    {\n      \"fraud_type\": \"account_takeover\",\n      \"alerts\": 1\n    }\n  ],\n  \"agent_list\": [\n    {\n      \"code\": \"AG-1987\",\n      \"street\": \"Kejetia Market\",\n      \"swaps_today\": 5,\n      \"swaps_became_fraud\": 1\n    }\n  ],\n  \"untriaged\": {\n    \"total\": 3,\n    \"data\": [\n      {\n        \"id\": \"AL-88177\",\n        \"risk_score\": 88,\n        \"fraud_type\": \"sim_swap_to_momo\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_2584\",\n          \"name\": \"Kobina S.\",\n          \"msisdn\": \"+233 27 *** 2584\",\n          \"msisdn_ref\": \"pii_2584\"\n        }\n      },\n      {\n        \"id\": \"AL-88174\",\n        \"risk_score\": 79,\n        \"fraud_type\": \"sim_swap_to_momo\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_9613\",\n          \"name\": \"Maame A.\",\n          \"msisdn\": \"+233 20 *** 9613\",\n          \"msisdn_ref\": \"pii_9613\"\n        }\n      },\n      {\n        \"id\": \"AL-88171\",\n        \"risk_score\": 62,\n        \"fraud_type\": \"account_takeover\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_1476\",\n          \"name\": \"Ekow T.\",\n          \"msisdn\": \"+233 50 *** 1476\",\n          \"msisdn_ref\": \"pii_1476\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Suame, Kumasi, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/suame?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "suame"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"suame\",\n  \"name\": \"Suame\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"ashanti\",\n      \"name\": \"Ashanti\"\n    },\n    {\n      \"id\": \"kumasi\",\n      \"name\": \"Kumasi Metro\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"4 alerts in the last 24 hours, twice the usual for Suame. SIM swaps followed by MoMo transfers out.\",\n  \"alerts\": 4,\n  \"usual_alerts\": 2,\n  \"agents\": 1,\n  \"moved_out\": {\n    \"amount_minor\": 310000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"sim_swap_to_momo\",\n      \"alerts\": 3\n    },\n    {\n      \"fraud_type\": \"agent_cash_out\",\n      \"alerts\": 1\n    }\n  ],\n  \"agent_list\": [\n    {\n      \"code\": \"AG-1774\",\n      \"street\": \"Suame Magazine\",\n      \"swaps_today\": 3,\n      \"swaps_became_fraud\": 0\n    }\n  ],\n  \"untriaged\": {\n    \"total\": 2,\n    \"data\": [\n      {\n        \"id\": \"AL-88168\",\n        \"risk_score\": 74,\n        \"fraud_type\": \"sim_swap_to_momo\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_3062\",\n          \"name\": \"Adjoa P.\",\n          \"msisdn\": \"+233 24 *** 3062\",\n          \"msisdn_ref\": \"pii_3062\"\n        }\n      },\n      {\n        \"id\": \"AL-88165\",\n        \"risk_score\": 60,\n        \"fraud_type\": \"agent_cash_out\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_8815\",\n          \"name\": \"Paa K.\",\n          \"msisdn\": \"+233 55 *** 8815\",\n          \"msisdn_ref\": \"pii_8815\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Tafo, Kumasi, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/tafo?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "tafo"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"tafo\",\n  \"name\": \"Tafo\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"ashanti\",\n      \"name\": \"Ashanti\"\n    },\n    {\n      \"id\": \"kumasi\",\n      \"name\": \"Kumasi Metro\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"2 alerts in the last 24 hours, the usual for Tafo.\",\n  \"alerts\": 2,\n  \"usual_alerts\": 2,\n  \"agents\": 0,\n  \"moved_out\": {\n    \"amount_minor\": 120000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"account_takeover\",\n      \"alerts\": 2\n    }\n  ],\n  \"agent_list\": [],\n  \"untriaged\": {\n    \"total\": 1,\n    \"data\": [\n      {\n        \"id\": \"AL-88162\",\n        \"risk_score\": 58,\n        \"fraud_type\": \"account_takeover\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_5740\",\n          \"name\": \"Araba N.\",\n          \"msisdn\": \"+233 54 *** 5740\",\n          \"msisdn_ref\": \"pii_5740\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Asafo, Kumasi, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/asafo?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "asafo"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"asafo\",\n  \"name\": \"Asafo\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"ashanti\",\n      \"name\": \"Ashanti\"\n    },\n    {\n      \"id\": \"kumasi\",\n      \"name\": \"Kumasi Metro\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"2 alerts in the last 24 hours, twice the usual for Asafo.\",\n  \"alerts\": 2,\n  \"usual_alerts\": 1,\n  \"agents\": 1,\n  \"moved_out\": {\n    \"amount_minor\": 180000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"sim_swap_to_momo\",\n      \"alerts\": 1\n    },\n    {\n      \"fraud_type\": \"agent_cash_out\",\n      \"alerts\": 1\n    }\n  ],\n  \"agent_list\": [\n    {\n      \"code\": \"AG-2290\",\n      \"street\": \"Asafo Market\",\n      \"swaps_today\": 2,\n      \"swaps_became_fraud\": 0\n    }\n  ],\n  \"untriaged\": {\n    \"total\": 1,\n    \"data\": [\n      {\n        \"id\": \"AL-88159\",\n        \"risk_score\": 71,\n        \"fraud_type\": \"sim_swap_to_momo\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_0289\",\n          \"name\": \"Kwabena A.\",\n          \"msisdn\": \"+233 20 *** 0289\",\n          \"msisdn_ref\": \"pii_0289\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Asokwa, Kumasi, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/asokwa?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "asokwa"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"asokwa\",\n  \"name\": \"Asokwa\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"ashanti\",\n      \"name\": \"Ashanti\"\n    },\n    {\n      \"id\": \"kumasi\",\n      \"name\": \"Kumasi Metro\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"2 alerts in the last 24 hours, the usual for Asokwa.\",\n  \"alerts\": 2,\n  \"usual_alerts\": 2,\n  \"agents\": 0,\n  \"moved_out\": {\n    \"amount_minor\": 80000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"account_takeover\",\n      \"alerts\": 2\n    }\n  ],\n  \"agent_list\": [],\n  \"untriaged\": {\n    \"total\": 1,\n    \"data\": [\n      {\n        \"id\": \"AL-88156\",\n        \"risk_score\": 57,\n        \"fraud_type\": \"account_takeover\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_6651\",\n          \"name\": \"Abla G.\",\n          \"msisdn\": \"+233 24 *** 6651\",\n          \"msisdn_ref\": \"pii_6651\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "Ayigya, Kumasi, last 24 hours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "https://api.fd.example/app/v1/heatmap/areas/ayigya?period=24h",
+                  "path": [
+                    "app",
+                    "v1",
+                    "heatmap",
+                    "areas",
+                    "ayigya"
+                  ],
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "fd",
+                    "example"
+                  ],
+                  "query": [
+                    {
+                      "key": "period",
+                      "value": "24h"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"ayigya\",\n  \"name\": \"Ayigya\",\n  \"path\": [\n    {\n      \"id\": \"ghana\",\n      \"name\": \"Ghana\"\n    },\n    {\n      \"id\": \"ashanti\",\n      \"name\": \"Ashanti\"\n    },\n    {\n      \"id\": \"kumasi\",\n      \"name\": \"Kumasi Metro\"\n    }\n  ],\n  \"period\": \"24h\",\n  \"summary\": \"1 alert in the last 24 hours, below the usual for Ayigya.\",\n  \"alerts\": 1,\n  \"usual_alerts\": 2,\n  \"agents\": 0,\n  \"moved_out\": {\n    \"amount_minor\": 40000,\n    \"currency\": \"GHS\"\n  },\n  \"drivers\": [\n    {\n      \"fraud_type\": \"account_takeover\",\n      \"alerts\": 1\n    }\n  ],\n  \"agent_list\": [],\n  \"untriaged\": {\n    \"total\": 1,\n    \"data\": [\n      {\n        \"id\": \"AL-88153\",\n        \"risk_score\": 51,\n        \"fraud_type\": \"account_takeover\",\n        \"subscriber\": {\n          \"subscriber_id\": \"sub_4327\",\n          \"name\": \"Selorm D.\",\n          \"msisdn\": \"+233 55 *** 4327\",\n          \"msisdn_ref\": \"pii_4327\"\n        }\n      }\n    ]\n  }\n}"
             }
           ]
         },
