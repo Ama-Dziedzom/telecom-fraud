@@ -1,8 +1,11 @@
 "use client";
 
 import { cn } from "@/lib/cn";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "./Icon";
+
+/** Set by a compact Menu so its items and dividers take the row actions menu spec. */
+const Compact = createContext(false);
 
 /**
  * Menu — a button that opens a list of actions. Closes on Esc, on a click
@@ -15,6 +18,7 @@ export function Menu({
   align = "end",
   width = 340,
   label,
+  compact,
 }: {
   trigger: (props: { open: boolean; toggle: () => void; "aria-expanded": boolean; "aria-haspopup": "menu" }) => ReactNode;
   children: (close: () => void) => ReactNode;
@@ -22,6 +26,8 @@ export function Menu({
   align?: "start" | "end";
   width?: number;
   label: string;
+  /** Foundations · Row actions menu (1318:165788): 4 padding, 8 radius, 32-high Body/S items with 16 icons. */
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -54,12 +60,13 @@ export function Menu({
           aria-label={label}
           style={{ width }}
           className={cn(
-            "absolute z-40 flex flex-col gap-0.5 rounded-xl border border-border-default bg-surface-base p-1.5 shadow-lg",
+            "absolute z-40 flex flex-col border border-border-default bg-surface-base shadow-lg",
+            compact ? "rounded-lg p-1" : "gap-0.5 rounded-xl p-1.5",
             side === "top" ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]",
             align === "end" ? "right-0" : "left-0",
           )}
         >
-          {children(() => setOpen(false))}
+          <Compact.Provider value={!!compact}>{children(() => setOpen(false))}</Compact.Provider>
         </div>
       )}
     </div>
@@ -71,7 +78,8 @@ export function MenuLabel({ children }: { children: ReactNode }) {
 }
 
 export function MenuDivider() {
-  return <hr className="my-0.5 border-border-subtle" />;
+  const compact = useContext(Compact);
+  return <hr className={compact ? "my-1 border-border-default" : "my-0.5 border-border-subtle"} />;
 }
 
 export function MenuItem({
@@ -89,6 +97,23 @@ export function MenuItem({
   tone?: "default" | "critical";
   disabled?: boolean;
 }) {
+  const compact = useContext(Compact);
+  if (compact)
+    return (
+      <button
+        type="button"
+        role="menuitem"
+        disabled={disabled}
+        onClick={onSelect}
+        className={cn(
+          "flex h-8 w-full items-center gap-2 rounded px-2 text-left text-body-s disabled:cursor-not-allowed disabled:opacity-50",
+          tone === "critical" ? "text-critical-fg hover:bg-critical-bg focus-visible:bg-critical-bg" : "text-text-primary hover:bg-surface-sunken focus-visible:bg-surface-sunken",
+        )}
+      >
+        {icon && <Icon name={icon} size={16} className="shrink-0" />}
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+      </button>
+    );
   return (
     <button
       type="button"

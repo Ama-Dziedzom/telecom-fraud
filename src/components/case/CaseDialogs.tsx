@@ -15,7 +15,7 @@ export type CaseDialog =
   | { kind: "escalate"; prefill?: string }
   | { kind: "suspend_agent" }
   | { kind: "handover" }
-  | { kind: "resolve" }
+  | { kind: "resolve"; outcome?: "false_positive" }
   | { kind: "resubmit" }
   | { kind: "reopen" }
   | { kind: "monitor" };
@@ -65,7 +65,7 @@ export function CaseDialogs({
     case "handover":
       return <HandToColleagueModal detail={detail} onClose={onClose} />;
     case "resolve":
-      return <ResolveModal detail={detail} onClose={onClose} />;
+      return <ResolveModal detail={detail} initial={dialog.outcome} onClose={onClose} />;
     case "resubmit":
       return <ResubmitModal detail={detail} onClose={onClose} />;
     case "reopen":

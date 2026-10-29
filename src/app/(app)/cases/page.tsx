@@ -6,7 +6,8 @@ import { Tabs } from "@/components/app/Card";
 import { riskTone } from "@/components/app/indicators";
 import { CaseBoard } from "@/components/cases/CaseBoard";
 import { BulkNoteModal, NewCaseModal, ProspectModal, SaveViewModal } from "@/components/cases/CaseModals";
-import { CaseTable, type CaseSort } from "@/components/cases/CaseTable";
+import { CaseTable, localMsisdn, type CaseSort } from "@/components/cases/CaseTable";
+import { WatchModal } from "@/components/lookup/LookupModals";
 import { BarDivider, BulkAction, BulkBar, FilterButton, Pagination, SegmentChips, TableState, ToolbarSearch } from "@/components/cases/Table";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Choice";
@@ -113,6 +114,7 @@ export default function CasesPage() {
   const [picking, setPicking] = useState<string | null>(null);
   const [dialog, setDialog] = useState<null | "new" | "prospect" | "save_view">(params.get("new") === "1" ? "new" : null);
   const [noteFor, setNoteFor] = useState<string[] | null>(null);
+  const [watchFor, setWatchFor] = useState<CaseSummary | null>(null);
 
   const team = scope === "team";
   const query = new URLSearchParams({ view: VIEW[scope] });
@@ -479,11 +481,13 @@ export default function CasesPage() {
               rows={visible}
               loading={loading}
               team={team}
+              scope={scope}
               now={now}
               selected={selected}
               onSelect={setSelected}
               onPickUp={pickUp}
               onNote={setNoteFor}
+              onWatch={setWatchFor}
               sort={sort}
               onSort={setSort}
               footer={footer}
@@ -558,6 +562,15 @@ export default function CasesPage() {
           }}
           onSaved={(v) => router.replace(`/cases?saved=${v.id}`)}
           onClose={() => setDialog(null)}
+        />
+      )}
+      {watchFor && (
+        <WatchModal
+          title={`Watch ${localMsisdn(watchFor.subscriber.msisdn)}`}
+          subtitle={`${watchFor.subscriber.name} · ${watchFor.id}`}
+          entityIds={[watchFor.subscriber.subscriber_id]}
+          caseId={watchFor.id}
+          onClose={() => setWatchFor(null)}
         />
       )}
       {noteFor && <BulkNoteModal caseIds={noteFor} onDone={() => setSelected(new Set())} onClose={() => setNoteFor(null)} />}

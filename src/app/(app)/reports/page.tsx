@@ -45,6 +45,7 @@ function RowMenu({ name, children }: { name: string; children: (close: () => voi
     <Menu
       label={`Actions for ${name}`}
       width={200}
+      compact
       trigger={(t) => (
         <button
           type="button"
@@ -297,10 +298,10 @@ export default function ReportsPage() {
                       {(close) =>
                         scheduled ? (
                           <>
-                            <MenuItem icon="app/icon-refresh-primary-18" title="Run now" onSelect={() => (close(), scheduleAction(r, "run"))} />
-                            <MenuItem icon="app/icon-file-primary-18" title="Edit schedule" onSelect={() => (close(), setDialog({ template: r.template, schedule: true }))} />
+                            <MenuItem icon="app/icon-refresh-16" title="Run now" onSelect={() => (close(), scheduleAction(r, "run"))} />
+                            <MenuItem icon="app/icon-file-secondary-16" title="Edit schedule" onSelect={() => (close(), setDialog({ template: r.template, schedule: true }))} />
                             <MenuItem
-                              icon="app/icon-clock-secondary-18"
+                              icon="app/icon-clock-secondary-16"
                               title={r.schedule?.paused ? "Resume" : "Pause"}
                               onSelect={() => (close(), scheduleAction(r, r.schedule?.paused ? "resume" : "pause"))}
                             />
@@ -310,15 +311,15 @@ export default function ReportsPage() {
                         ) : r.status === "failed" ? (
                           <>
                             {failureCopy(r).retry && (
-                              <MenuItem icon="app/icon-refresh-primary-18" title={`Retry as ${formatLabel(failureCopy(r).retry!)}`} onSelect={() => (close(), retry(r, failureCopy(r).retry!))} />
+                              <MenuItem icon="app/icon-refresh-16" title={`Retry as ${formatLabel(failureCopy(r).retry!)}`} onSelect={() => (close(), retry(r, failureCopy(r).retry!))} />
                             )}
-                            <MenuItem icon="app/icon-file-primary-18" title="Narrow the range" onSelect={() => (close(), setDialog({ template: r.template }))} />
+                            <MenuItem icon="app/icon-file-secondary-16" title="Narrow the range" onSelect={() => (close(), setDialog({ template: r.template }))} />
                           </>
                         ) : (
                           <>
-                            <MenuItem icon="app/icon-file-primary-18" title="Open preview" disabled={r.status !== "ready"} onSelect={() => (close(), router.push(`/reports/${r.id}`))} />
-                            <MenuItem icon="app/icon-download-18" title={`Download ${formatLabel(r.format)}`} disabled={r.status !== "ready"} onSelect={() => (close(), download(r))} />
-                            <MenuItem icon="app/icon-users-secondary-18" title="Share" disabled={r.status !== "ready"} onSelect={() => (close(), setSharing(r))} />
+                            <MenuItem icon="app/icon-file-secondary-16" title="Open preview" disabled={r.status !== "ready"} onSelect={() => (close(), router.push(`/reports/${r.id}`))} />
+                            <MenuItem icon="app/menu-export-16" title={`Download ${formatLabel(r.format)}`} disabled={r.status !== "ready"} onSelect={() => (close(), download(r))} />
+                            <MenuItem icon="app/icon-users-secondary-16" title="Share" disabled={r.status !== "ready"} onSelect={() => (close(), setSharing(r))} />
                           </>
                         )
                       }

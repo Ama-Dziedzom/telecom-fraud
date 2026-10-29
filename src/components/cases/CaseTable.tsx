@@ -7,7 +7,8 @@ import { formatSpan } from "@/lib/time";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { CheckCell, DataTable, RowMenu, SkeletonRows, Td, Th, rowClass } from "./Table";
+import { useToast } from "@/components/ui/Toast";
+import { CheckCell, DataTable, RowMenu, SkeletonRows, Td, Th, rowClass, type RowMenuItem } from "./Table";
 
 /** “+233 54 *** 3457” → “054 *** 3457”; agents and wallets pass through. */
 export const localMsisdn = (msisdn: string) => msisdn.replace(/^\+233\s?(\d{2})\s?/, "0$1 ");
@@ -23,11 +24,13 @@ export function CaseTable({
   rows,
   loading,
   team,
+  scope,
   now,
   selected,
   onSelect,
   onPickUp,
   onNote,
+  onWatch,
   sort,
   onSort,
   state,
@@ -36,11 +39,14 @@ export function CaseTable({
   rows: CaseSummary[];
   loading: boolean;
   team: boolean;
+  /** Which list the row menu is for (G35–G37). */
+  scope: "mine" | "team" | "all";
   now: number;
   selected: Set<string>;
   onSelect: (next: Set<string>) => void;
   onPickUp: (ids: string[]) => void;
   onNote: (ids: string[]) => void;
+  onWatch: (c: CaseSummary) => void;
   sort: CaseSort;
   onSort: (s: CaseSort) => void;
   /** Replaces the rows with an empty or error state. */
@@ -48,6 +54,42 @@ export function CaseTable({
   footer?: ReactNode;
 }) {
   const router = useRouter();
+  const toast = useToast();
+
+  /** G35 My cases · G36 Team queue · G37 All cases — row actions. Case-page dialogs open there via `?action=`. */
+  const rowActions = (c: CaseSummary): RowMenuItem[] => {
+    const open: RowMenuItem = { title: "Open case", icon: "app/menu-open-16", onSelect: () => router.push(`/cases/${c.id}`) };
+    const copy: RowMenuItem = {
+      title: "Copy case ID",
+      icon: "app/menu-copy-16",
+      onSelect: () =>
+        void navigator.clipboard
+          .writeText(c.id)
+          .then(() => toast({ tone: "success", title: `${c.id} copied` }))
+          .catch(() => toast({ title: "Couldn’t copy", body: `Select ${c.id} and copy it instead.` })),
+    };
+    const exportCase: RowMenuItem = {
+      title: "Export case",
+      icon: "app/menu-export-16",
+      // TODO(api): 0.2 has no case report export yet (see ExportMenu); this only confirms the request.
+      onSelect: () => toast({ tone: "success", title: "Export started", body: `Case report · PDF for ${c.id}. We’ll let you know when it’s ready.` }),
+    };
+    const onCase = (action: string) => () => router.push(`/cases/${c.id}?action=${action}`);
+    if (scope === "team") return [{ title: "Assign to me", icon: "app/menu-assign-16", onSelect: () => onPickUp([c.id]) }, open, copy];
+    if (scope === "all") return [open, copy, exportCase, { title: "Add to watchlist", icon: "app/menu-watch-16", onSelect: () => onWatch(c) }];
+    return [
+      open,
+      { title: "Add a note", icon: "app/menu-note-16", onSelect: () => onNote([c.id]) },
+      { title: "Hand to a colleague", icon: "app/menu-hand-16", onSelect: onCase("handover") },
+      { title: "Escalate to supervisor", icon: "app/menu-escalate-16", onSelect: onCase("escalate") },
+      copy,
+      exportCase,
+      ...(c.status === "closed"
+        ? []
+        : [{ title: "Close as false positive", icon: "app/menu-close-fp-16", tone: "critical" as const, onSelect: onCase("false_positive") }]),
+    ];
+  };
+
   const all = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const some = rows.some((r) => selected.has(r.id));
   const toggle = (id: string, on: boolean) => {
@@ -142,39 +184,7 @@ export function CaseTable({
                 )}
                 <Td>{c.sla_due_at ? <SlaLabel dueAt={c.sla_due_at} now={now} /> : <span className="text-text-tertiary">–</span>}</Td>
                 <Td clip={false} className="pr-3">
-                  <RowMenu
-                    label={`Actions for ${c.id}`}
-                    items={[
-                      {
-                        title: "Open case",
-                        icon: "app/icon-folder-primary-18",
-                        onSelect: () => router.push(`/cases/${c.id}`),
-                      },
-                      ...(team
-                        ? [
-                            {
-                              title: "Pick up",
-                              icon: "app/icon-user-secondary-18",
-                              onSelect: () => onPickUp([c.id]),
-                            },
-                          ]
-                        : []),
-                      {
-                        title: "Add a note",
-                        icon: "app/icon-message-18",
-                        onSelect: () => onNote([c.id]),
-                      },
-                      ...(c.subscriber.subscriber_id
-                        ? [
-                            {
-                              title: "Open subscriber",
-                              icon: "app/icon-user-secondary-18",
-                              onSelect: () => router.push(`/subscribers/${c.subscriber.subscriber_id}`),
-                            },
-                          ]
-                        : []),
-                    ]}
-                  />
+                  <RowMenu label={`Actions for ${c.id}`} items={rowActions(c)} />
                 </Td>
               </tr>
             );

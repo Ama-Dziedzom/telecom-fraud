@@ -38,7 +38,7 @@ const toInput = (minor?: number) => (minor === undefined ? "" : (minor / 100).to
 const fromInput = (v: string) => Math.round(Number(v.replace(/[^\d.]/g, "") || 0) * 100);
 
 /** E1/E2/E8/E10 · Resolve — confirmed fraud (sign-off), false positive, or inconclusive. */
-export function ResolveModal({ detail, onClose }: { detail: CaseDetail; onClose: () => void }) {
+export function ResolveModal({ detail, initial, onClose }: { detail: CaseDetail; initial?: Outcome; onClose: () => void }) {
   const toast = useToast();
   const router = useRouter();
   const { mutate } = useSWRConfig();
@@ -50,7 +50,7 @@ export function ResolveModal({ detail, onClose }: { detail: CaseDetail; onClose:
   const agent = detail.what_happened.find((s) => s.kind === "sim_swap")?.detail?.match(/AG-\d+/)?.[0];
   const ring = detail.linked_cases[0];
 
-  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(initial ?? null);
   const [lost, setLost] = useState(toInput(lostDefault));
   const [back, setBack] = useState(toInput(recovered));
   const [summary, setSummary] = useState("");

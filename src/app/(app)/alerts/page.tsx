@@ -536,6 +536,7 @@ export default function LiveAlertsPage() {
                             <Menu
                               label={`More actions for ${a.id}`}
                               width={200}
+                              compact
                               trigger={(t) => (
                                 <button
                                   type="button"
@@ -552,13 +553,14 @@ export default function LiveAlertsPage() {
                               {(close) =>
                                 (
                                   [
-                                    ["promote", "Open a case"],
-                                    ["attach", "Add to a case"],
-                                    ["dismiss", "Dismiss"],
+                                    ["promote", "Open a case", "app/menu-open-16"],
+                                    ["attach", "Add to a case", "app/icon-folder-secondary-16"],
+                                    ["dismiss", "Dismiss", "app/icon-x-secondary-16"],
                                   ] as const
-                                ).map(([id, label]) => (
+                                ).map(([id, label, icon]) => (
                                   <MenuItem
                                     key={id}
+                                    icon={icon}
                                     title={label}
                                     onSelect={() => {
                                       close();

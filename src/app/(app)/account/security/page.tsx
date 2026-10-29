@@ -9,7 +9,7 @@ import { Banner } from "@/components/ui/Banner";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { CheckCard } from "@/components/ui/Choice";
 import { Icon } from "@/components/ui/Icon";
-import { Menu, MenuItem } from "@/components/ui/Menu";
+import { Menu, MenuDivider, MenuItem } from "@/components/ui/Menu";
 import { Modal } from "@/components/ui/Modal";
 import { TextField } from "@/components/ui/TextField";
 import { useToast } from "@/components/ui/Toast";
@@ -176,6 +176,7 @@ export default function SecurityPage() {
                       <Menu
                         label={`${a.name} actions`}
                         width={200}
+                        compact
                         trigger={(p) => (
                           <button
                             type="button"
@@ -200,6 +201,7 @@ export default function SecurityPage() {
                                 setRenaming(a);
                               }}
                             />
+                            {!a.primary && <MenuDivider />}
                             {!a.primary && (
                               <MenuItem
                                 title="Remove"

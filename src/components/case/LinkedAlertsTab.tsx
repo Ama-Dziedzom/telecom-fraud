@@ -7,7 +7,7 @@ import { ToolbarSearch } from "@/components/cases/Table";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { Menu, MenuItem } from "@/components/ui/Menu";
+import { Menu, MenuDivider, MenuItem } from "@/components/ui/Menu";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api/client";
 import { useLinkedAlerts, type LinkedAlert } from "@/lib/api/cases";
@@ -114,6 +114,7 @@ export function LinkedAlertsTab({ caseId, meId, now }: { caseId: string; meId?: 
                     <Menu
                       label={`Actions for ${a.id}`}
                       width={200}
+                      compact
                       trigger={(t) => (
                         <button
                           type="button"
@@ -130,12 +131,14 @@ export function LinkedAlertsTab({ caseId, meId, now }: { caseId: string; meId?: 
                       {(close) => (
                         <>
                           <MenuItem
+                            icon="app/menu-open-16"
                             title="View alert"
                             onSelect={() => {
                               close();
                               router.push(`/alerts?alert=${a.id}`);
                             }}
                           />
+                          {a.link.kind !== "opened" && <MenuDivider />}
                           {a.link.kind !== "opened" && (
                             <MenuItem
                               title="Unlink from case"

@@ -5,7 +5,7 @@ import { EmptyState } from "@/components/app/EmptyState";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Choice";
 import { Icon } from "@/components/ui/Icon";
-import { Menu, MenuItem } from "@/components/ui/Menu";
+import { Menu, MenuDivider, MenuItem } from "@/components/ui/Menu";
 import { cn } from "@/lib/cn";
 import type { ButtonHTMLAttributes, ComponentProps, ReactNode, TdHTMLAttributes, ThHTMLAttributes } from "react";
 
@@ -407,25 +407,39 @@ export function BulkAction(props: ComponentProps<typeof Button>) {
   return <Button variant="secondary" size="sm" {...props} />;
 }
 
-/** Foundations · Row actions menu (1318:165788) — ghost 32 “…” button. */
-export function RowMenu({
-  label,
-  items,
-}: {
-  label: string;
-  items: Array<{
-    title: string;
-    icon?: string;
-    onSelect: () => void;
-    tone?: "critical";
-    disabled?: boolean;
-  }>;
-}) {
+export type RowMenuItem = {
+  title: string;
+  icon?: string;
+  onSelect: () => void;
+  tone?: "critical";
+  disabled?: boolean;
+};
+
+/**
+ * Foundations · Row actions menu (1318:165788) — ghost 32 “…” button; 200 wide,
+ * 32-high Body/S items, a critical item always last after a divider.
+ */
+export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] }) {
+  const destructive = items.filter((it) => it.tone === "critical");
+  const row = (it: RowMenuItem, close: () => void) => (
+    <MenuItem
+      key={it.title}
+      icon={it.icon}
+      title={it.title}
+      tone={it.tone}
+      disabled={it.disabled}
+      onSelect={() => {
+        close();
+        it.onSelect();
+      }}
+    />
+  );
   return (
     <span onClick={(e) => e.stopPropagation()} className="flex justify-end">
       <Menu
         label={label}
-        width={220}
+        width={200}
+        compact
         trigger={(t) => (
           <button
             type="button"
@@ -439,21 +453,13 @@ export function RowMenu({
           </button>
         )}
       >
-        {(close) =>
-          items.map((it) => (
-            <MenuItem
-              key={it.title}
-              icon={it.icon}
-              title={it.title}
-              tone={it.tone}
-              disabled={it.disabled}
-              onSelect={() => {
-                close();
-                it.onSelect();
-              }}
-            />
-          ))
-        }
+        {(close) => (
+          <>
+            {items.filter((it) => it.tone !== "critical").map((it) => row(it, close))}
+            {destructive.length > 0 && <MenuDivider />}
+            {destructive.map((it) => row(it, close))}
+          </>
+        )}
       </Menu>
     </span>
   );

@@ -52,10 +52,15 @@ export default function CasePage() {
   const retry = useActionRetry(detail);
   const [starting, setStarting] = useState(false);
   const [subscriberOpen, setSubscriberOpen] = useState(false);
-  // Arriving from a subscriber or a check with “Protect now” opens the protect dialog.
-  const [dialog, setDialog] = useState<CaseDialog | null>(() =>
-    params.get("protect") === "1" ? { kind: "protect", parts: ["freeze_wallet", "suspend_sim", "block_recipients"] } : null,
-  );
+  // Arriving from a subscriber or a check with “Protect now” opens the protect dialog;
+  // a cases-list row action (G35) opens its dialog with `?action=`.
+  const [dialog, setDialog] = useState<CaseDialog | null>(() => {
+    if (params.get("protect") === "1") return { kind: "protect", parts: ["freeze_wallet", "suspend_sim", "block_recipients"] };
+    const action = params.get("action");
+    if (action === "handover" || action === "escalate") return { kind: action };
+    if (action === "false_positive") return { kind: "resolve", outcome: "false_positive" };
+    return null;
+  });
 
   const tab = (TABS.includes(params.get("tab") as Tab) ? params.get("tab") : "summary") as Tab;
 
