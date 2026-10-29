@@ -20,7 +20,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
 export function AccountFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const operator = useOperatorName() ?? "Kasa Mobile";
+  const operator = useOperatorName() ?? "MTN Ghana";
   return (
     <>
       <AppHeader section="Account" title="Account settings" />

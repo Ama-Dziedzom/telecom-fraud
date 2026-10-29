@@ -109,8 +109,8 @@ const isActive = (pathname: string, href: string) =>
   (href === "/cases" && pathname.startsWith("/prospect/"));
 
 const OPERATOR_COLOURS: Record<string, string> = {
-  "Kasa Mobile": "bg-[#0f8b7a]",
-  "Volta Telecom": "bg-[#e0661c]",
+  "MTN Ghana": "bg-[#0f8b7a]",
+  "AT": "bg-[#e0661c]",
 };
 
 function LogoMark() {
@@ -136,7 +136,7 @@ export function Sidebar({ operatorName: operatorFromSession, collapsed }: { oper
   // Prefetch notifications for the header bell.
   useApi("/notifications");
 
-  const operatorName = operatorFromSession ?? "Kasa Mobile";
+  const operatorName = operatorFromSession ?? "MTN Ghana";
   const savedId = pathname === "/cases" ? params.get("saved") : null;
   const onHelp = pathname === "/help" || pathname.startsWith("/help/");
 

@@ -34,7 +34,7 @@ type Security = {
 };
 
 const METHOD: Record<string, string> = { password_totp: "Password and authenticator", password: "Password", sso: "Company SSO" };
-const SET_BY: Record<string, string> = { it_admin: "IT", operator: "Kasa Mobile" };
+const SET_BY: Record<string, string> = { it_admin: "IT", operator: "MTN Ghana" };
 
 const DAY = 86_400_000;
 const dayOf = (t: string | number) => new Date(t).toLocaleDateString("en-CA", { timeZone: TZ });
@@ -57,7 +57,7 @@ export default function SecurityPage() {
   const { mutate } = useSWRConfig();
   const stepUp = useStepUp();
   const now = useNow();
-  const operator = useOperatorName() ?? "Kasa Mobile";
+  const operator = useOperatorName() ?? "MTN Ghana";
   const { data } = useApi<Security>("/me/security");
   const [confirm, setConfirm] = useState(false);
   const [changeNext, setChangeNext] = useState(true);

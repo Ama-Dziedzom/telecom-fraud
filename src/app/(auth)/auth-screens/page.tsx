@@ -31,8 +31,8 @@ type Setup =
 
 type Screen = { code: string; name: string; href: string; setup?: Setup; how?: string };
 
-const PASSWORD_EMAIL = "ama.mensah@kasamobile.com.gh";
-const SSO_EMAIL = "ama.mensah@voltatelecom.com.gh";
+const PASSWORD_EMAIL = "ama.mensah@mtn.com.gh";
+const SSO_EMAIL = "ama.mensah@at.com.gh";
 const INVITE = "inv_demo";
 
 const SECTIONS: Array<{ title: string; screens: Screen[] }> = [
@@ -57,7 +57,7 @@ const SECTIONS: Array<{ title: string; screens: Screen[] }> = [
     screens: [
       { code: "B1", name: "SSO detected", href: "/sign-in/sso", setup: "sso-flow" },
       { code: "B2", name: "Redirecting", href: "/sign-in/sso/redirecting", setup: "sso-flow" },
-      { code: "B3", name: "SSO error", href: "/sign-in/sso/error", how: "Or sign in as noaccess.ama@voltatelecom.com.gh" },
+      { code: "B3", name: "SSO error", href: "/sign-in/sso/error", how: "Or sign in as noaccess.ama@at.com.gh" },
       { code: "B4", name: "Signed in, but no account here", href: "/sign-in/sso/no-account", setup: "sso-flow", how: "No endpoint yet" },
       { code: "B5", name: "Access requested", href: "/sign-in/sso/requested", setup: "sso-flow", how: "No endpoint yet" },
     ],
@@ -160,7 +160,7 @@ export default function AuthScreensIndex() {
       case "invite-flow":
       case "invite-done": {
         const accepted = await acceptInvite(INVITE, "Akosua Frimpong", "a-long-new-passphrase");
-        update({ email: "akosua.frimpong@kasamobile.com.gh", flowId: accepted.flow_id });
+        update({ email: "akosua.frimpong@mtn.com.gh", flowId: accepted.flow_id });
         if (setup === "invite-flow") return;
         await startEnrolment(accepted.flow_id);
         const session = await confirmEnrolment(accepted.flow_id, "123456");

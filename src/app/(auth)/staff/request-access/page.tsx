@@ -34,8 +34,8 @@ export default function RequestSupportAccessPage() {
     <AuthPage variant="staff" back={{ href: "/staff/workspaces", label: "Back to workspaces" }}>
       <StaffBadge />
       <AuthHeading
-        above={<OperatorLogo operator="Kasa Mobile" />}
-        title="Request access to Kasa Mobile"
+        above={<OperatorLogo operator="MTN Ghana" />}
+        title="Request access to MTN Ghana"
         description="Kojo Asare (IT Admin) will be asked to approve. Access ends automatically when the time is up."
       />
 

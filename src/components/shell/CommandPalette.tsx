@@ -71,7 +71,7 @@ const ICON: Record<string, string> = {
 /** I1/I2 · ⌘K — cases, subscribers, alerts and actions in one list. */
 export function CommandPalette({ onClose, onHandover }: { onClose: () => void; onHandover: () => void }) {
   const router = useRouter();
-  const operatorName = useOperatorName() ?? "Kasa Mobile";
+  const operatorName = useOperatorName() ?? "MTN Ghana";
   const input = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");

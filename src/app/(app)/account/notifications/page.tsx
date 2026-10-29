@@ -40,7 +40,7 @@ const eventLabel = (e: Event) => EVENT[e.id]?.label ?? e.id.replace(/_/g, " ");
 /** I9 · Account · notification preferences — what you’re told about, where, and quiet hours. Saves as you go. */
 export default function NotificationPrefsPage() {
   const toast = useToast();
-  const operator = useOperatorName() ?? "Kasa Mobile";
+  const operator = useOperatorName() ?? "MTN Ghana";
   const { data } = useApi<Prefs>("/me/notification-preferences");
   const { data: profile } = useApi<{ managed: { supervisor: PersonRef } }>("/me/profile");
   const boss = profile?.managed.supervisor.name.split(" ")[0] ?? "Your supervisor";

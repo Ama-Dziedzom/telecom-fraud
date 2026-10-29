@@ -5,7 +5,7 @@ const DETAILS = [
   ["When", "Tue 20 Oct 2026, 16:31 GMT"],
   ["Device", "Chrome on Windows 11"],
   ["Location", "Tema, Greater Accra (approximate)"],
-  ["Workspace", "Kasa Mobile · Fraud Analyst"],
+  ["Workspace", "MTN Ghana · Fraud Analyst"],
 ];
 
 /** E5 · New sign-in email */
@@ -15,7 +15,7 @@ export default function NewSignInEmailPreview() {
       label="Email · security notice"
       subject="New sign-in to your FraudDetection account"
       from="security@frauddetection.app"
-      to="ama.mensah@kasamobile.com.gh"
+      to="ama.mensah@mtn.com.gh"
       bodyClassName="gap-[22px] px-11 py-9"
     >
       <div className="flex flex-col gap-2">

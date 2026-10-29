@@ -65,7 +65,7 @@ function SkeletonCard() {
 export default function MyQueuePage() {
   const now = useNow();
   const { user } = useShell();
-  const operator = useOperatorName() ?? "Kasa Mobile";
+  const operator = useOperatorName() ?? "MTN Ghana";
   const { data: casesPage, isLoading: casesLoading } = useMyCases();
   const { data: alertsPage, isLoading: alertsLoading } = useAlerts();
   const { data: notifications } = useNotifications();

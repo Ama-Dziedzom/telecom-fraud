@@ -68,7 +68,7 @@ function Bell({ unread }: { unread: boolean }) {
 /** Avatar + I5 profile menu. */
 function Account() {
   const shell = useShell();
-  const operator = useOperatorName() ?? "Kasa Mobile";
+  const operator = useOperatorName() ?? "MTN Ghana";
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   useDismiss(open, root, () => setOpen(false));

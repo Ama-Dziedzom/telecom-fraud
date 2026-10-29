@@ -27,8 +27,8 @@ export function Logo({
 }
 
 const OPERATOR_COLOURS: Record<string, string> = {
-  "Kasa Mobile": "bg-[#0f8b7a]",
-  "Volta Telecom": "bg-[#e0661c]",
+  "MTN Ghana": "bg-[#0f8b7a]",
+  "AT": "bg-[#e0661c]",
 };
 
 /** Logo / Operator — operator co-brand (initial mark; unknown operators use brand). */

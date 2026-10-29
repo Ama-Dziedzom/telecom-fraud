@@ -11,7 +11,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { SWRConfig } from "swr";
 
-/** Operator policy: 15–30 min. Kasa Mobile uses 15. */
+/** Operator policy: 15–30 min. MTN Ghana uses 15. */
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 /** Handoff behaviour rule: 60 s warning before idle sign-out. */
 const WARNING_MS = 60 * 1000;

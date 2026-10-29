@@ -23,7 +23,7 @@ const detailLine = (g: Guide) => (g.minutes ? `${g.detail} · ${g.minutes} min` 
  */
 export default function HelpCentrePage() {
   // Same fallback as the sidebar’s workspace row.
-  const operator = useOperatorName() ?? "Kasa Mobile";
+  const operator = useOperatorName() ?? "MTN Ghana";
   const shell = useShell();
   const { data: help } = useApi<Help>("/help");
   const [q, setQ] = useState("");

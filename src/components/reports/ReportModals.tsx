@@ -20,7 +20,7 @@ import { useSWRConfig } from "swr";
 
 export const TEMPLATES = [
   { id: "case_list", label: "Case list", detail: "Your cases with outcome and loss", option: "Case list · my cases" },
-  { id: "fraud_summary", label: "Fraud summary", detail: "Trends, mix and recovery", option: "Fraud summary · Kasa Mobile" },
+  { id: "fraud_summary", label: "Fraud summary", detail: "Trends, mix and recovery", option: "Fraud summary · MTN Ghana" },
   { id: "regulator_return", label: "Regulator return", detail: "BoG format, pre-filled", option: "Regulator return · BoG" },
   { id: "rule_performance", label: "Rule performance", detail: "Hits, precision, false-positive notes", option: "Rule performance" },
 ] as const;
@@ -313,7 +313,7 @@ export function NewReportModal({ template = "case_list", schedule: startSchedule
               </div>
               <p className="flex items-start gap-1.5 text-caption text-text-secondary">
                 <Icon name="icon-info-secondary" size={14} className="mt-0.5 shrink-0" />
-                Only people in Kasa Mobile with access to these cases can receive it.
+                Only people in MTN Ghana with access to these cases can receive it.
               </p>
             </div>
           </>
@@ -381,7 +381,7 @@ export function ShareReportModal({ id, name, meta, onClose }: { id: string; name
               id="share-search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search people in Kasa Mobile"
+              placeholder="Search people in MTN Ghana"
               className="min-w-0 flex-1 bg-transparent text-body-m outline-none placeholder:text-text-tertiary focus-visible:shadow-none"
             />
           </label>

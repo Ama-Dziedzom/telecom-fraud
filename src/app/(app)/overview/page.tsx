@@ -108,7 +108,7 @@ const precisionTone = (pct: number): BadgeTone => (pct >= 85 ? "success" : pct >
 const SCOPES: Array<{ id: Scope; label: string }> = [
   { id: "me", label: "Me" },
   { id: "team", label: "My team" },
-  { id: "operator", label: "Kasa Mobile" },
+  { id: "operator", label: "MTN Ghana" },
 ];
 const PERIODS: Array<{ id: Period; label: string }> = [
   { id: "today", label: "Today · live" },
@@ -118,8 +118,8 @@ const PERIODS: Array<{ id: Period; label: string }> = [
 
 /** Page subtitle: whose numbers, then live/loading state. */
 function subtitle(period: Period, scope: Scope, state: ReactNode) {
-  if (period === "today") return `${scope === "operator" ? "All of Kasa Mobile" : scope === "team" ? "Your team" : "Just you"} · ${state}`;
-  const who = scope === "me" ? "Your" : scope === "team" ? "Your team’s" : "Kasa Mobile’s";
+  if (period === "today") return `${scope === "operator" ? "All of MTN Ghana" : scope === "team" ? "Your team" : "Just you"} · ${state}`;
+  const who = scope === "me" ? "Your" : scope === "team" ? "Your team’s" : "MTN Ghana’s";
   return `${who} ${period === "7d" ? "week so far" : "last 30 days"} · ${state}`;
 }
 

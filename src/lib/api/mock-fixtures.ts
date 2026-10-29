@@ -25,7 +25,7 @@ const CASE_PROBLEMS: Record<string, Fixture> = {
       status: 403,
       code: "case_restricted",
       title: "This case is restricted",
-      detail: "This case is restricted to the Internal Investigations team at Kasa Mobile. Ask for access and Efua Owusu-Ansah (your supervisor) will be notified.",
+      detail: "This case is restricted to the Internal Investigations team at MTN Ghana. Ask for access and Efua Owusu-Ansah (your supervisor) will be notified.",
       request_id: "req_7Qm2xK",
     },
   },

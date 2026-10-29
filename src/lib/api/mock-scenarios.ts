@@ -10,8 +10,8 @@ import { join } from "node:path";
  * example by status code, so every screen can be reached. They never run
  * against the real API.
  *
- *   Email @kasamobile.com.gh        → password sign-in
- *   Email @voltatelecom.com.gh      → company SSO (synthesised, see below)
+ *   Email @mtn.com.gh              → password sign-in
+ *   Email @at.com.gh               → company SSO (synthesised, see below)
  *   Any other domain                → 404 domain_not_recognised (A3)
  *   Email deactivated.*@…           → 403 account_deactivated (A7)
  *   Password “wrong”                → 401 invalid_credentials (A5)
@@ -23,7 +23,7 @@ import { join } from "node:path";
  *   SSO for noaccess.*@…            → 403 sso_not_assigned (B3)
  *   Reset token “expired”           → 410 link_expired (D4)
  *   Invite token “expired” / “used” → 410 / 409 (C7)
- *   Forgot password @voltatelecom   → 409 sso_managed
+ *   Forgot password @at.com.gh     → 409 sso_managed
  *   Case action barring over 10 SIMs → 403 limit_exceeded (D6); any other action → 202
  *   Note on FD-3051                 → 409 case_changed (I15, its own example); `force: true` → 201
  *   Brief export with thumbnails    → 413 export_too_large (E23); without → 200
@@ -35,7 +35,7 @@ type Body = Record<string, unknown> | null;
 
 const domainOf = (email: unknown) => String(email ?? "").split("@")[1]?.toLowerCase() ?? "";
 const localOf = (email: unknown) => String(email ?? "").split("@")[0]?.toLowerCase() ?? "";
-const KNOWN_DOMAINS = ["kasamobile.com.gh", "voltatelecom.com.gh"];
+const KNOWN_DOMAINS = ["mtn.com.gh", "at.com.gh"];
 
 /** Which example a demo trigger asks for: by status code, or by name when several share one. */
 export type MockWant = { code?: number; name?: string };
@@ -59,7 +59,7 @@ function demoCode(method: string, path: string, body: Body): number | undefined 
   }
   if (method === "POST" && path === "auth/sso/complete" && body?.code === "idp_noaccess") return 403;
   if (method === "POST" && path === "auth/password/reset" && body?.token === "expired") return 410;
-  if (method === "POST" && path === "auth/password/forgot" && domainOf(body?.email) === "voltatelecom.com.gh")
+  if (method === "POST" && path === "auth/password/forgot" && domainOf(body?.email) === "at.com.gh")
     return 409;
   if (method === "GET" && path === "auth/invites/expired") return 410;
   if (method === "GET" && path === "auth/invites/used") return 409;
@@ -168,14 +168,14 @@ export function mockSyntheticResponse(
   path: string,
   body: Body,
 ): { status: number; body: unknown } | undefined {
-  if (method === "POST" && path === "auth/identify" && domainOf(body?.email) === "voltatelecom.com.gh") {
+  if (method === "POST" && path === "auth/identify" && domainOf(body?.email) === "at.com.gh") {
     const code = localOf(body?.email).startsWith("noaccess.") ? "idp_noaccess" : "idp_code_9f2";
     return {
       status: 200,
       body: {
         flow_id: "flw_sso_01",
         next: "sso",
-        operator: { id: "op_volta", name: "Volta Telecom", logo_url: null },
+        operator: { id: "op_at", name: "AT", logo_url: null },
         email: body?.email,
         sso: {
           provider: "Microsoft Entra ID",

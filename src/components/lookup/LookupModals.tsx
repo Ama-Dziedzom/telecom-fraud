@@ -188,7 +188,7 @@ const NEEDS = [
 ] as const;
 
 const OPERATORS = [
-  { id: "op_volta", name: "Volta Telecom" },
+  { id: "op_at", name: "AT" },
   { id: "op_savanna", name: "Savanna Mobile" },
 ];
 
